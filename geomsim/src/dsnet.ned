@@ -77,6 +77,10 @@ moduleinterface LocalSite
         int siteID;
         int streams;
 
+		@signal[protoMsgSent](type=cPacket);
+		@signal[protoMsgRecv](type=cPacket);
+		
+
     gates:
         input stream[streams];
         inout coord;
@@ -258,9 +262,13 @@ simple NaiveLocalSite like LocalSite
         int streams;
 
         // number of stream updates received
+		@signal[protoMsgSent](type=cPacket);
+		@signal[protoMsgRecv](type=cPacket);
         @signal[streamRecIn]();
-        @statistic[streamRecIn](record=stats,vector);
-
+        
+        @statistic[streamRecIn](source=count(streamRecIn);record=last);
+		@statistic[protoSent](source=protoMsgSent; record=sum(packetBits), count);
+		@statistic[protoRecv](source=protoMsgRecv; record=sum(packetBits), count);
 
         @display("i=block/subqueue");
     gates:

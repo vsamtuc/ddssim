@@ -23,8 +23,9 @@ enum UpdateOp {
 };
 
 
-message Stream_message {
+packet StreamMessage {
 	int update @enum(UpdateOp);
 	int64_t value;
 }
+
 
