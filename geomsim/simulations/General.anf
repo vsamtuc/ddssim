@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scave:Analysis xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:scave="http://www.omnetpp.org/omnetpp/scave">
+  <inputs>
+    <inputs name="/geomsim/simulations/results/General-*.vec"/>
+    <inputs name="/geomsim/simulations/results/General-*.sca"/>
+  </inputs>
+  <datasets>
+    <datasets name="stream_size">
+      <items xsi:type="scave:Add" filterPattern=""/>
+      <items xsi:type="scave:Add" filterPattern="" type="VECTOR"/>
+      <items xsi:type="scave:BarChart" name="Local stream updates">
+        <filters xsi:type="scave:Select" filterPattern="name(streamRecIn:stats:count)"/>
+        <properties name="Graph.Title" value="stream updates"/>
+        <properties name="X.Axis.Title" value="local stream"/>
+        <properties name="Y.Axis.Title" value="updates"/>
+      </items>
+      <items xsi:type="scave:Compute" operation="integrate">
+        <params name="interpolation-mode" value="sample-hold"/>
+      </items>
+      <items xsi:type="scave:LineChart" name="stream samples over time" lineNameFormat="">
+        <filters xsi:type="scave:Select" filterPattern="name(&quot;integrate(streamRecIn:vector)&quot;)" type="VECTOR"/>
+        <properties name="X.Axis.Title" value="time"/>
+        <properties name="Y.Axis.Title" value="stream samples"/>
+      </items>
+    </datasets>
+  </datasets>
+  <chartSheets>
+    <chartSheets name="default" charts="//@datasets/@datasets.0/@items.2 //@datasets/@datasets.0/@items.4"/>
+  </chartSheets>
+</scave:Analysis>

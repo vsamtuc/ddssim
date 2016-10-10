@@ -1,0 +1,3 @@
+package geomsim;
+
+@license(LGPL);
