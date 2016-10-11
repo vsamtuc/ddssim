@@ -44,10 +44,20 @@ package geomsim;
 //  A data source generates all the distributed stream data.
 //  In particular, it outputs one connection for each local stream
 //
-moduleinterface DataSource
+moduleinterface IDataSource
 {
-    int streams;
-    int sites;
+    parameters:
+        int streams;
+        int sites;
+    gates:
+        output local_stream[streams*sites];
+}
+simple DataSource like IDataSource
+{
+	parameters:
+        int streams;
+        int sites;
+        @display("i=block/source;is=vl");
     gates:
         output local_stream[streams*sites];
 }
@@ -56,7 +66,17 @@ moduleinterface DataSource
 // A local stream is where processing (windowing, filtering, statistics collection)
 // can be done.
 //
-moduleinterface LocalStream
+moduleinterface ILocalStream
+{
+    parameters:
+        int streamID;
+        int siteID;
+
+    gates:
+        input source;
+        output stream;
+}
+simple LocalStream like ILocalStream
 {
     parameters:
         int streamID;
@@ -71,15 +91,32 @@ moduleinterface LocalStream
 // A local site accepts a S local streams and executes the local protocol
 // of a method. 
 //
-moduleinterface LocalSite
+moduleinterface ILocalSite
+{
+    parameters:
+        int siteID;
+        int streams;
+        @display("i=block/subqueue");
+    gates:
+        input stream[streams];
+        inout coord;
+}
+
+
+simple LocalSite like ILocalSite
 {
     parameters:
         int siteID;
         int streams;
 
+        // number of stream updates received
 		@signal[protoMsgSent](type=cPacket);
 		@signal[protoMsgRecv](type=cPacket);
-		
+        @signal[streamRecIn]();
+        
+        @statistic[streamRecIn](source=count(streamRecIn);record=last);
+		@statistic[protoSent](source=protoMsgSent; record=sum(packetBits), count);
+		@statistic[protoRecv](source=protoMsgRecv; record=sum(packetBits), count);
 
     gates:
         input stream[streams];
@@ -89,13 +126,27 @@ moduleinterface LocalSite
 //
 // A coordinator connects with k local sites to execute some method
 //
-moduleinterface Coordinator
+moduleinterface ICoordinator
 {
-    int sites;
-    int streams;
+	parameters:
+        int sites;
+        int streams;
+        @display("i=device/mainframe");
     gates:
         inout site[sites];
 }
+
+simple Coordinator like ICoordinator
+{
+    parameters:
+        int sites;
+        int streams;
+
+    gates:
+        inout site[sites];
+}
+
+
 
 
 //
@@ -112,13 +163,13 @@ module Method
         input stream[streams*sites];
 
     submodules:
-        site[sites]: <> like LocalSite {
+        site[sites]: <> like ILocalSite {
             //@display("p=400,0,c;i=misc/node"); 
             siteID = index;
             streams = streams;
         }
 
-        coordinator: <> like Coordinator {
+        coordinator: <> like ICoordinator {
             //@display("p=600,50;i=device/server"); 
             sites = sites;
             streams = streams;
@@ -164,13 +215,13 @@ network Dsnet
     string sourceType;
 
     submodules:
-        source: <sourceType> like DataSource {
+        source: <sourceType> like IDataSource {
             @display("p=0,50;i=block/source");
             streams = streams;
             sites = sites;
         }
 
-        stream[streams*sites]: <> like LocalStream {
+        stream[streams*sites]: <> like ILocalStream {
             @display("p=200,0,c;i=block/boundedqueue");
 
             streamID = index % streams;
@@ -222,58 +273,59 @@ network Dsnet
 // The sendInterval refers to simulation time between samples. 
 // The streamLength is the number of elements in all the streams.  
 //
-simple SimpleSyntheticDataSource like DataSource
+simple SimpleSyntheticDataSource extends DataSource
 {
-    int streams;
-    int sites;
-
+	@class(SimpleSyntheticDataSource);
     int domainSize = default(65536);
     volatile double sendInterval @unit(s) = default(exponential(1s));
     int totalStreamLength = default(1000); // one million stream tuples total
-
-    @display("i=block/source;is=vl");
-    gates:
-        output local_stream[streams*sites];
 }
 
 
 //
-// This module simply propagates its input, to the output
+// This local stream simply propagates its input to the output
 //
-simple PropagatingLocalStream like LocalStream
+simple PropagatingLocalStream extends LocalStream
 {
-    parameters:
-        int streamID;
-        int siteID;
-
-    gates:
-        input source;
-        output stream;
+    @class(PropagatingLocalStream);
 }
+
+
+//
+// This local stream defines sliding window containing
+// all records received during the last T seconds.
+//
+simple SlidingWindowLocalStream extends LocalStream
+{
+	@class(SlidingWindowLocalStream);
+    double windowTime @unit(s);
+    
+    @signal[wsize](type=unsigned long);
+    @statistic[wsize](record=max,timeavg,vector?);
+}
+
+//
+// This local stream defines a fixed-size buffer to
+// act as a sliding window
+//
+simple SlidingBufferLocalStream extends LocalStream
+{
+    @class(SlidingBufferLocalStream);
+    int windowSize;
+
+    @signal[winterval](type=simtime_t);
+    @statistic[winterval](record=max,timeavg,vector?);
+}
+
+
 
 
 //
 // The naive local site just forwards its inputs to the coordinator
 //
-simple NaiveLocalSite like LocalSite
+simple NaiveLocalSite extends LocalSite
 {
-    parameters:
-        int siteID;
-        int streams;
-
-        // number of stream updates received
-		@signal[protoMsgSent](type=cPacket);
-		@signal[protoMsgRecv](type=cPacket);
-        @signal[streamRecIn]();
-        
-        @statistic[streamRecIn](source=count(streamRecIn);record=last);
-		@statistic[protoSent](source=protoMsgSent; record=sum(packetBits), count);
-		@statistic[protoRecv](source=protoMsgRecv; record=sum(packetBits), count);
-
-        @display("i=block/subqueue");
-    gates:
-        input stream[streams];
-        inout coord;
+	@class(NaiveLocalSite);
 }
 
 
@@ -281,15 +333,9 @@ simple NaiveLocalSite like LocalSite
 // The naive coordinator simply accepts raw local streams from the
 // sites. It computes statistics of the inputs.
 //
-simple NaiveCoordinator like Coordinator
+simple NaiveCoordinator extends Coordinator
 {
-    parameters:
-        int sites;
-        int streams;
-
-        @display("i=device/mainframe");
-    gates:
-        inout site[sites];
+    @class(NaiveCoordinator);
 }
 
 

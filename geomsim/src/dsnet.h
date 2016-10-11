@@ -26,12 +26,14 @@
 #define COMPILETIME_LOGLEVEL LOGLEVEL_TRACE
 
 #include <vector>
+#include <deque>
 #include <omnetpp.h>
 #include "stream_message_m.h"
 
 using namespace omnetpp;
 
 using std::vector;
+using std::deque;
 
 
 
@@ -64,8 +66,8 @@ protected:
     void initialize() override;
 public:
     // signals
-    int streamRecIn;
-    int protoMsgSent, protoMsgRecv;
+    simsignal_t streamRecIn;
+    simsignal_t protoMsgSent, protoMsgRecv;
 
     inline Coordinator* getCoordinator() const { return coordinator; }
     inline const vector<LocalSite*>& getSites() const { return sites; }
@@ -170,6 +172,9 @@ class LocalStream : public cSimpleModule
     int source_gateId, stream_gateId;
     virtual void initialize() override;
     virtual void emitRecord(StreamMessage* m);
+    virtual void handleMessage(cMessage* m) override;
+
+    virtual void handleStreamRecord(StreamMessage*) =0;
 
   public:
     inline int getStream() const { return streamID; }
@@ -218,8 +223,43 @@ protected:
 class PropagatingLocalStream : public LocalStream
 {
   protected:
-    virtual void handleMessage(cMessage *msg) override;
+    virtual void handleStreamRecord(StreamMessage* sm) override;
 };
+
+
+
+/*
+ * Sliding window LocalStream.
+ */
+class SlidingWindowLocalStream : public LocalStream
+{
+protected:
+    SimTime windowTime;
+    simsignal_t wsize_signal;
+    unsigned long wsize;
+
+    virtual void initialize() override;
+    virtual void handleStreamRecord(StreamMessage* sm) override;
+};
+
+
+/*
+ * Sliding buffer LocalStream
+ */
+class SlidingBufferLocalStream : public LocalStream
+{
+protected:
+    size_t windowSize;
+    simsignal_t winterval_signal;
+    deque<StreamMessage*> buffer;
+    SimTime wlast;
+
+    virtual void initialize() override;
+    virtual void finish() override;
+    virtual void handleStreamRecord(StreamMessage* sm) override;
+};
+
+
 
 
 

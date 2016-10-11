@@ -24,7 +24,6 @@
 #include <dsnet.h>
 #include <cassert>
 
-
 //===============================================================
 //
 //  Library of methods
@@ -47,8 +46,6 @@ void MethodComponent::initialize()
     protoMsgSent = registerSignal("protoMsgSent");
     protoMsgRecv = registerSignal("protoMsgRecv");
 }
-
-
 
 
 void LocalSite::initialize()
@@ -158,6 +155,11 @@ void LocalStream::emitRecord(StreamMessage *msg)
     send(msg, stream_gateId);
 }
 
+void LocalStream::handleMessage(cMessage* msg)
+{
+    StreamMessage* sm = check_and_cast<StreamMessage*>(msg);
+    handleStreamRecord(sm);
+}
 
 
 //===============================================================
@@ -212,7 +214,7 @@ void SimpleSyntheticDataSource::initialize()
     domainSize = par("domainSize").longValue();
     totalStreamLength = par("totalStreamLength").longValue();
 
-    EV_INFO << "Data source initialized" << endl;
+    EV_DEBUG << "Data source initialized" << endl;
 
     count = 0;
 
@@ -261,12 +263,90 @@ Define_Module(PropagatingLocalStream);
 
 
 
-void PropagatingLocalStream::handleMessage(cMessage *msg)
+void PropagatingLocalStream::handleStreamRecord(StreamMessage *msg)
 {
-    emitRecord(check_and_cast<StreamMessage*>(msg));
+    emitRecord(msg);
 }
 
 
+
+//////////////////////////////////////////////////////
+Define_Module(SlidingWindowLocalStream);
+
+
+void SlidingWindowLocalStream::initialize()
+{
+    LocalStream::initialize();
+
+    windowTime = par("windowTime");
+    EV_DEBUG << "Stream " << getStream() << " has windowTime=" << windowTime << endl;
+
+    wsize_signal = registerSignal("wsize");
+    wsize = 0;
+}
+
+void SlidingWindowLocalStream::handleStreamRecord(StreamMessage* sm)
+{
+    if(sm->getUpdate() == INSERT) {
+        // schedule to receive the delete message
+        StreamMessage* smdel = sm->dup();
+        smdel->setUpdate(DELETE);
+        scheduleAt(simTime()+windowTime, smdel);
+
+        EV_DEBUG << "Stream " << getStream() << " sends insert" << endl;
+
+        emitRecord(sm);     // send the insert
+        wsize++;            // incr the window size
+    } else {
+        assert(sm->getUpdate()==DELETE);
+        EV_DEBUG << "Stream " << getStream() << " sends delete" << endl;
+
+        wsize--;            // decr window size
+        emitRecord(sm);     // send the delete
+    }
+    EV_DEBUG << "Stream " << getStream() << " has wsize=" << wsize << endl;
+    emit(wsize_signal, wsize);  // emit the window size
+}
+
+
+//////////////////////////////////////////////////////
+Define_Module(SlidingBufferLocalStream);
+
+void SlidingBufferLocalStream::initialize()
+{
+    LocalStream::initialize();
+    windowSize = par("windowSize");
+    assert(windowSize);
+    winterval_signal = registerSignal("winterval");
+    wlast = 0;
+}
+
+void SlidingBufferLocalStream::handleStreamRecord(StreamMessage* sm)
+{
+    // create the deletion message
+    StreamMessage* smdel = sm->dup();
+    smdel->setUpdate(DELETE);
+
+    if(buffer.size() >= windowSize) {
+        // make space in buffer
+        StreamMessage* oldsm = buffer.front();
+        buffer.pop_front();
+        wlast = sm->getArrivalTime();
+        emitRecord(oldsm);
+    }
+    buffer.push_back(smdel);
+    emitRecord(sm);
+    emit(winterval_signal, simTime() - wlast );
+}
+
+void SlidingBufferLocalStream::finish()
+{
+    while(! buffer.empty()) {
+        StreamMessage* sm = buffer.front();
+        buffer.pop_front();
+        delete sm;
+    }
+}
 
 
 //////////////////////////////////////////////////////
@@ -295,7 +375,9 @@ Define_Module(NaiveCoordinator);
 void NaiveCoordinator::handleSiteMessage(int s, cPacket *msg)
 {
     // TODO - Generated method body
-    EV_INFO << "Received message from site "
+    EV_DEBUG << "Received message from site "
             << dynamic_cast<NaiveLocalSite*>(msg->getSenderModule())->getSiteID()
             << endl;
 }
+
+
