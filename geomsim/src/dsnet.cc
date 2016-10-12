@@ -135,8 +135,15 @@ void DataSource::initialize()
 
 void DataSource::emitRecord(StreamMessage* m, int site, int stream)
 {
-    send(m, local_stream_baseId + site*streams + stream);
+    send(m, gateFor(site, stream));
 }
+
+
+void DataSource::emitRecordDelayed(StreamMessage* m, int site, int stream, double delay)
+{
+    sendDelayed(m, delay, gateFor(site, stream));
+}
+
 
 
 

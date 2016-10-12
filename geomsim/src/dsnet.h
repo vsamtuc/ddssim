@@ -20,8 +20,8 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 //
 
-#ifndef __GEOMSIM_NAIVE_H_
-#define __GEOMSIM_NAIVE_H_
+#ifndef __GEOMSIM_DSNET_H_
+#define __GEOMSIM_DSNET_H_
 
 #define COMPILETIME_LOGLEVEL LOGLEVEL_TRACE
 
@@ -102,9 +102,8 @@ protected:
     // handle a coordinator message
     virtual void handleCoordinatorMessage(cPacket*) = 0;
 
-    void sendCoordinator(cPacket* m);
-
 public:
+    void sendCoordinator(cPacket* m);
     inline int getSiteID() const { return siteID; }
 };
 
@@ -125,6 +124,8 @@ protected:
     void handleMessage(cMessage*) override;
 
     virtual void handleSiteMessage(int s, cPacket*) = 0;
+
+public:
     void sendSite(int s, cPacket*);
 };
 
@@ -159,7 +160,11 @@ protected:
 
     virtual void initialize() override;
     virtual void emitRecord(StreamMessage* m, int site, int stream);
+    virtual void emitRecordDelayed(StreamMessage* m, int site, int stream, double delay);
 
+    inline int gateFor(int site, int stream) const {
+        return local_stream_baseId + site*streams + stream;
+    }
 };
 
 

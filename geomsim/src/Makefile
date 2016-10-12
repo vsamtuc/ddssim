@@ -29,7 +29,13 @@ PROJECTRELATIVE_PATH = src
 O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
-OBJS = $O/prng.o $O/dsnet.o $O/agms.o $O/massdal.o $O/stream_message_m.o
+OBJS = \
+    $O/prng.o \
+    $O/dsnet.o \
+    $O/agms.o \
+    $O/massdal.o \
+    $O/data_sources.o \
+    $O/stream_message_m.o
 
 # Message files
 MSGFILES = \
@@ -127,6 +133,7 @@ depend:
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 $O/agms.o: agms.cc
+$O/data_sources.o: data_sources.cc
 $O/dsnet.o: dsnet.cc \
 	dsnet.h \
 	stream_message_m.h
