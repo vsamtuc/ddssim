@@ -30,10 +30,13 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/safezone.o \
     $O/prng.o \
     $O/dsnet.o \
     $O/agms.o \
+    $O/intfunc.o \
     $O/massdal.o \
+    $O/gmmethod.o \
     $O/data_sources.o \
     $O/stream_message_m.o
 
@@ -137,8 +140,16 @@ $O/data_sources.o: data_sources.cc
 $O/dsnet.o: dsnet.cc \
 	dsnet.h \
 	stream_message_m.h
+$O/gmmethod.o: gmmethod.cc \
+	dsnet.h \
+	gmmethod.h \
+	stream_message_m.h
+$O/intfunc.o: intfunc.cc \
+	intfunc.h
 $O/massdal.o: massdal.cc
 $O/prng.o: prng.cc
+$O/safezone.o: safezone.cc \
+	safezone.h
 $O/stream_message_m.o: stream_message_m.cc \
 	stream_message_m.h
 
