@@ -13,13 +13,16 @@ using std::min_element;
 using std::max_element;
 using std::mt19937;
 
+using namespace dds;
+
 class DataSourceTestSuite : public CxxTest::TestSuite
 {
 public:
 
 	void test_generated()
 	{
-		data_source* ds = generated_ds([](dds::dds_record rec)->bool{
+		dds::dds_record initrec { 0, 0u, dds::INSERT, 0, 0 };
+		data_source* ds = generated_ds(initrec, [](dds::dds_record rec)->bool{
 			rec.sid=0;
 			rec.hid=0;
 			rec.sop=dds::INSERT;
@@ -48,38 +51,53 @@ public:
 
 	void test_func_max_length()
 	{
+		using dds::dds_record;
 		{
-			dsref ds { generated_ds(max_length(10)) };
+			dsref ds { generated_ds(dds_record::zero, max_length(10)) };
 			TS_ASSERT_EQUALS(ds_length(ds.get()) , 10);
 		}
 		{
-			dsref ds { generated_ds(max_length(20)) };
+			dsref ds { generated_ds(dds_record::zero, max_length(20)) };
 			TS_ASSERT_EQUALS(ds_length(ds.get()) , 20);			
 		}
 		{
 			auto F = max_length(10) | max_length(20);
-			dsref ds { generated_ds(F) };			
+			dsref ds { generated_ds(dds_record::zero, F) };			
 			TS_ASSERT_EQUALS(ds_length(ds.get()) , 10);			
 		}
+	}
+
+	template <typename KGen, typename TSGen>
+	static data_source* make_data_source(mt19937& rng, 
+		KGen& key_gen, TSGen& ts_gen) 
+	{
+		auto F = max_length(10) 
+			| set_attr(& dds::dds_record::key, rng, key_gen)
+			| set_attr(& dds::dds_record::sid, 17)
+			| addto_attr(& dds::dds_record::hid, 1)
+			| set_attr(& dds::dds_record::sop, dds::INSERT)
+			| addto_attr(& dds::dds_record::ts, rng, ts_gen)
+			;
+
+		dds::dds_record r0 = dds::dds_record::zero;
+		r0.ts = 140;
+		auto gends = generated_ds(r0, F);
+		return time_window(gends, 15);
+
 	}
 
 	void test_func_set_attr()
 	{
 		mt19937 rng(12344);
-		auto F = max_length(10) 
-			| set_attr(& dds::dds_record::key, rng, 
-				std::uniform_int_distribution<dds::key_type>(50,100))
-			| set_attr(& dds::dds_record::sid, 0)
-			| inc_attr(& dds::dds_record::hid, 0, 1)
-			| set_attr(& dds::dds_record::sop, dds::INSERT)
-			| inc_attr(& dds::dds_record::ts, (dds::timestamp)40, rng,
-				std::uniform_int_distribution<dds::timestamp>(2,10))
-			;
+		std::uniform_int_distribution<dds::key_type> key_gen(50,100);
+		std::uniform_int_distribution<dds::timestamp> ts_gen(2,10);
 
 		dsref ds { 
-			time_window(generated_ds(F), 15)
+			make_data_source(rng, key_gen, ts_gen)
 		};
 		for(; ds->valid(); ds->advance()) {
+			TS_ASSERT_EQUALS(ds->get().sid, 17);
+			TS_ASSERT_LESS_THAN_EQUALS(40, ds->get().ts);
 			TS_ASSERT_LESS_THAN_EQUALS(50, ds->get().key);
 			TS_ASSERT_LESS_THAN_EQUALS(ds->get().key, 100);
 
@@ -89,6 +107,28 @@ public:
 		}
 	}
 
+	void test_buffered()
+	{
+		mt19937 rng(12344);
+		std::uniform_int_distribution<dds::key_type> key_gen(50,100);
+		std::uniform_int_distribution<dds::timestamp> ts_gen(2,10);
+
+		data_source* mds = make_data_source(rng, key_gen, ts_gen);
+		dsref ds { 
+			new buffered_data_source(mds)
+		};
+		for(; ds->valid(); ds->advance()) {
+			TS_ASSERT_EQUALS(ds->get().sid, 17);
+			TS_ASSERT_LESS_THAN_EQUALS(40, ds->get().ts);
+			TS_ASSERT_LESS_THAN_EQUALS(50, ds->get().key);
+			TS_ASSERT_LESS_THAN_EQUALS(ds->get().key, 100);
+
+			std::ostringstream s;
+			s << ds->get();
+			TS_TRACE(s.str());
+		}
+
+	}
 
 };
 

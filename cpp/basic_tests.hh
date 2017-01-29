@@ -1,9 +1,10 @@
 
 #include <cxxtest/TestSuite.h>
 
-class MyTestSuite1 : public CxxTest::TestSuite
+class MiscTestSuite : public CxxTest::TestSuite
 {
 public:
+	
     void testAddition(void)
     {
         TS_ASSERT(1 + 1 > 1);

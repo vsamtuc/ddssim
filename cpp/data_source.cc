@@ -11,7 +11,7 @@
 
 
 using namespace std;
-
+using namespace dds;
 
 // Time Window
 
@@ -164,11 +164,19 @@ public:
     uint8_t status;
     uint8_t type;
     uint8_t server;
-        
+
+    static inline uint32_t twiddle(uint32_t in)
+	{
+	   return(( in >> 24 )  | 
+	          (( in & ((1<<8)-1) << 16) >> 8 ) |
+	          (( in & ((1<<8)-1) <<  8) << 8 ) |  
+	          (( in & ((1<<8)-1)) << 24));
+	}
+    
     bool read(FILE *stream)
     {
 		static_assert(sizeof(*this)==20, "Error! cannot match record size!");
-		size_t rc = fread(this, sizeof(*this), 1, stream);
+		size_t rc = fread((void*)this, 20, 1, stream);
 
         if(rc != 1) {
         	if(feof(stream))
@@ -179,17 +187,17 @@ public:
 
   		// Fix endianness
 #define FIX_ENDIAN(attr)  boost::endian::big_to_native_inplace(attr)
+//#define FIX_ENDIAN(attr)  attr = twiddle(attr)
 
         FIX_ENDIAN(timestamp);
         FIX_ENDIAN(clientID);
         FIX_ENDIAN(objectID);
         FIX_ENDIAN(size);
-
         return true;
     }
 
 
-	inline dds::stream_id stream() const { return status; }
+	inline dds::stream_id stream() const { return type & 1; }
 
 	inline dds::source_id site() const { return server; }
 
@@ -212,6 +220,9 @@ public:
 	: filepath(fpath), fstream(0)
 	{
 		fstream = fopen(filepath.c_str(), mode);
+		if(! fstream) {
+			throw cio_error(__FUNCTION__, 0, errno);			
+		}
 		advance();
 	}
 
@@ -242,13 +253,49 @@ public:
 };
 
 
-data_source* crawdad_ds(const string& fpath) 
+data_source* dds::crawdad_ds(const string& fpath) 
 {
 	return new file_data_source<crawdad_record>(fpath, "r");
 }
 
-data_source* wcup_ds(const string& fpath) 
+data_source* dds::wcup_ds(const string& fpath) 
 {
-	return new file_data_source<wcup_record>(fpath, "rb");
+	return new file_data_source<wcup_record>(fpath, "r");
+}
+
+
+
+buffered_data_source::buffered_data_source(data_source* inputds, 
+	size_t size_hint)
+: buffer()
+{
+	buffer.reserve(size_hint);
+	collect_metadata(inputds);
+	delete inputds;
+	advance();
+}
+
+void buffered_data_source::collect_metadata(data_source* inputds)
+{
+	auto bi = std::back_inserter(buffer);
+
+	for(; inputds->valid(); inputds->advance()) {
+		*bi = inputds->get();
+		dsm.collect(inputds->get());
+	}
+
+	from = buffer.begin();
+	to = buffer.end();
+}
+
+void buffered_data_source::advance()
+{
+	if(! isvalid) return;
+	if(from != to) {
+		rec = *from;
+		from ++;
+	} else {
+		isvalid = false;
+	}
 }
 

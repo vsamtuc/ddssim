@@ -4,10 +4,14 @@
 #include <string>
 #include <memory>
 #include <queue>
+#include <vector>
+#include <type_traits>
 
 #include "dds.hh"
 
-using dds::dds_record;
+
+namespace dds {
+
 using std::shared_ptr;
 
 /**
@@ -76,8 +80,8 @@ public:
 		advance();
 	}
 
-	filtered_data_source(const Func& _func) 
-	: sub(new data_source()), func(_func)
+	filtered_data_source(const dds::dds_record& initrec, const Func& _func) 
+	: data_source(initrec), sub(0), func(_func)
 	{
 		advance();
 	}
@@ -87,12 +91,14 @@ public:
 	bool valid() { return isvalid; } 
 	void advance() { 
 		if(isvalid){
-			if(sub->valid()) {
+			if(sub && sub->valid()) {
 				rec = sub->get();
 				isvalid = func(rec);
 				sub->advance();
-			} else {
+			} else if(sub) {
 				isvalid = false;
+			} else {
+				isvalid = func(rec);
 			}
 		}
 	}
@@ -108,9 +114,9 @@ inline filtered_data_source<Func>* filtered_ds(data_source* ds, const Func& func
 
 /// Construct a generated data source
 template <typename Func>
-inline filtered_data_source<Func>* generated_ds(const Func& func)
+inline filtered_data_source<Func>* generated_ds(const dds::dds_record& rec, const Func& func)
 {
-	return new filtered_data_source<Func>(func);
+	return new filtered_data_source<Func>(rec, func);
 }
 
 
@@ -157,90 +163,71 @@ struct max_length
 	Setting or incrementing attributes
  */
 
-
-/// Setting a record attribute randomly
-template <typename AttrType, bool Delta, typename Rng, typename Distr>
-struct set_att_func
+template <typename AttrType, typename Func>
+struct set_attr_f
 {
-	AttrType dds::dds_record::* attr_ptr;
-	AttrType value;
-	Rng& rng;
-	Distr distr;
-
-	set_att_func(AttrType dds::dds_record::* p, AttrType v, Rng& r, const Distr& d)
-	: attr_ptr(p), value(v), rng(r), distr(d) 
-	{}
-
+	AttrType dds::dds_record::* attr;
+	Func func;
+	
+	inline set_attr_f(AttrType dds::dds_record::* _attr, const Func& f)
+	: attr(_attr), func(f) {}
+	
 	inline bool operator()(dds::dds_record& rec) {
-		if(! Delta) 
-			value = distr(rng);
-		rec.*attr_ptr = value;
-		if(Delta) 
-			value += distr(rng);
+		rec.*attr = func(rec);
 		return true;
-	}
-};
-
-template <typename AttrType>
-struct set_att_func<AttrType, false, void, void>
-{
-	AttrType dds::dds_record::* attr_ptr;
-	AttrType value;
-
-	set_att_func(AttrType dds::dds_record::* p, AttrType v)
-	: attr_ptr(p), value(v)
-	{ }
-
-	inline bool operator()(dds::dds_record& rec) {
-		rec.*attr_ptr = value;
-		return true;
-	}		
-};
-
-template <typename AttrType>
-struct set_att_func<AttrType, true, void, void>
-{
-	AttrType dds::dds_record::* attr_ptr;
-	AttrType value;
-	AttrType delta;
-
-	set_att_func(AttrType dds::dds_record::* p, AttrType v, AttrType d)
-	: attr_ptr(p), value(v), delta(d)
-	{ }
-
-	inline bool operator()(dds::dds_record& rec) {
-		rec.*attr_ptr = value;
-		value += delta;
-		return true;
-	}		
+	}	
 };
 
 
 template <typename T, typename Rng, typename Distr>
-auto set_attr(T dds::dds_record::* ptr, Rng& r, const Distr& distr)
+auto set_attr(T dds::dds_record::* ptr, Rng& r, Distr& distr)
 {
-	return set_att_func<T, false, Rng,Distr>(ptr, (T)0, r, distr);
+	auto f = [&r, &distr](const dds::dds_record& rec) -> T {
+		return distr(r);
+	};
+
+	return set_attr_f<T, decltype(f)>(ptr, f);
 }
 
 template <typename T>
 auto set_attr(T dds::dds_record::* ptr, T val)
 {
-	return set_att_func<T, false, void, void>(ptr, val);
+	//return set_att_func<T, false, void, void>(ptr, val);
+	auto f = [val](const dds::dds_record& rec) {
+		return val;
+	};
+	return  set_attr_f<T, decltype(f)>(ptr, f);
 }
 
 
 template <typename T, typename Rng, typename Distr>
-auto inc_attr(T dds::dds_record::* ptr, T v, Rng& r, const Distr& distr)
+auto addto_attr(T dds::dds_record::* ptr, Rng& r, Distr& distr)
 {
-	return set_att_func<T, true, Rng,Distr>(ptr, v, r, distr);
+	//distribution<Rng, Distr> d(r, distr);
+	auto dfunc = [ptr, &r, &distr](const dds::dds_record& rec) {
+			return rec.*ptr + distr(r);
+	};
+	return set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
 }
 
 template <typename T>
-auto inc_attr(T dds::dds_record::* ptr, T val, T delta)
+auto addto_attr(T dds::dds_record::* ptr, T delta)
 {
-	return set_att_func<T, true, void, void>(ptr, val, delta);
+	//return set_att_func<T, true, void, void>(ptr, val, delta);
+	auto dfunc = [ptr, delta](const dds::dds_record& rec) {
+			return rec.*ptr + delta;
+		};
+	return  set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
 }
 
+template <typename T>
+auto modulo_attr(T dds::dds_record::* ptr, T n)
+{
+	auto dfunc = [ptr, n](const dds::dds_record& rec) {
+			return rec.*ptr % n;
+		};
+	return  set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
+}
 
 
 //------------------------------------
@@ -291,6 +278,49 @@ data_source* crawdad_ds(const std::string& fpath);
 data_source* wcup_ds(const std::string& fpath);
 
 
+/**
+	A main-memory store of stream records.
+ */
+class buffered_dataset : public std::vector<dds::dds_record>
+{
+public:
+	using std::vector<dds::dds_record>::vector;
+
+};
+
+
+
+
+/**
+	Buffered data source.
+
+	This is a data source that reads a given data source into
+	memory (TODO: spillover to disk), collects metadata, and
+	then replays the data.
+
+	(TODO: make the data source can be rewind multiple times,
+	 if to create a long stream)
+  */
+class buffered_data_source : public data_source
+{
+	dds::ds_metadata dsm;
+	buffered_dataset buffer;
+	typedef std::vector<dds_record>::iterator bufiter;
+
+	bufiter from, to;
+
+	void collect_metadata(data_source* ds);
+
+public:
+	buffered_data_source(data_source* inputds, size_t size_hint=1024);
+
+	inline const dds::ds_metadata& metadata() const { return dsm; }
+
+	void advance() override;
+};
+
+
+}
 
 
 #endif

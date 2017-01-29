@@ -27,10 +27,10 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= agms.cc data_source.cc
+DDS_SOURCES= agms.cc data_source.cc method.cc accurate.cc dds.cc dsarch.cc
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
-CXX_SOURCES= $(DDS_SOURCES)
+CXX_SOURCES= $(DDS_SOURCES)  dssim.cc
 
 DDS_OBJ= $(DDS_SOURCES:.cc=.o)
 CXX_OBJ= $(CXX_SOURCES:.cc=.o)
@@ -41,7 +41,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 
 .PHONY: all ddslib test clean distclean doc
 
-all: ddslib $(TEST_SOURCES:.cc=) test
+all: ddslib dssim $(TEST_SOURCES:.cc=) test
 
 ddslib: libdds.a
 
@@ -49,8 +49,13 @@ libdds.a: $(DDS_OBJ)
 	ar rcs $@ $^
 	ranlib $@
 
-unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh $(CXX_SOURCES)
+dssim: dssim.o libdds.a
+	$(CXX) -o $@ $< -L. -ldds
+
+unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh $(CXX_SOURCES)
 	cxxtestgen --error-printer -o $@ $^
+
+unit_tests.o: unit_tests.cc
 
 data_tests.cc: data_tests.hh $(CXX_SOURCES)
 	cxxtestgen --error-printer -o $@ $^
