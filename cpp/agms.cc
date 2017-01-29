@@ -20,7 +20,7 @@ agms_hash_family::agms_hash_family(depth_type _D) : D(_D)
 	uniform_int_distribution<key_type> U;
 
 	for(size_t i=0; i<6; i++) {
-		F[i] = new key_type[_D];
+		F[i] = new int64_t[_D];
 		for(int d=0; d<_D; d++)
 			F[i][d] = U(engine);
 	}

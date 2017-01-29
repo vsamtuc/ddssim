@@ -264,29 +264,34 @@ data_source* dds::wcup_ds(const string& fpath)
 }
 
 
-
-buffered_data_source::buffered_data_source(data_source* inputds, 
-	size_t size_hint)
-: buffer()
+void buffered_dataset::analyze(ds_metadata& meta) const
 {
-	buffer.reserve(size_hint);
-	collect_metadata(inputds);
-	delete inputds;
+	for(auto& rec : *this) {
+		meta.collect(rec);
+	}
+}
+
+void buffered_dataset::load(data_source* src) 
+{
+	for(;src->valid();src->advance())
+		this->push_back(src->get());
+}
+
+
+buffered_data_source::buffered_data_source(buffered_dataset& dset)
+: buffer(dset), from(dset.begin()), to(dset.end())
+{
+	buffer.analyze(dsm);
 	advance();
 }
 
-void buffered_data_source::collect_metadata(data_source* inputds)
+buffered_data_source::buffered_data_source(buffered_dataset& dset,
+	const ds_metadata& meta)
+: buffer(dset), dsm(meta), from(dset.begin()), to(dset.end())
 {
-	auto bi = std::back_inserter(buffer);
-
-	for(; inputds->valid(); inputds->advance()) {
-		*bi = inputds->get();
-		dsm.collect(inputds->get());
-	}
-
-	from = buffer.begin();
-	to = buffer.end();
+	advance();
 }
+
 
 void buffered_data_source::advance()
 {

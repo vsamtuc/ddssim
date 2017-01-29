@@ -9,6 +9,7 @@ void data_source_statistics::process(const dds_record& rec)
 	te = rec.ts;
 	sids.insert(rec.sid);
 	hids.insert(rec.hid);
+	stream_size.add(rec.sid);
 	//std::cout << rec << std::endl;
 	lshist.add(rec.local_stream());
 	scount++;
@@ -43,5 +44,9 @@ void data_source_statistics::report(std::ostream& s)
 		for(auto sid: sids) 
 			s << setw(NW) << lshist[std::make_pair(sid,hid)];
 		s << endl;
+	}
+
+	for(auto sid=stream_size.begin();sid!=stream_size.end();sid++) {
+		s << "stream[" << sid.index() << "]=" << *sid << endl;
 	}
 }

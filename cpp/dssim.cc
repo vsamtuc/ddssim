@@ -17,7 +17,7 @@ void execute()
 	data_source* src = wcup_ds("/home/vsam/src/datasets/wc_day44");
 
 	data_source* fds = filtered_ds(src, 
-		modulo_attr(&dds_record::hid, 4) );
+		modulo_attr(&dds_record::hid, (source_id)4) );
 
 
 	shared_ptr<executor> E { new executor(fds) };

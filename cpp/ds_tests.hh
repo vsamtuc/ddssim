@@ -73,8 +73,8 @@ public:
 	{
 		auto F = max_length(10) 
 			| set_attr(& dds::dds_record::key, rng, key_gen)
-			| set_attr(& dds::dds_record::sid, 17)
-			| addto_attr(& dds::dds_record::hid, 1)
+			| set_attr(& dds::dds_record::sid, (stream_id)17)
+			| addto_attr(& dds::dds_record::hid, (source_id)1)
 			| set_attr(& dds::dds_record::sop, dds::INSERT)
 			| addto_attr(& dds::dds_record::ts, rng, ts_gen)
 			;
@@ -114,9 +114,10 @@ public:
 		std::uniform_int_distribution<dds::timestamp> ts_gen(2,10);
 
 		data_source* mds = make_data_source(rng, key_gen, ts_gen);
-		dsref ds { 
-			new buffered_data_source(mds)
-		};
+		buffered_dataset dset;
+		dset.consume(mds);
+
+		dsref ds { new buffered_data_source(dset) };
 		for(; ds->valid(); ds->advance()) {
 			TS_ASSERT_EQUALS(ds->get().sid, 17);
 			TS_ASSERT_LESS_THAN_EQUALS(40, ds->get().ts);

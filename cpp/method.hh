@@ -8,6 +8,9 @@
 
 namespace dds {
 
+/**
+	Base class for executable methods.
+  */
 class exec_method
 {
 public:
@@ -18,6 +21,20 @@ public:
 };
 
 
+/**
+	Method that estimates a query.
+  */
+class estimating_method
+{
+	
+};
+
+
+
+/**
+	An executor is essentially a loop, feeding a
+	distributed stream to all the methods.
+  */
 class executor
 {
 protected:

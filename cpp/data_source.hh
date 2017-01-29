@@ -107,14 +107,14 @@ public:
 
 /// Construct a generated data source
 template <typename Func>
-inline filtered_data_source<Func>* filtered_ds(data_source* ds, const Func& func)
+inline auto filtered_ds(data_source* ds, const Func& func)
 {
 	return new filtered_data_source<Func>(ds, func);
 }
 
 /// Construct a generated data source
 template <typename Func>
-inline filtered_data_source<Func>* generated_ds(const dds::dds_record& rec, const Func& func)
+inline auto generated_ds(const dds_record& rec, const Func& func)
 {
 	return new filtered_data_source<Func>(rec, func);
 }
@@ -280,12 +280,26 @@ data_source* wcup_ds(const std::string& fpath);
 
 /**
 	A main-memory store of stream records.
+	
+	TODO: spillover to disk
  */
 class buffered_dataset : public std::vector<dds::dds_record>
 {
 public:
 	using std::vector<dds::dds_record>::vector;
 
+	/// Return a metadata object for the buffered data
+	void analyze(ds_metadata &) const;
+
+	/// Load all data from a data source
+	void load(data_source* src);
+
+	/// Load all data from a data source and dispose of it
+	inline void consume(data_source* src) 
+	{
+		load(src);
+		delete src;
+	}
 };
 
 
@@ -294,27 +308,33 @@ public:
 /**
 	Buffered data source.
 
-	This is a data source that reads a given data source into
-	memory (TODO: spillover to disk), collects metadata, and
-	then replays the data.
+	This is a data source that, given a dataset,
+	optionally collects metadata, and then replays the data.
 
-	(TODO: make the data source can be rewind multiple times,
-	 if to create a long stream)
+	TODO: make the data source rewindable multiple times,
+	to create a long stream
   */
 class buffered_data_source : public data_source
 {
-	dds::ds_metadata dsm;
-	buffered_dataset buffer;
-	typedef std::vector<dds_record>::iterator bufiter;
+	buffered_dataset& buffer;
+	ds_metadata dsm;
 
+	typedef buffered_dataset::iterator bufiter;
 	bufiter from, to;
 
-	void collect_metadata(data_source* ds);
-
 public:
-	buffered_data_source(data_source* inputds, size_t size_hint=1024);
 
-	inline const dds::ds_metadata& metadata() const { return dsm; }
+	/// Make a data source from a dataset
+	buffered_data_source(buffered_dataset& dset);
+
+	/// Make a data source from a dataset, use given metadata
+	buffered_data_source(buffered_dataset& dset, const ds_metadata& meta);
+
+	/// The metadata for this source
+	inline const ds_metadata& metadata() const { return dsm; }
+
+	/// The metadata for this source
+	inline buffered_dataset& dataset() const { return buffer; }
 
 	void advance() override;
 };

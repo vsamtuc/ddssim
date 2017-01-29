@@ -62,13 +62,15 @@ public:
 	inline depth_type depth() const { return D; }
 
 protected:
-	static inline index_type hash31(key_type a, key_type b, key_type x) {
-		key_type result = (a*x)+b;
+
+	static inline int32_t hash31(int64_t a, int64_t b, int64_t x) {
+		// use 64-bit arithmetic
+		int64_t result = (a * x)+b;
 		return ((result>>31)+result) & 2147483647ll;
 	}
 
 	depth_type D;
-	key_type * F[6];
+	int64_t * F[6];
 
 public:
 	static agms_hash_family* get_cached(depth_type D);

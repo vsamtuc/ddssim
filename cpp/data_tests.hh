@@ -70,7 +70,10 @@ public:
 	void test_wcup()
 	{
 		data_source* wcup_orig = wcup_ds("/home/vsam/src/datasets/wc_day44");
-		buffered_data_source* wcup = new buffered_data_source(wcup_orig);
+		buffered_dataset wcup_dset;
+		wcup_dset.consume(wcup_orig);
+		buffered_data_source* wcup = new buffered_data_source(wcup_dset);
+
 		size_t count = 0;
 		dds::timestamp oldts = -1;
 

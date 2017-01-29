@@ -72,6 +72,9 @@ test: unit_tests
 data_test: data_tests
 	./data_tests
 
+doc:
+	doxygen dds.cfg
+
 clean:
 	-rm $(CXX_OBJ) 
 	-rm libdds.a 
