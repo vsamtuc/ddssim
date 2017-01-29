@@ -52,7 +52,8 @@ libdds.a: $(DDS_OBJ)
 dssim: dssim.o libdds.a
 	$(CXX) -o $@ $< -L. -ldds
 
-unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh $(CXX_SOURCES)
+unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
+	mathlib_tests.hh $(CXX_SOURCES)
 	cxxtestgen --error-printer -o $@ $^
 
 unit_tests.o: unit_tests.cc

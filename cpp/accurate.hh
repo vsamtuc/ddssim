@@ -8,14 +8,11 @@
 #include "method.hh"
 #include "mathlib.hh"
 
-using dds::timestamp;
-using dds::stream_id;
-using dds::source_id;
-using dds::local_stream_id;
-using dds::distinct_histogram;
+
+namespace dds {
+
 using std::set;
-using dds::dds_record;
-using dds::frequency_vector;
+
 
 class data_source_statistics : public dds::exec_method
 {
@@ -42,14 +39,18 @@ public:
 
 
 
-class selfjoin_exact : public dds::exec_method
+class selfjoin_exact : public dds::estimating_method
 {
 public:
 	selfjoin_exact(const ds_metadata& meta);
 
 	void process(const dds_record& rec) override;
 	void finish() override;	
+	double current_estimate() const override;
+	
 };
 
+
+} // end namespace dds
 
 #endif

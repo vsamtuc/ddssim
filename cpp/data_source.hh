@@ -134,11 +134,19 @@ struct function_sequence
 	}
 };
 
+template <>
+struct function_sequence<void, void> 
+{
+	inline bool operator()(dds::dds_record& rec) const { return true; }	
+};
+
+const function_sequence<void, void>  FSEQ;
 
 /// Construct a function sequence
-template <typename Func1, typename Func2>
-auto operator|(const Func1& f1, const Func2& f2) {
-	return function_sequence<Func1,Func2>(f1,f2);
+template <typename F1, typename F2, typename F>
+auto operator|(const function_sequence<F1,F2>& fs, const F& f) {
+	typedef function_sequence<F1,F2> FS;
+	return function_sequence<FS,F>(fs,f);
 }
 
 

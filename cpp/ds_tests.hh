@@ -61,7 +61,7 @@ public:
 			TS_ASSERT_EQUALS(ds_length(ds.get()) , 20);			
 		}
 		{
-			auto F = max_length(10) | max_length(20);
+			auto F = FSEQ | max_length(10) | max_length(20);
 			dsref ds { generated_ds(dds_record::zero, F) };			
 			TS_ASSERT_EQUALS(ds_length(ds.get()) , 10);			
 		}
@@ -71,7 +71,7 @@ public:
 	static data_source* make_data_source(mt19937& rng, 
 		KGen& key_gen, TSGen& ts_gen) 
 	{
-		auto F = max_length(10) 
+		auto F = FSEQ | max_length(10) 
 			| set_attr(& dds::dds_record::key, rng, key_gen)
 			| set_attr(& dds::dds_record::sid, (stream_id)17)
 			| addto_attr(& dds::dds_record::hid, (source_id)1)

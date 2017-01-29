@@ -2,6 +2,7 @@
 #include <iomanip>
 #include "accurate.hh"
 
+using namespace dds;
 
 void data_source_statistics::process(const dds_record& rec)
 {
@@ -50,3 +51,8 @@ void data_source_statistics::report(std::ostream& s)
 		s << "stream[" << sid.index() << "]=" << *sid << endl;
 	}
 }
+
+
+
+
+

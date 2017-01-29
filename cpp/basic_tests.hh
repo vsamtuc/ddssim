@@ -71,5 +71,6 @@ public:
 		TS_ASSERT_EQUALS(std::distance(q.begin(), q.end()),1);
 	}
 
+
 };
 
