@@ -32,16 +32,17 @@ public:
 
 
 /**
-	Method that estimates a query.
+	Method that estimates some query.
   */
 class estimating_method : public exec_method
 {
 public:
 	virtual void process(const dds_record& rec) override;
 
+	virtual const basic_query& query() const =0;
 	virtual double current_estimate() const =0;
-	virtual void process_record(const dds_record&) =0;
 
+	virtual void process_record(const dds_record&) =0;
 };
 
 

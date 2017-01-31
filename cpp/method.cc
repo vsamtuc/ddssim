@@ -70,10 +70,17 @@ void exact_method::start(executor& exc)
 {
 	// Populate observers
 	for(size_t i=0; i<exc.methods(); i++) {
+
+		// only previous methods are compared
 		if(exc.get_method(i)==this) break;
+
+		// not an estimating method
 		estimating_method* m = 
 			dynamic_cast<estimating_method*>(exc.get_method(i));
 		if(m==nullptr) continue;
+
+		// not for my query
+		if(query()!=m->query()) continue;
 
 		// ok, create an observer
 		observers.push_back(new observer(m, window));		

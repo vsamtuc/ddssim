@@ -53,6 +53,38 @@ void data_source_statistics::report(std::ostream& s)
 }
 
 
+selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
+: Q(sid) 
+{ }
 
+void selfjoin_exact_method::process_record(const dds_record& rec)
+{
+	if(rec.sid == Q.param) {
+		size_t x;
+		if(rec.sop == INSERT) {
+			x = histogram.add(rec.key);
+			curest += 2*x + 1;
+		}
+		else {
+			x = histogram.erase(rec.key);
+			curest -= 2*x - 1;
+		}
+	}
+}
+
+void selfjoin_exact_method::finish()
+{ 
+	cout << "selfjoin(stream=" << Q.param << ")=" << curest << endl;
+}
+
+const basic_query& selfjoin_exact_method::query() const 
+{ 
+	return Q; 
+}
+
+double selfjoin_exact_method::current_estimate() const 
+{ 
+	return curest; 
+}
 
 

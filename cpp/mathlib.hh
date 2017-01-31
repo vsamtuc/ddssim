@@ -32,13 +32,24 @@ template <typename Domain, typename Range=size_t>
 class distinct_histogram : public std::map<Domain, Range>
 {
 public:
-	inline void add(const Domain& key, Range count=1) {
+	inline Range& get_counter(const Domain& key) {
 		auto loc = this->find(key);
-		if(loc==this->end()) 
-			this->insert(std::make_pair(key, count));
-		else
-			loc->second += count;
+		if(loc==this->end()) {
+			return this->insert(std::make_pair(key, (Range)0)).first->second;
+		}
+		else {
+			return loc->second;
+		}		
 	}
+
+	inline Range add(const Domain& key) {
+		return get_counter(key)++;
+	}
+	inline Range erase(const Domain& key) {
+		return get_counter(key)--;
+	}
+
+
 };
 
 using boost::numeric::ublas::map_std;

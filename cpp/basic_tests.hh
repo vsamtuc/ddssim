@@ -1,5 +1,7 @@
 
 #include <iostream>
+#include <tuple>
+
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_sparse.hpp>
 #include <boost/numeric/ublas/vector_proxy.hpp>
@@ -14,6 +16,7 @@
 
 using namespace boost::numeric::ublas;
 using namespace std;
+using namespace dds;
 
 class MiscTestSuite : public CxxTest::TestSuite
 {
@@ -69,6 +72,42 @@ public:
 		TS_ASSERT_EQUALS(std::distance(q.begin(), q.end()),0);
 		q(4) += 1.0;
 		TS_ASSERT_EQUALS(std::distance(q.begin(), q.end()),1);
+	}
+
+	void test_query()
+	{
+		TS_ASSERT( self_join(3).type == qtype::SELFJOIN );
+		TS_ASSERT_EQUALS( self_join(3).param , 3 );
+
+		auto q = self_join(2);
+		TS_ASSERT( q == self_join(2) );
+		TS_ASSERT( q != self_join(1) );
+
+		TS_ASSERT( q != join(1,2) );
+		TS_ASSERT( join(1,2)==join(1,2) );
+		TS_ASSERT( join(1,2)!=join(2,1) );
+
+		q.param = 1;
+		TS_ASSERT( q != self_join(2) );
+		TS_ASSERT( q == self_join(1) );
+	}
+
+
+	void test_tuple()
+	{
+		using std::tuple;
+		using std::string;
+		using std::get;
+
+		tuple< int, string > t(3, "haha");
+
+		get<0>(t) = 2;
+
+		TS_ASSERT_EQUALS( get<0>(t), 2 );
+		TS_ASSERT_EQUALS( get<1>(t), string("haha"));
+
+		auto t2 = tuple_cat(t,t);
+		TS_ASSERT_EQUALS( std::tuple_size<decltype(t2)>::value, 4);
 	}
 
 

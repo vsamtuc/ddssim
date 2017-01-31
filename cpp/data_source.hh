@@ -88,7 +88,6 @@ public:
 
 	const Func& function() const { return func; }
 
-	bool valid() { return isvalid; } 
 	void advance() { 
 		if(isvalid){
 			if(sub && sub->valid()) {
@@ -102,7 +101,6 @@ public:
 			}
 		}
 	}
-	const dds_record& get_record() { return rec; }
 };
 
 /// Construct a generated data source

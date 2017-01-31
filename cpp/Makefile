@@ -12,7 +12,7 @@ DEBUG=1
 endif
 
 
-CXXFLAGS= -Wall 
+CXXFLAGS= -Wall -fPIC
 
 DEBUGFLAGS=  -g3 
 OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
@@ -43,14 +43,20 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 
 all: ddslib dssim $(TEST_SOURCES:.cc=) test
 
-ddslib: libdds.a
+ddslib: libdds.a dds.so
 
 libdds.a: $(DDS_OBJ)
 	ar rcs $@ $^
 	ranlib $@
 
 dssim: dssim.o libdds.a
-	$(CXX) -o $@ $< -L. -ldds
+	$(CXX) -o $@ $< -L. -ldds -lconfig++
+
+dds_module.o: dds_module.cc
+	$(CXX) -fPIC -o $@ -c $<  -I/usr/include/python3.5m
+
+dds.so: dds_module.o libdds.a
+	$(CXX) -shared -o $@ $^ -lboost_python-py35
 
 unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh $(CXX_SOURCES)

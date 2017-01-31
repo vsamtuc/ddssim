@@ -6,6 +6,8 @@
 #include <string>
 #include <set>
 #include <limits>
+#include <array>
+#include <cassert>
 
 namespace dds {
 
@@ -81,11 +83,7 @@ inline bool before(const dds_record& r1, const dds_record& r2)
 	return r1.ts < r2.ts;
 }
 
-inline ostream& operator<<(ostream& s, const dds_record& rec)
-{
-	rec.repr(s);
-	return s;
-}
+ostream& operator<<(ostream& s, dds_record const & rec);
 
 
 /**
@@ -142,12 +140,109 @@ public:
 	inline timestamp maxtime() const { return te; }
 	inline key_type minkey() const { return kmin; }
 	inline key_type maxkey() const { return kmax; }	
-	inline auto stream_ids() const { return sids; }
-	inline auto source_ids() const { return hids; }
+	inline const set<stream_id>& stream_ids() const { return sids; }
+	inline const set<source_id>& source_ids() const { return hids; }
 };
 
 
+/*-----------------------------------
+
+	Descriptors for global queries
+
+  -----------------------------------*/
+
+enum class qtype 
+{
+	VOID,
+	SELFJOIN,
+	JOIN
+};
+
+struct basic_query
+{
+	qtype type;
+	constexpr basic_query() : type(qtype::VOID) {}
+	constexpr basic_query(qtype t) : type(t) {}
+};
+
+	namespace __traits {
+
+		template <qtype Type> struct query_traits;
+		template <> struct query_traits<qtype::VOID> 
+		{
+			static const qtype query_type = qtype::VOID;
+			typedef void param_type;
+		};
+		template <> struct query_traits<qtype::SELFJOIN> 
+		{
+			static const qtype query_type = qtype::SELFJOIN;
+			typedef stream_id param_type;
+		};
+		template <> struct query_traits<qtype::JOIN> 
+		{
+			static const qtype query_type = qtype::JOIN;
+			typedef std::pair<stream_id, stream_id> param_type;
+		};
+
+	}
+
+template <qtype Type>
+struct typed_query : basic_query
+{
+	typedef __traits::query_traits<Type> traits;
+	typedef typename traits::param_type param_type;
+
+	param_type param;
+
+	constexpr typed_query() 
+	: basic_query(Type), param() {}
+	constexpr typed_query(const param_type& p) 
+	: basic_query(Type), param(p) {}
+};
+
+template <>
+struct typed_query<qtype::VOID> : basic_query
+{
+	typedef __traits::query_traits<qtype::VOID> traits;
+	typedef typename traits::param_type param_type;
+
+	constexpr typed_query() 
+	: basic_query(qtype::VOID) {}
+};
+
+
+template <qtype Type>
+inline typed_query<Type>& query_cast(basic_query& q) 
+{
+	assert(q.type == Type);
+	return static_cast< typed_query<Type>& >(q);
+}
+template <qtype Type>
+inline const typed_query<Type>& query_cast(const basic_query& q) 
+{
+	assert(q.type == Type);
+	return static_cast< const typed_query<Type>& >(q);
+}
+
+// query relational operators
+bool operator==(const basic_query& q1, const basic_query& q2);
+
+inline bool operator!=(const basic_query& q1, const basic_query& q2)
+{
+	return ! (q1==q2);
+}
+
+// Short names for queries
+using self_join = typed_query<qtype::SELFJOIN>;
+using twoway_join = typed_query<qtype::JOIN>;
+
+inline auto join(stream_id s1, stream_id s2) {
+	return twoway_join(std::make_pair(s1,s2));
+}
+
+
 } // end namespace dds
+
 
 
 #endif

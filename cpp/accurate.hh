@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <set>
+#include <map>
+#include <vector>
 
 #include "dds.hh"
 #include "method.hh"
@@ -12,7 +14,8 @@
 namespace dds {
 
 using std::set;
-
+using std::cout;
+using std::endl;
 
 class data_source_statistics : public dds::exec_method
 {
@@ -37,17 +40,25 @@ public:
 };
 
 
+using std::map;
 
 
-class selfjoin_exact : public dds::estimating_method
+class selfjoin_exact_method : public dds::estimating_method
 {
-public:
-	selfjoin_exact(const ds_metadata& meta);
+	const self_join Q;
 
-	void process(const dds_record& rec) override;
-	void finish() override;	
+	distinct_histogram<key_type> histogram;
+	double curest = 0.0;
+public:
+	selfjoin_exact_method(stream_id sid);
+
+
+	void process_record(const dds_record& rec) override;
+	void finish() override;
+
+	const basic_query& query() const;
 	double current_estimate() const override;
-	
+
 };
 
 
