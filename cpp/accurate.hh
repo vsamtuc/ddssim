@@ -17,7 +17,7 @@ using std::set;
 using std::cout;
 using std::endl;
 
-class data_source_statistics : public dds::exec_method
+class data_source_statistics : public reactive
 {
 	set<stream_id> sids;
 	set<source_id> hids;
@@ -29,12 +29,10 @@ class data_source_statistics : public dds::exec_method
 	timestamp ts=-1, te=-1;
 public:
 
-	data_source_statistics() {
-		stream_size.resize(dds::MAX_SID);
-	}
+	data_source_statistics(); 
 
-	void process(const dds_record& rec) override;
-	void finish() override;
+	void process(const dds_record& rec);
+	void finish();
 
 	void report(std::ostream& s);
 };
@@ -43,23 +41,53 @@ public:
 using std::map;
 
 
-class selfjoin_exact_method : public dds::estimating_method
+template <qtype QType>
+class exact_method : public reactive
+{
+public:
+	typedef typed_query<QType> query_type;
+protected:
+	query_type Q;
+	double curest = 0.0;
+public:
+
+	const query_type& query() const { return Q; }
+
+	inline double current_estimate() const { return curest; }
+};
+
+
+class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 {
 	const self_join Q;
 
 	distinct_histogram<key_type> histogram;
-	double curest = 0.0;
 public:
 	selfjoin_exact_method(stream_id sid);
 
-
-	void process_record(const dds_record& rec) override;
-	void finish() override;
-
-	const basic_query& query() const;
-	double current_estimate() const override;
-
+	void process_record(const dds_record& rec);
+	void finish();
 };
+
+
+class twoway_join_exact_method : public exact_method<qtype::JOIN>
+{
+	const twoway_join Q;
+
+	typedef distinct_histogram<key_type> histogram;
+	histogram hist1;
+	histogram hist2;
+	double curest = 0.0;
+
+	// helper
+	void dojoin(histogram& h1, histogram& h2, const dds_record& rec);
+public:
+	twoway_join_exact_method(stream_id s1, stream_id s2);
+
+	void process_record(const dds_record& rec);
+	void finish();
+};
+
 
 
 } // end namespace dds

@@ -27,7 +27,12 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= agms.cc data_source.cc method.cc accurate.cc dds.cc dsarch.cc
+DDS_SOURCES= agms.cc data_source.cc method.cc \
+	accurate.cc dds.cc dsarch.cc output.cc
+
+UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
+	mathlib_tests.hh exec_tests.hh
+
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
 CXX_SOURCES= $(DDS_SOURCES)  dssim.cc
@@ -58,8 +63,7 @@ dds_module.o: dds_module.cc
 dds.so: dds_module.o libdds.a
 	$(CXX) -shared -o $@ $^ -lboost_python-py35
 
-unit_tests.cc: basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
-	mathlib_tests.hh $(CXX_SOURCES)
+unit_tests.cc: $(UNIT_TESTS) $(CXX_SOURCES)
 	cxxtestgen --error-printer -o $@ $^
 
 unit_tests.o: unit_tests.cc

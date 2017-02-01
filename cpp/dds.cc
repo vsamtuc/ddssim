@@ -45,3 +45,21 @@ bool dds::operator==(const basic_query& q1, const basic_query& q2)
 	return false;
 }
 
+
+ostream& operator<<(ostream& s, const basic_query& q)
+{
+	switch(q.type) {
+		case qtype::VOID: {
+			return (s << "VOID");
+		}
+		case qtype::SELFJOIN:
+			return (s << "SELFJOIN[" << 
+				query_cast<qtype::SELFJOIN>(q).param << "]");
+		case qtype::JOIN:
+			return (s << "JOIN[" <<
+				query_cast<qtype::JOIN>(q).param.first << "," <<
+				query_cast<qtype::JOIN>(q).param.second << "]");
+		default:
+			throw std::runtime_error("unhandled");
+	}	
+}

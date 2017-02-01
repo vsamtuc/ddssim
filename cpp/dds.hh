@@ -241,6 +241,9 @@ inline auto join(stream_id s1, stream_id s2) {
 }
 
 
+std::ostream& operator<<(std::ostream& s, const basic_query& q);
+
+
 } // end namespace dds
 
 

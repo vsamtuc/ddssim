@@ -156,7 +156,7 @@ public:
 	A method that distributes the stream records to sites
  */
 template <typename SiteProc>
-class stream_mapper_method : public exec_method
+class stream_mapper_method
 {
 protected:
 	std::unordered_map<source_id, SiteProc*> stream_map;
