@@ -19,6 +19,7 @@
 #include <boost/accumulators/statistics/rolling_mean.hpp>
 #include <boost/accumulators/statistics/rolling_variance.hpp>
 
+
 namespace dds {
 
 /**
@@ -80,7 +81,6 @@ public:
 	}
 };
 
-
 using namespace boost::accumulators;
 
 struct estimate_error_observer
@@ -98,7 +98,9 @@ public:
 		{}
 
 	void observe(double est, double exact) {
+		using namespace std;
 		double err = (exact==0.0)?0.0: abs((est-exact)/exact);
+		//cout << "err=" << err << endl;
 		tally(err);
 	}
 

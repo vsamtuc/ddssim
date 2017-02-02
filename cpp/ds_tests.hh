@@ -53,17 +53,20 @@ public:
 	{
 		using dds::dds_record;
 		{
-			dsref ds { generated_ds(dds_record::zero, max_length(10)) };
-			TS_ASSERT_EQUALS(ds_length(ds.get()) , 10);
+			auto ds = generated_ds(dds_record::zero, max_length(10));
+			TS_ASSERT_EQUALS(ds_length(ds) , 10);
+			delete ds;
 		}
 		{
-			dsref ds { generated_ds(dds_record::zero, max_length(20)) };
-			TS_ASSERT_EQUALS(ds_length(ds.get()) , 20);			
+			auto ds = generated_ds(dds_record::zero, max_length(20));
+			TS_ASSERT_EQUALS(ds_length(ds) , 20);			
+			delete ds;
 		}
 		{
 			auto F = FSEQ | max_length(10) | max_length(20);
-			dsref ds { generated_ds(dds_record::zero, F) };			
-			TS_ASSERT_EQUALS(ds_length(ds.get()) , 10);			
+			auto ds = generated_ds(dds_record::zero, F);
+			TS_ASSERT_EQUALS(ds_length(ds) , 10);
+			delete ds;
 		}
 	}
 
@@ -92,9 +95,7 @@ public:
 		std::uniform_int_distribution<dds::key_type> key_gen(50,100);
 		std::uniform_int_distribution<dds::timestamp> ts_gen(2,10);
 
-		dsref ds { 
-			make_data_source(rng, key_gen, ts_gen)
-		};
+		auto ds = make_data_source(rng, key_gen, ts_gen);
 		for(; ds->valid(); ds->advance()) {
 			TS_ASSERT_EQUALS(ds->get().sid, 17);
 			TS_ASSERT_LESS_THAN_EQUALS(40, ds->get().ts);
@@ -105,6 +106,7 @@ public:
 			s << ds->get();
 			TS_TRACE(s.str());
 		}
+		delete ds;
 	}
 
 	void test_buffered()
@@ -117,7 +119,7 @@ public:
 		buffered_dataset dset;
 		dset.consume(mds);
 
-		dsref ds { new buffered_data_source(dset) };
+		auto ds = new buffered_data_source(dset);
 		for(; ds->valid(); ds->advance()) {
 			TS_ASSERT_EQUALS(ds->get().sid, 17);
 			TS_ASSERT_LESS_THAN_EQUALS(40, ds->get().ts);
@@ -128,7 +130,7 @@ public:
 			s << ds->get();
 			TS_TRACE(s.str());
 		}
-
+		delete ds;
 	}
 
 };

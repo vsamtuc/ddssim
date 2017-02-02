@@ -55,7 +55,7 @@ void time_series::emit_row_start(FILE* stream)
 
 void time_series::emit_row()
 {
-	now = CTX.now;
+	now = CTX.now();
 	result_table::emit_row();
 }
 

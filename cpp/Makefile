@@ -8,11 +8,11 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=0
+DEBUG=1
 endif
 
 
-CXXFLAGS= -Wall -fPIC -fconcepts 
+CXXFLAGS= -Wall -fPIC
 
 DEBUGFLAGS=  -g3 
 OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
@@ -58,21 +58,30 @@ dssim: dssim.o libdds.a
 	$(CXX) -o $@ $< -L. -ldds -lconfig++
 
 dds_module.o: dds_module.cc
-	$(CXX) -fPIC -o $@ -c $<  -I/usr/include/python3.5m
+	$(CXX) -Wno-deprecated -fPIC -o $@ -c $<  -I/usr/include/python3.5m
 
 dds.so: dds_module.o libdds.a
 	$(CXX) -shared -o $@ $^ -lboost_python-py35
 
-unit_tests.cc: $(UNIT_TESTS) 
-	cxxtestgen --error-printer -o $@ $^
+#unit_tests.cc: $(UNIT_TESTS) 
+#	cxxtestgen --error-printer -o $@ $^
+#unit_tests.o: unit_tests.cc
 
-unit_tests.o: unit_tests.cc
+%_tests.cc : %_tests.hh
+	cxxtestgen --part --error-printer -o $@ $<
 
-data_tests.cc: data_tests.hh 
-	cxxtestgen --error-printer -o $@ $^
+#data_tests.cc: data_tests.hh 
+#	cxxtestgen --error-printer -o $@ $^
 
-unit_tests: unit_tests.o libdds.a
+#unit_tests: unit_tests.o libdds.a
+unit_tests.cc:
+	cxxtestgen --root --error-printer -o $@ $<	
+
+unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
+
+data_tests.cc:
+	cxxtestgen --root --error-printer -o $@ $<	
 
 data_tests: data_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
@@ -89,9 +98,10 @@ doc:
 clean:
 	-rm $(CXX_OBJ) 
 	-rm libdds.a 
+	-rm $(UNIT_TESTS:.hh=.cc) $(UNIT_TESTS:.hh=.o)
 	-rm $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=) 
 
-depend: $(CXX_SOURCES) $(TEST_SOURCES)
+depend: $(CXX_SOURCES) $(TEST_SOURCES) $(UNIT_TESTS:.hh=.cc)
 	$(CXX) $(CXXFLAGS) -MM $^ > .depend
 
 include .depend

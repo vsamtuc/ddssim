@@ -5,15 +5,14 @@
 
 #include <cxxtest/TestSuite.h>
 
+using namespace dds;
 
 class ExecTestSuite : public CxxTest::TestSuite
 {
 public:
-
+ 
 	void test_context()
 	{
-		CTX.now = 3;
-
 		int x=0;
 
 		auto r = ON(INIT, [&x](){ x=1; });

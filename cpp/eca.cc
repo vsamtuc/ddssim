@@ -68,7 +68,7 @@ void basic_control::proceed()
 {
 	if(ds->valid()) {
 		// set the time!
-		now = ds->get().ts;
+		_now = ds->get().ts;
 		emit(START_RECORD);
 	} else {
 		emit(END_STREAM);
@@ -128,9 +128,28 @@ void basic_control::run()
 }
 
 
+basic_control::__invalid_data_source basic_control::__invds;
+
 void basic_control::data_feed(data_source* src)
 {
-	ds = src;
+	// delete current ds
+	if(src==nullptr) {
+		if(ds!=&__invds) delete ds;
+		ds = &__invds;
+		return;
+	}
+
+	// invalidate current ds
+	data_feed(nullptr);
+
+	// set current ds
+	ds = dynamic_cast<analyzed_data_source*>(src);
+
+	// analyze if needed
+	if(!ds) {
+		// not an analyzed data source, analyze
+		ds = new materialized_data_source(src);
+	}
 }
 
 

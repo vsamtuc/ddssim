@@ -12,7 +12,6 @@
 
 namespace dds {
 
-using std::shared_ptr;
 
 /**
 	A data source is an object providing the data of a stream.
@@ -59,8 +58,6 @@ public:
 	virtual ~data_source() { }
 };
 
-/// A convenient name
-using dsref = shared_ptr<data_source>;
 
 
 /**
@@ -71,7 +68,7 @@ template <typename Func>
 class filtered_data_source : public data_source
 {
 protected:
-	dsref sub;
+	std::unique_ptr<data_source> sub;
 	Func func;
 public:
 	filtered_data_source(data_source* _sub, const Func& _func) 
@@ -81,7 +78,7 @@ public:
 	}
 
 	filtered_data_source(const dds::dds_record& initrec, const Func& _func) 
-	: data_source(initrec), sub(0), func(_func)
+	: data_source(initrec), sub(), func(_func)
 	{
 		advance();
 	}
@@ -254,21 +251,19 @@ class time_window_source : public data_source
 protected:
 	typedef std::queue<dds::dds_record> Window;
 
-	dsref sub;
+	std::unique_ptr<data_source> sub;
 	dds::timestamp Tw;
 	Window window;
 
 public:	
 
-	time_window_source(data_source* _sub, dds::timestamp _w);
-
+	time_window_source(data_source* _sub, timestamp _w);
 	inline auto delay() const { return Tw; }
-
 	void advance();
 };
 
 
-inline auto time_window(data_source* ds, dds::timestamp Tw)
+inline auto time_window(data_source* ds, timestamp Tw)
 {
 	return new time_window_source(ds, Tw);
 }
@@ -309,6 +304,17 @@ public:
 };
 
 
+/**
+	Base class for a data source with metadata
+  */
+class analyzed_data_source : public data_source
+{
+protected:
+	ds_metadata dsm;
+public:
+	/// The metadata for this source
+	inline const ds_metadata& metadata() const { return dsm; }
+};
 
 
 /**
@@ -320,16 +326,16 @@ public:
 	TODO: make the data source rewindable multiple times,
 	to create a long stream
   */
-class buffered_data_source : public data_source
+class buffered_data_source : public analyzed_data_source
 {
-	buffered_dataset& buffer;
-	ds_metadata dsm;
+	buffered_dataset* buffer;
 
 	typedef buffered_dataset::iterator bufiter;
 	bufiter from, to;
-
+protected:
+	buffered_data_source();
+	void set_buffer(buffered_dataset*);
 public:
-
 	/// Make a data source from a dataset
 	buffered_data_source(buffered_dataset& dset);
 
@@ -337,16 +343,23 @@ public:
 	buffered_data_source(buffered_dataset& dset, const ds_metadata& meta);
 
 	/// The metadata for this source
-	inline const ds_metadata& metadata() const { return dsm; }
-
-	/// The metadata for this source
-	inline buffered_dataset& dataset() const { return buffer; }
+	inline buffered_dataset& dataset() const { return *buffer; }
 
 	void advance() override;
 };
 
 
-}
+class materialized_data_source : public buffered_data_source
+{
+protected:
+	buffered_dataset dataset;
+public:
+	materialized_data_source(data_source* src);
+
+};
+
+
+};
 
 
 #endif

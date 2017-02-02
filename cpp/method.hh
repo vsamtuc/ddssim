@@ -6,6 +6,8 @@
 #include <deque>
 #include <list>
 
+#include <boost/optional.hpp>
+
 #include "dds.hh"
 #include "eca.hh"
 #include "data_source.hh"
@@ -105,6 +107,37 @@ struct reactive
 	}
 };
 
+
+/**
+	Used to prepare and load a dataset to the
+	context
+  */
+class dataset : reactive
+{
+	data_source* src;
+
+	boost::optional<size_t> _max_length;
+	boost::optional<stream_id> _streams;
+	boost::optional<source_id> _sources;
+	boost::optional<timestamp> _time_window;
+
+	void create();
+
+public:
+	dataset();
+	~dataset();
+
+	void clear();
+	void load(data_source* _src);
+	
+	void set_max_length(size_t n);
+	void hash_streams(stream_id h);
+	void hash_sources(source_id s);
+	void set_time_window(timestamp Tw);
+};
+
+
+
 struct reporter : reactive
 {
 	reporter(size_t n_times) {
@@ -117,13 +150,15 @@ struct reporter : reactive
 
 struct progress_reporter : reactive, progress_bar
 {
+	progress_reporter(size_t _marks) 
+	: progress_reporter(stdout,_marks,"Progress:") {}
 
 	progress_reporter(FILE* _stream=stdout, 
 		size_t _marks = 40, 
 		const string& _msg = "") 
 	: progress_bar(_stream, _marks, _msg)
 	{
-		on(START_STREAM, [&](){ start(CTX.ds_meta.size()); });
+		on(START_STREAM, [&](){ start(CTX.metadata().size()); });
 		on(START_RECORD, [&](){ tick(); });
 		on(END_STREAM, [&](){ finish(); });
 	}

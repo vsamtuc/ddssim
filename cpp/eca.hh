@@ -180,6 +180,20 @@ protected:
 	eca_map rules;
 	action* current_action;
 
+
+	// used for an invalid data source
+	struct __invalid_data_source : analyzed_data_source {
+		__invalid_data_source() { isvalid = false; }
+	};
+	static __invalid_data_source __invds;
+
+	// current time
+	timestamp _now;
+
+	// data source
+	analyzed_data_source* ds;
+
+	// internal methods
 	void run_action(action*);
 	void dispatch_event(Event);
 	void empty_handler();
@@ -198,12 +212,13 @@ public:
 
 	inline State get_state() const { return state; }
 
-	/// current time
-	timestamp now;
+	inline timestamp now() const { return _now; }
 
-	/// current data source
-	data_source* ds;
-	ds_metadata ds_meta;
+	inline const dds_record& stream_record() const { return ds->get(); }
+
+	inline const ds_metadata& metadata() const {
+		return ds->metadata();
+	}
 
 	/**
 		Add data source to the controller
@@ -259,7 +274,7 @@ public:
 		event_queue.push_back(evt);
 	}
 
-	basic_control() : ds(0)
+	basic_control() : ds(&__invds)
 	{ }
 };
 

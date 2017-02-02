@@ -277,18 +277,31 @@ void buffered_dataset::load(data_source* src)
 		this->push_back(src->get());
 }
 
+buffered_data_source::buffered_data_source()
+: buffer(0)
+{ }
+
+void buffered_data_source::set_buffer(buffered_dataset* buf)
+{
+	buffer = buf;
+	buffer->analyze(dsm);
+	from = buffer->begin();
+	to = buffer->end();
+	advance();	
+}
 
 buffered_data_source::buffered_data_source(buffered_dataset& dset)
-: buffer(dset), from(dset.begin()), to(dset.end())
+: buffer(&dset), from(dset.begin()), to(dset.end())
 {
-	buffer.analyze(dsm);
+	buffer->analyze(dsm);
 	advance();
 }
 
 buffered_data_source::buffered_data_source(buffered_dataset& dset,
 	const ds_metadata& meta)
-: buffer(dset), dsm(meta), from(dset.begin()), to(dset.end())
+: buffer(&dset), from(dset.begin()), to(dset.end())
 {
+	dsm = meta;
 	advance();
 }
 
@@ -302,5 +315,12 @@ void buffered_data_source::advance()
 	} else {
 		isvalid = false;
 	}
+}
+
+
+materialized_data_source::materialized_data_source(data_source* src)
+{
+	dataset.consume(src);
+	set_buffer(&dataset);
 }
 

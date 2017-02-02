@@ -1,7 +1,6 @@
 
 #include <cxxtest/TestSuite.h>
 
-#include "dds.hh"
 #include "mathlib.hh"
 
 using namespace dds;
@@ -25,8 +24,7 @@ public:
 		TS_ASSERT_DELTA( variance(eerr.tally), 0.002, 1e-3 );
 		TS_ASSERT_DELTA( rolling_mean(eerr.tally), 0.017, 1e-3 );
 		TS_ASSERT_DELTA( rolling_variance(eerr.tally), 0.0, 1e-3 );
-	}
-
-	
+	}	
 
 };
+

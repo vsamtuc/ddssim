@@ -4,8 +4,11 @@
 
 #include "dds.hh"
 #include "output.hh"
+#include "method.hh"
 
 #include <cxxtest/TestSuite.h>
+
+using namespace dds;
 
 class OutputTestSuite : public CxxTest::TestSuite
 {

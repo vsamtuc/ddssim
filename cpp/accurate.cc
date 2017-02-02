@@ -7,7 +7,7 @@ using namespace dds;
 data_source_statistics::data_source_statistics()
 {
 	stream_size.resize(dds::MAX_SID);
-	this->on(START_RECORD, [&](){ process(CTX.ds->get()); });
+	this->on(START_RECORD, [&](){ process(CTX.stream_record()); });
 	this->on(END_STREAM, [&](){ finish(); });
 }
 
@@ -68,7 +68,7 @@ void data_source_statistics::report(std::ostream& s)
 selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
 : exact_method<qtype::SELFJOIN>(self_join(sid)) 
 { 
-	on(START_RECORD, [&](){ process_record(CTX.ds->get()); });
+	on(START_RECORD, [&](){ process_record(CTX.stream_record()); });
 	on(END_STREAM, [&](){  finish(); });
 }
 
@@ -101,7 +101,7 @@ void selfjoin_exact_method::finish()
 twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
 : exact_method<qtype::JOIN>(join(s1,s2)) 
 { 
-	on(START_RECORD, [=](){ process_record(CTX.ds->get()); 
+	on(START_RECORD, [=](){ process_record(CTX.stream_record()); 
 	});
 	on(END_STREAM, [=](){
 		finish();

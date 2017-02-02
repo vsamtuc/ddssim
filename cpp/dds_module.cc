@@ -1,6 +1,7 @@
 
 #include "dds.hh"
 #include "data_source.hh"
+#include "method.hh"
 
 #include <boost/python.hpp>
 #include <boost/python/module.hpp>
@@ -26,19 +27,28 @@ namespace { // Avoid cluttering the global namespace.
     static PyTypeObject const *get_pytype () {return &PyTuple_Type; }
   };
 
- // Helper for convenience.
-  template <typename T1, typename T2>
-  struct std_pair_to_python_converter
-  {
-    std_pair_to_python_converter()
-    {
-      boost::python::to_python_converter<
-        std::pair<T1, T2>,
-        std_pair_to_tuple<T1, T2>,
-        true //std_pair_to_tuple has get_pytype
-        >();
-    }
-  };
+	// Helper for convenience.
+	template <typename T1, typename T2>
+	struct std_pair_to_python_converter
+	{
+		std_pair_to_python_converter()
+		{
+			boost::python::to_python_converter<
+				std::pair<T1, T2>,
+				std_pair_to_tuple<T1, T2>,
+				true //std_pair_to_tuple has get_pytype
+			>();
+		}
+	};
+
+	inline dds::context* __CTX() { return &dds::CTX; }
+
+	inline void __wrap_dataset_load(dds::dataset& D, 
+		std::auto_ptr<dds::data_source> p)
+	{
+		D.load(p.get());
+		p.release();
+	}
 
 } // namespace anonymous
 
@@ -128,6 +138,31 @@ BOOST_PYTHON_MODULE(dds)
     	.def("load", &dds::buffered_dataset::load)
     	.def("analyze", &dds::buffered_dataset::analyze)
 		;
+
+	class_< dds::dataset, boost::noncopyable>("dataset")
+		.def("load", __wrap_dataset_load)
+		.def("set_max_length", &dds::dataset::set_max_length)
+		.def("hash_streams", &dds::dataset::hash_streams)
+		.def("hash_sources", &dds::dataset::hash_sources)
+		.def("set_time_window", &dds::dataset::set_time_window)
+		;
+
+	class_< dds::reactive, boost::noncopyable>("reactive")
+		;
+
+	class_< dds::context, boost::noncopyable >("context")
+		.def("run", &dds::context::run)
+		;
+
+	class_<dds::progress_reporter, 
+		bases<dds::reactive>, 
+		boost::noncopyable>("progress_reporter",
+			init< size_t >())
+		;
+
+
+	def("CTX", __CTX, 
+		return_value_policy<reference_existing_object>());
 
 }
 
