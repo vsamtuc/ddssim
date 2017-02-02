@@ -7,114 +7,42 @@
 #include <list>
 
 #include "dds.hh"
+#include "eca.hh"
 #include "data_source.hh"
+#include "output.hh"
 
 namespace dds {
 
-/*
-	An event-based execution model.
 
-	A simulation is composed from a number of independent
-	objects (components), which are synchronized via an
-	event-condition-action mechanism.
-
-	A data source is encapsulated by a \c data_feeder.
-	Other components include:
-	- simulated protocols for query answering
-	- report modules, managing data output
-	- validation modules, contrasting modules with each
-	  other.
-	- simulation execution adaptors, etc.
-
-	During a simulation, all components share the global
-	CTX object, which is used to hold common information
-	- ECA rule runtime (queues)
-	- pointer to data source
-	- pointers to config objects
-	- pointers to data output objects
-	- etc
- */
-
-
-/**
-	The ECA event types
-  */
-enum Event {
-	INIT, DONE,
-	START_STREAM, END_STREAM,
-	START_RECORD, END_RECORD,
-	VALIDATE, REPORT,
-
-	// These are not callbacks, but are here for the
-	// sake of the controller!
-	__EMPTY
-};
-
-using event_queue_t = std::deque<Event>;
-
-/**
-	Actions of ECA rules.
-  */
-struct action
-{
-	virtual void run() = 0;
-	virtual ~action() { }
-};
-
-using action_queue_t = std::deque<action*>;
-using action_seq = std::list<action*>;
-using eca_rule = std::pair<Event,action_seq::iterator>;
-using eca_map = std::map<Event, action_seq>;
-
-/**
-	Typed wrapper for Actions
-  */
-template <typename Action>
-struct action_function : action
-{
-	Action action_func;
-	action_function(const Action& _action) 
-	: action_func(_action) { }
-	virtual void run() override {
-		action_func();
-	}
-};
+using fileset_t = std::vector<output_file*>;
 
 
 /**
 	The CTX context object's type
   */
-struct context
+struct context : basic_control
 {
-	timestamp now;
-	data_source* ds;
 
-	event_queue_t event_queue;
-	action_queue_t action_queue;
-	eca_map rules;
-	action* current_action;
+	/// Each simulation generates one time series table
+	time_series timeseries;
 
+	// managed files for results
+	fileset_t result_files;
+
+	output_file* open(FILE* f, bool owner = false);
+	output_file* open(const string& path, open_mode mode);
+	void close_result_files();
+
+
+	/// Must be default-constructible!
 	context() {}
+
+	/// Start the simulation
 	void run();
 
-protected:
-	void run_action(action*);
-	void dispatch_event(Event);
-public:
-	template <typename T>
-	inline eca_rule add_rule(Event evt, T* action) {
-		action_seq& aseq = rules[evt];
-		action_seq::iterator i = aseq.insert(aseq.end(), action);
-		return std::make_pair(evt, i);
-	}
 
-	inline void cancel_rule(eca_rule rule) {
-		action_seq& aseq = rules[rule.first];
-		action_seq::iterator i = rule.second;
-		delete (*i);
-		aseq.erase(i);
-	}
 };
+
 
 ///  The global context
 extern context CTX;
@@ -126,12 +54,18 @@ inline auto ON(Event evt, const Action& action)
 	return CTX.add_rule(evt, new action_function<Action>(action));
 }
 
+template <typename Condition, typename Action>
+inline auto ON(Event evt, const Condition& cond, const Action& action)
+{
+	return CTX.add_rule(evt, 
+		new condition_action<Condition, Action>(cond, action));
+}
+
 /// Used to emit an event
 inline void emit(Event evt)
 {
-	CTX.event_queue.push_back(evt);
+	CTX.emit(evt);
 }
-
 
 /**
 	Reactive objects manage a set of rules conveniently.
@@ -162,72 +96,36 @@ struct reactive
 		eca_rules.push_back(rule);
 		return rule;
 	}
-};
 
-
-/**
-	A module that manages the data source.
-
-	Rules:
-	- on INIT: 
-	  - set up data source, 
-	  - emit START_STREAM, 
-	  - if the stream is valid emit START_RECORD, else
-	    emit END_STREAM
-
-	- on END_RECORD
-	  - advance the stream
-	  - if the stream is valid emit START_RECORD, else
-	    emit END_STREAM
-*/
-struct data_feeder : reactive
-{
-	data_feeder(data_source* src);
-	void advance();
-	void proceed();
-};
-
-
-/**
-	A basic controller for executions.
-
-	A controller is a stateful object that drives the
-	simulation when needed. A controller reacts to
-	the situation where there are no further actions
-	enqueued, but the DONE event has not been emitted.
-	This is achieved by capturing the special __EMPTY
-	event.
-
- */
-struct basic_control : reactive
-{
-private:
-	enum State { NoData, Data, Validate, Report };
-	State state = NoData;
-public:
-	basic_control() {
-		on(__EMPTY, [&](){ handler(); });
-		on(START_STREAM, [&](){ state=Data; });
-		on(END_STREAM, [&](){ state=NoData; });
+	template <typename Condition, typename Action>
+	inline eca_rule on(Event evt, const Condition& cond, const Action& action) {
+		eca_rule rule = ON(evt, cond, action);
+		eca_rules.push_back(rule);
+		return rule;
 	}
-	void handler()
+};
+
+struct reporter : reactive
+{
+	reporter(size_t n_times) {
+		on(REPORT, every_n_times(n_times), [&]() { handle(); });
+	}
+	void handle() {
+		CTX.timeseries.emit_row();
+	}
+};
+
+struct progress_reporter : reactive, progress_bar
+{
+
+	progress_reporter(FILE* _stream=stdout, 
+		size_t _marks = 40, 
+		const string& _msg = "") 
+	: progress_bar(_stream, _marks, _msg)
 	{
-		switch(state) {
-			case Data:
-				emit(VALIDATE);
-				state = Validate;
-				break;
-			case Validate:
-				emit(REPORT);
-				state = Report;
-				break;
-			case Report:
-				emit(END_RECORD);
-				state = Data;
-				break;
-			default:
-				emit(DONE);
-		}
+		on(START_STREAM, [&](){ start(CTX.ds_meta.size()); });
+		on(START_RECORD, [&](){ tick(); });
+		on(END_STREAM, [&](){ finish(); });
 	}
 };
 

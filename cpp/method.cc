@@ -6,69 +6,32 @@ using namespace dds;
 
 context dds::CTX;
 
-void context::run_action(action* a)
+
+
+output_file* context::open(FILE* f, bool owner) 
 {
-	current_action = a;
-	a->run();
-	current_action = nullptr;
+	output_file* of = new output_file(f, owner);
+	result_files.push_back(of);
+	return of;
 }
 
-void context::dispatch_event(Event evt)
+output_file* context::open(const string& path, open_mode mode) 
 {
-	auto aseq = rules[evt];
-	std::copy(aseq.begin(), aseq.end(), back_inserter(action_queue));	
+	output_file* of = new output_file(path, mode);
+	result_files.push_back(of);
+	return of;
 }
+
+void context::close_result_files()
+{
+	for(auto f : result_files) {
+		delete f;
+	}
+	result_files.clear();
+}
+
 
 void context::run()
 {
-	bool done = false;
-	while(true) {
-		if(!action_queue.empty()) {
-			action* a = action_queue.front();
-			action_queue.pop_front();
-			run_action(a);
-		} else if((!done) && (! event_queue.empty())) {
-			Event evt = event_queue.front();
-			event_queue.pop_front();
-			if(evt==DONE) done=true;
-			dispatch_event(evt);
-		} else if(! done) {
-			dispatch_event(__EMPTY);
-			if(action_queue.empty()) {
-				done=true;
-				dispatch_event(DONE);
-			}	
-		} else 
-			break;
-	}
+	basic_control::run();
 }
-
-data_feeder::data_feeder(data_source* src)
-{
-	on(END_RECORD, [=](){ advance(); });
-	on(INIT, [=](){ 
-		CTX.ds = src;
-		emit(START_STREAM);
-		proceed();
-	});
-
-}
-
-void data_feeder::advance()
-{
-	assert(CTX.ds->valid());
-
-	CTX.ds->advance();
-	proceed();
-}
-
-void data_feeder::proceed()
-{
-	if(CTX.ds->valid()) {
-		emit(START_RECORD);
-	} else {
-		emit(END_STREAM);
-	}	
-}
-
-

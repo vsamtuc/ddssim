@@ -66,7 +66,7 @@ void data_source_statistics::report(std::ostream& s)
 
 
 selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
-: Q(sid) 
+: exact_method<qtype::SELFJOIN>(self_join(sid)) 
 { 
 	on(START_RECORD, [&](){ process_record(CTX.ds->get()); });
 	on(END_STREAM, [&](){  finish(); });
@@ -99,7 +99,7 @@ void selfjoin_exact_method::finish()
 //
 
 twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
-: Q(std::make_pair(s1, s2))
+: exact_method<qtype::JOIN>(join(s1,s2)) 
 { 
 	on(START_RECORD, [=](){ process_record(CTX.ds->get()); 
 	});
@@ -122,7 +122,6 @@ void twoway_join_exact_method::
 		x -= 1;
 		curest -= y;				
 	}
-	cout << curest << endl;
 }
 
 void twoway_join_exact_method::process_record(const dds_record& rec)
@@ -131,7 +130,8 @@ void twoway_join_exact_method::process_record(const dds_record& rec)
 		dojoin(hist1, hist2, rec);
 	} else if(rec.sid == Q.param.second) {
 		dojoin(hist2, hist1, rec);		
-	}
+	} 
+	// else, discard the sample
 }
 
 void twoway_join_exact_method::finish()

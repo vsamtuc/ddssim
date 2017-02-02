@@ -9,7 +9,7 @@
 #include "dds.hh"
 #include "method.hh"
 #include "mathlib.hh"
-
+#include "output.hh"
 
 namespace dds {
 
@@ -49,7 +49,15 @@ public:
 protected:
 	query_type Q;
 	double curest = 0.0;
+
+	column<double> series;
 public:
+	exact_method(query_type _Q) 
+	: Q(_Q), series(repr(Q).c_str(), string("%.0f").c_str())
+	{
+		CTX.timeseries.add(series);
+		on(VALIDATE, [&](){ series = curest; });
+	}
 
 	const query_type& query() const { return Q; }
 
@@ -59,8 +67,6 @@ public:
 
 class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 {
-	const self_join Q;
-
 	distinct_histogram<key_type> histogram;
 public:
 	selfjoin_exact_method(stream_id sid);
@@ -72,12 +78,9 @@ public:
 
 class twoway_join_exact_method : public exact_method<qtype::JOIN>
 {
-	const twoway_join Q;
-
 	typedef distinct_histogram<key_type> histogram;
 	histogram hist1;
 	histogram hist2;
-	double curest = 0.0;
 
 	// helper
 	void dojoin(histogram& h1, histogram& h2, const dds_record& rec);

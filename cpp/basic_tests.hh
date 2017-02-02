@@ -112,68 +112,7 @@ public:
 		TS_ASSERT_EQUALS( std::tuple_size<decltype(t2)>::value, 4);
 	}
 
-	struct silly_table : output_table
-	{
-		silly_table(const char* n) 
-		: output_table(n, {&count, &mean_x, &label}) {}
 
-		column<int> count {"count", "%d"};
-		column<double> mean_x {"mean_x", "%f" };
-		column<std::string> label {"label", "%s" };
-	};
-
-	void test_output()
-	{
-		silly_table tab("SILLY");
-
-		tab.count = 1;
-		tab.mean_x = 3.14;
-		tab.label = "Hello";
-
-		char* buf = NULL;
-		size_t len = 0;
-		FILE* f = open_memstream(&buf, &len);
-
-		tab.emit_header(f);
-		tab.emit(f);
-		tab.emit(f);
-		tab.emit(f);
-
-		fclose(f);
-
-		const char* expected =
-		"#INDEX,count,mean_x,label\n"
-		"SILLY,1,3.140000,Hello\n"
-		"SILLY,1,3.140000,Hello\n"
-		"SILLY,1,3.140000,Hello\n";
-
-		TS_ASSERT_EQUALS( buf, expected );
-		free(buf);
-	}
-
-	void test_time_series()
-	{
-		time_series T("series");
-
-		column<double> t1 { "t1", "%f" };
-		column<double> t2 { "t2", "%f" };
-
-		T.add(t1);
-		T.add(t2);
-
-		//T.emit_header(stdout);
-
-		t1 = 13.2;
-		t2 = 11.4;
-		for(dds::timestamp t=10; t < 12; t++) {
-			T.now = t;
-			t1 = t1.value() + t;
-			t2 = t2.value() - t;
-			//T.emit(stdout);
-		}
-
-
-	}
 
 };
 

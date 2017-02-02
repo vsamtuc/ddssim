@@ -8,11 +8,11 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=1
+DEBUG=0
 endif
 
 
-CXXFLAGS= -Wall -fPIC
+CXXFLAGS= -Wall -fPIC -fconcepts 
 
 DEBUGFLAGS=  -g3 
 OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
@@ -27,11 +27,11 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= agms.cc data_source.cc method.cc \
+DDS_SOURCES= eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc dsarch.cc output.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
-	mathlib_tests.hh exec_tests.hh
+	mathlib_tests.hh exec_tests.hh output_tests.hh
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
@@ -63,12 +63,12 @@ dds_module.o: dds_module.cc
 dds.so: dds_module.o libdds.a
 	$(CXX) -shared -o $@ $^ -lboost_python-py35
 
-unit_tests.cc: $(UNIT_TESTS) $(CXX_SOURCES)
+unit_tests.cc: $(UNIT_TESTS) 
 	cxxtestgen --error-printer -o $@ $^
 
 unit_tests.o: unit_tests.cc
 
-data_tests.cc: data_tests.hh $(CXX_SOURCES)
+data_tests.cc: data_tests.hh 
 	cxxtestgen --error-printer -o $@ $^
 
 unit_tests: unit_tests.o libdds.a

@@ -2,6 +2,7 @@
 #define _DDS_HH_
 
 #include <iostream>
+#include <sstream>
 #include <utility>
 #include <string>
 #include <set>
@@ -242,6 +243,13 @@ inline auto join(stream_id s1, stream_id s2) {
 
 
 std::ostream& operator<<(std::ostream& s, const basic_query& q);
+
+inline std::string repr(const basic_query& q)
+{
+	std::ostringstream S;
+	S << q;
+	return S.str();
+}
 
 
 } // end namespace dds

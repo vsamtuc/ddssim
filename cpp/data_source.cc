@@ -197,7 +197,7 @@ public:
     }
 
 
-	inline dds::stream_id stream() const { return type & 1; }
+	inline dds::stream_id stream() const { return type; }
 
 	inline dds::source_id site() const { return server; }
 

@@ -17,13 +17,11 @@ public:
 		int x=0;
 
 		auto r = ON(INIT, [&x](){ x=1; });
-		emit(INIT);
 		CTX.run();
 		TS_ASSERT_EQUALS(x,1);
 
 		CTX.cancel_rule(r);
 		x=0;
-		emit(INIT);
 		CTX.run();
 
 		TS_ASSERT_EQUALS(x,0);		
