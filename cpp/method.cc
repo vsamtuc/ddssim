@@ -10,14 +10,14 @@ context dds::CTX;
 
 output_file* context::open(FILE* f, bool owner) 
 {
-	output_file* of = new output_file(f, owner);
+	output_file* of = new output_c_file(f, owner);
 	result_files.push_back(of);
 	return of;
 }
 
 output_file* context::open(const string& path, open_mode mode) 
 {
-	output_file* of = new output_file(path, mode);
+	output_file* of = new output_c_file(path, mode);
 	result_files.push_back(of);
 	return of;
 }
@@ -41,7 +41,6 @@ void context::run()
 dataset::dataset() 
 : src(0) 
 {
-	ON(INIT, [&](){ create(); });
 }
 
 dataset::~dataset()

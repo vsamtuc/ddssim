@@ -16,148 +16,8 @@ basic_column::~basic_column()
 }
 
 
-output_table::output_table(const char* _name, 
-	std::initializer_list<basic_column *> col)
-: named(_name), en(true), columns(col)
-{ 
-	for(size_t i=0; i<columns.size(); ++i) {
-		__associate(columns[i],i);
-	}
-}
 
-
-output_table::~output_table()
-{
-	for(auto c : columns) {
-		if(c) c->_table = 0;
-	}
-}
-
-void output_table::emit_header_start(FILE* stream)
-{
-	fputs("#INDEX",stream);
-}
-
-void output_table::emit_row_start(FILE* stream)
-{
-	fprintf(stream,"%s", name().c_str());
-}
-
-void time_series::emit_header_start(FILE* stream)
-{
-	fprintf(stream, "%s", now.name().c_str());
-}
-
-void time_series::emit_row_start(FILE* stream)
-{
-	fprintf(stream,now.format(), now.value());
-}
-
-void time_series::emit_row()
-{
-	now = CTX.now();
-	result_table::emit_row();
-}
-
-void output_table::emit_header(FILE* stream)
-{
-	if(!enabled()) return;
-	emit_header_start(stream);
-	for(auto col : columns) {
-		fprintf(stream, ",%s", col->name().c_str());
-	}
-	fputs("\n",stream);
-}
-
-void output_table::emit(FILE* stream)
-{
-	if(!enabled()) return;
-	emit_row_start(stream);
-	for(auto col : columns) {
-		fputs(",", stream);
-		col->emit(stream);
-	}
-	fputs("\n",stream);
-}
-
-
-void result_table::emit_row()
-{
-	if(! enabled()) return;
-	for(auto b : files) {
-		if(b->enabled)
-			emit(b->file->file());
-	}
-}
-
-void result_table::emit_header_row()
-{
-	if(! enabled()) return;
-	for(auto b : files) {
-		if(b->enabled)
-			output_table::emit_header(b->file->file());
-	}
-}
-
-
-result_table::~result_table()
-{
-	__binding::unbind_all(files);
-}
-
-void output_file::open(const string& fpath, open_mode mode)
-{
-	if(stream) 
-		throw std::runtime_error("output file already open");
-	stream = fopen(fpath.c_str(), (mode==append?"a":"w"));
-	if(!stream) 
-		throw std::runtime_error("I/O error opening file");
-	filepath = fpath;
-	owner = true;
-}
-
-void output_file::close()
-{
-	if((!stream)) return;
-	if(owner) {
-		if(fclose(stream)!=0)
-			throw std::runtime_error("I/O error closing file");		
-	} else {
-		flush();
-	}
-	stream = nullptr;
-	owner = false;
-	filepath = string();
-}
-
-void output_file::flush()
-{
-	if(!stream)
-		throw std::runtime_error("I/O error flushing closed file");
-	if(fflush(stream)!=0)
-		throw std::runtime_error("I/O error flushing file");
-}
-
-
-output_file::output_file(FILE* _stream, bool _owner)
-: stream(_stream), owner(_owner) { }
-
-
-output_file::output_file(const string& _fpath, open_mode mode)
-: output_file()
-{
-	open(_fpath, mode);
-}
-
-
-output_file::~output_file()
-{
-	__binding::unbind_all(tables);
-	close();
-}
-
-
-__binding::__binding(output_file* f, result_table* t)
+__binding::__binding(output_file* f, output_table* t)
 : file(f), table(t), 
 	in_file_list(f->tables.insert(f->tables.end(),this)),
 	in_table_list(t->files.insert(t->files.end(), this)),
@@ -189,7 +49,7 @@ __binding* __binding::find(list& L, output_file* f)
 		return *found;
 }
 
-__binding* __binding::find(list& L, result_table* t)
+__binding* __binding::find(list& L, output_table* t)
 {
 	auto found = std::find_if(L.begin(), L.end(), 
 		[=](__binding* b){ return b->table==t; });
@@ -198,6 +58,192 @@ __binding* __binding::find(list& L, result_table* t)
 	else
 		return *found;
 }
+
+output_table::output_table(const string& _name, table_flavor _f)
+: named(_name), en(true), _flavor(_f)
+{ 
+}
+
+
+output_table::~output_table()
+{
+	for(auto c : columns) {
+		// dissociate with column
+		if(c) c->_table = 0;
+	}
+	__binding::unbind_all(files);
+}
+
+
+void output_table::emit_row()
+{
+	for(auto b : bindings())
+		b->file->output_row(*this);
+}
+
+void output_table::prolog()
+{
+	for(auto b : bindings())
+		b->file->output_prolog(*this);
+}
+
+void output_table::epilog()
+{
+	for(auto b : bindings())
+		b->file->output_epilog(*this);
+}
+
+result_table::result_table(const string& _name)
+	: output_table(_name, table_flavor::RESULTS)
+{}
+
+result_table::result_table(const string& _name,
+		std::initializer_list<basic_column *> col)
+	: output_table(_name, table_flavor::RESULTS)
+{
+	for(auto c : col) add(*c);
+}
+
+result_table::~result_table()
+{
+}
+
+
+time_series::time_series(const string& _name) 
+: output_table(_name, table_flavor::TIMESERIES), 
+	now("time", "%d") 
+{
+	add(now);
+}
+
+time_series::time_series() 
+: time_series("timeseries") 
+{}
+
+
+
+output_file::output_file()
+{ }
+output_file::~output_file()
+{ }
+
+
+void output_c_file::open(const string& fpath, open_mode mode)
+{
+	if(stream) 
+		throw std::runtime_error("output file already open");
+	stream = fopen(fpath.c_str(), (mode==append?"a":"w"));
+	if(!stream) 
+		throw std::runtime_error("I/O error opening file");
+	filepath = fpath;
+	owner = true;
+}
+
+void output_c_file::close()
+{
+	if((!stream)) return;
+	if(owner) {
+		if(fclose(stream)!=0)
+			throw std::runtime_error("I/O error closing file");		
+	} else {
+		flush();
+	}
+	stream = nullptr;
+	owner = false;
+	filepath = string();
+}
+
+void output_c_file::flush()
+{
+	if(!stream)
+		throw std::runtime_error("I/O error flushing closed file");
+	if(fflush(stream)!=0)
+		throw std::runtime_error("I/O error flushing file");
+}
+
+
+output_c_file::output_c_file(FILE* _stream, bool _owner)
+: stream(_stream), owner(_owner) { }
+
+
+output_c_file::output_c_file(const string& _fpath, open_mode mode)
+: output_c_file()
+{
+	open(_fpath, mode);
+}
+
+
+output_c_file::~output_c_file()
+{
+	__binding::unbind_all(tables);
+	close();
+}
+
+
+void output_c_file::emit(basic_column* col)
+{
+	// Normally, this does not belong to the column!!!
+	col->emit(file());
+}
+
+void output_c_file::output_prolog(output_table& table)
+{
+	table_flavor flavor = table.flavor();
+
+	// start the row
+	size_t col = 0;
+	switch(flavor) {
+	case table_flavor::RESULTS:
+		fputs("# INDEX", file());
+		break;
+	case table_flavor::TIMESERIES:
+		fputs(table[0]->name().c_str(), file());
+		col = 1;
+		break;
+	default:
+		throw std::runtime_error("incompatible flavor");
+	}
+
+
+	for(;col < table.size(); col++) {
+		fputs(",", file());
+		fputs(table[col]->name().c_str(), file());
+	}
+	fputs("\n", file());	
+}
+
+void output_c_file::output_row(output_table& table)
+{
+	table_flavor flavor = table.flavor();
+
+	// start the row
+	size_t col = 0;
+	switch(flavor) {
+	case table_flavor::RESULTS:
+		fprintf(file(), "%s", table.name().c_str());
+		break;
+	case table_flavor::TIMESERIES:
+		emit(table[0]);
+		col = 1;
+		break;
+	default:
+		throw std::runtime_error("incompatible flavor");
+	}
+
+
+	for(;col < table.size(); col++) {
+		fputs(",", file());
+		emit(table[col]);
+	}
+	fputs("\n", file());
+}
+
+void output_c_file::output_epilog(output_table&)
+{ }
+
+
+output_c_file dds::output_stdout(stdout, false);
+output_c_file dds::output_stderr(stderr, false);
 
 
 progress_bar::progress_bar(FILE* s, size_t b, const string& msg)

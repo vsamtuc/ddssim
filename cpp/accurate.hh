@@ -27,14 +27,13 @@ class data_source_statistics : public reactive
 
 	size_t scount=0;
 	timestamp ts=-1, te=-1;
-public:
-
-	data_source_statistics(); 
 
 	void process(const dds_record& rec);
 	void finish();
-
 	void report(std::ostream& s);
+
+public:
+	data_source_statistics(); 
 };
 
 
@@ -56,7 +55,6 @@ public:
 	: Q(_Q), series(repr(Q).c_str(), string("%.0f").c_str())
 	{
 		CTX.timeseries.add(series);
-		on(VALIDATE, [&](){ series = curest; });
 	}
 
 	const query_type& query() const { return Q; }
@@ -68,11 +66,11 @@ public:
 class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 {
 	distinct_histogram<key_type> histogram;
-public:
-	selfjoin_exact_method(stream_id sid);
 
 	void process_record(const dds_record& rec);
 	void finish();
+public:
+	selfjoin_exact_method(stream_id sid);
 };
 
 
@@ -84,11 +82,11 @@ class twoway_join_exact_method : public exact_method<qtype::JOIN>
 
 	// helper
 	void dojoin(histogram& h1, histogram& h2, const dds_record& rec);
-public:
-	twoway_join_exact_method(stream_id s1, stream_id s2);
-
+	// callbacks
 	void process_record(const dds_record& rec);
 	void finish();
+public:
+	twoway_join_exact_method(stream_id s1, stream_id s2);
 };
 
 

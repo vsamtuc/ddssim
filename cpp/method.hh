@@ -121,7 +121,6 @@ class dataset : reactive
 	boost::optional<source_id> _sources;
 	boost::optional<timestamp> _time_window;
 
-	void create();
 
 public:
 	dataset();
@@ -134,6 +133,7 @@ public:
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
 	void set_time_window(timestamp Tw);
+	void create();
 };
 
 
@@ -141,10 +141,15 @@ public:
 struct reporter : reactive
 {
 	reporter(size_t n_times) {
-		on(REPORT, every_n_times(n_times), [&]() { handle(); });
-	}
-	void handle() {
-		CTX.timeseries.emit_row();
+		on(START_STREAM, [&]() { 
+			CTX.timeseries.prolog();
+		});
+		on(REPORT, every_n_times(n_times), [&]() { 
+			CTX.timeseries.emit_row();
+		});
+		on(END_STREAM, [&]() {
+			CTX.timeseries.epilog();
+		});
 	}
 };
 

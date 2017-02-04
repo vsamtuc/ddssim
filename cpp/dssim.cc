@@ -23,7 +23,7 @@ void execute()
 	D.set_max_length(100000);
 	D.hash_sources(4);
 	D.set_time_window(3600);
-
+	D.create();
 
 	/* Create components */
 
@@ -33,7 +33,10 @@ void execute()
 		CTX.metadata().stream_ids().end(),
 		back_inserter(sids));
 
+	cout << "Treating " << sids.size() << " streams" << endl;
+
 	for(size_t i=0; i<sids.size(); i++) {
+		cout << "Treating stream " << i << endl;
 		components.push_back(new selfjoin_exact_method(sids[i]));
 		for(size_t j=i; j>0; j--)
 			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));
@@ -43,14 +46,13 @@ void execute()
 
 	/* Create output files */
 
-	CTX.open(stdout);
+	output_file* sto = CTX.open(stdout);
 	output_file* wcout = CTX.open("wc_tseries.dat",open_mode::truncate);
 	
 	/* Bind files to outputs */
 
-	//CTX.timeseries.bind(sto);
-	CTX.timeseries.bind(wcout);
-	CTX.timeseries.emit_header_row();
+	CTX.timeseries.bind(sto);
+	//CTX.timeseries.bind(wcout);
 
 	/* Configure the timeseries reporting */
 	reporter repter(10000);

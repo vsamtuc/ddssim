@@ -12,7 +12,7 @@ DEBUG=1
 endif
 
 
-CXXFLAGS= -Wall -fPIC
+CXXFLAGS= -Wall -fPIC -I/usr/include/python3.5m
 
 DEBUGFLAGS=  -g3 
 OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
@@ -27,15 +27,15 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc dsarch.cc output.cc
+DDS_SOURCES= output.cc eca.cc agms.cc data_source.cc method.cc \
+	accurate.cc dds.cc dsarch.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh exec_tests.hh output_tests.hh
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
-CXX_SOURCES= $(DDS_SOURCES)  dssim.cc
+CXX_SOURCES= $(DDS_SOURCES) dssim.cc dds_module.cc
 
 DDS_OBJ= $(DDS_SOURCES:.cc=.o)
 CXX_OBJ= $(CXX_SOURCES:.cc=.o)
@@ -97,7 +97,7 @@ doc:
 
 clean:
 	-rm $(CXX_OBJ) 
-	-rm libdds.a 
+	-rm libdds.a dssim dds.so dds_module.o
 	-rm $(UNIT_TESTS:.hh=.cc) $(UNIT_TESTS:.hh=.o)
 	-rm $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=) 
 

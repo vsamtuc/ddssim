@@ -72,6 +72,34 @@ public:
 	}
 };
 
+class output_file;
+class output_table;
+struct __binding;
+
+struct __binding 
+{
+	typedef std::list<__binding*> list;
+	typedef typename list::iterator iter;
+
+	output_file* file;
+	output_table* table;
+	iter in_file_list, in_table_list;
+
+	bool enabled;
+	__binding(output_file* f, output_table* t);
+	~__binding();
+	static void unbind_all(list&);
+	static __binding* find(list&, output_file*);
+	static __binding* find(list&, output_table*);
+};
+
+/**
+	Indicates the use for an output table
+  */
+enum class table_flavor {
+	RESULTS,
+	TIMESERIES
+};
 
 class output_table : public named
 {
@@ -85,65 +113,19 @@ protected:
 		col->_table = this;
 		col->_index = _i;
 	}
+
+	__binding::list files;
+	friend struct __binding;
+
+	table_flavor _flavor;
 public:
-	output_table(const char* _name)
-	: named(_name), en(true) 
-	{ }
-
-	output_table(const char* _name, std::initializer_list<basic_column *> col);
-
+	output_table(const string& _name, table_flavor _f);
 	virtual ~output_table();
 
 	inline void add(basic_column& col) {
 		__associate(&col, columns.size());
 		columns.push_back(&col); 
 	}
-	
-	inline size_t size() const { return columns.size(); }
-	inline basic_column* operator[](size_t i) const { return columns.at(i); }
-
-	inline void set_enabled(bool _en) { en=_en; }
-	inline bool enabled() const { return en; }
-
-	virtual void emit_header_start(FILE*);
-	virtual void emit_row_start(FILE*);
-
-	void emit_header(FILE*);
-	void emit(FILE*);
-};
-
-
-class output_file;
-class result_table;
-struct __binding;
-
-struct __binding 
-{
-	typedef std::list<__binding*> list;
-	typedef typename list::iterator iter;
-
-	output_file* file;
-	result_table* table;
-	iter in_file_list, in_table_list;
-
-	bool enabled;
-	__binding(output_file* f, result_table* t);
-	~__binding();
-	static void unbind_all(list&);
-	static __binding* find(list&, output_file*);
-	static __binding* find(list&, result_table*);
-};
-
-
-class result_table : public output_table
-{
-protected:
-	__binding::list files;
-	friend struct __binding;
-public:
-	using output_table::output_table;
-
-	virtual ~result_table();
 
 	void bind(output_file* f) { 
 		if(__binding::find(files, f)==0)
@@ -167,64 +149,62 @@ public:
 		__binding::unbind_all(files);
 	}
 
-	void emit_header_row();
-	void emit_row();
+	inline table_flavor flavor() const { return _flavor; }
+	
+	inline size_t size() const { return columns.size(); }
+	inline basic_column* operator[](size_t i) const { return columns.at(i); }
+
+	inline void set_enabled(bool _en) { en=_en; }
+	inline bool enabled() const { return en; }
+
+	// data api
+	void prolog();    // calls files to e.g. print a header
+	void emit_row();  // a new table row is ready
+	void epilog();    // calls files to e.g. print a footer
 };
 
 
-class time_series : public result_table
+
+class result_table : public output_table
 {
 public:
-	time_series(const char* _name) 
-	: result_table(_name), now("time", "%d") {}
+	result_table(const string& _name);
 
-	time_series() : time_series("timeseries") {}
+	result_table(const string& _name,
+		std::initializer_list<basic_column *> col);
+
+	virtual ~result_table();
+};
+
+
+class time_series : public output_table
+{
+public:
+	time_series();
+	time_series(const string& _name);
 
 	column<dds::timestamp> now;
-
-	void emit_header_start(FILE*) override;
-	void emit_row_start(FILE*) override;
-
-	void emit_row();
 };
 
 
 enum open_mode { truncate, append };
 
+
 class output_file 
 {
 protected:
-	FILE* stream;
-	string filepath;
-	bool owner;
-
 	__binding::list tables;
 	friend struct __binding;
 public:
-
-	output_file() : stream(0), filepath(), owner(false) {}
-	output_file(FILE* _stream, bool _owner=false);
-	output_file(const string& _fpath, open_mode mode = append);
-
+	output_file();
 	output_file(const output_file&)=delete;
 	output_file& operator=(const output_file&)=delete;
 
-	inline output_file(output_file&& other) 
-	: stream(other.stream), filepath(other.filepath), owner(other.owner)
-	{ other.stream = nullptr; }
-
-	inline output_file& operator=(output_file&& other)
-	{
-		stream = other.stream;
-		filepath = other.filepath;
-		owner = other.owner;
-		other.stream = nullptr;
-		return *this;
-	}
+	output_file(output_file&&) = default;
 
 	virtual ~output_file();
 
-	void bind(result_table& t) { 
+	void bind(output_table& t) { 
 		if(__binding::find(tables, &t)==0)
 			new __binding(this, &t); 
 	}
@@ -237,6 +217,42 @@ public:
 		__binding::unbind_all(tables);
 	}
 
+	virtual void flush() { }
+	virtual void close() { }
+	virtual void output_prolog(output_table&)=0;
+	virtual void output_row(output_table&)=0;
+	virtual void output_epilog(output_table&)=0;
+};
+
+
+
+class output_c_file : public output_file
+{
+protected:
+	FILE* stream;
+	string filepath;
+	bool owner;
+public:
+
+	output_c_file() : stream(0), filepath(), owner(false) {}
+	output_c_file(FILE* _stream, bool _owner=false);
+	output_c_file(const string& _fpath, open_mode mode = append);
+
+	inline output_c_file(output_c_file&& other) 
+	: stream(other.stream), filepath(other.filepath), owner(other.owner)
+	{ other.stream = nullptr; }
+
+	inline output_c_file& operator=(output_c_file&& other)
+	{
+		stream = other.stream;
+		filepath = other.filepath;
+		owner = other.owner;
+		other.stream = nullptr;
+		return *this;
+	}
+
+	virtual ~output_c_file();
+
 	virtual void open(const string& _fpath, open_mode mode = append);
 	virtual void close();
 	virtual void flush();
@@ -246,7 +262,16 @@ public:
 	bool is_owner() const { return owner; }
 
 	const string& path() const { return filepath; }
+
+	virtual void output_prolog(output_table&);
+	virtual void output_row(output_table&);
+	virtual void output_epilog(output_table&);
+private:
+	void emit(basic_column*);
 };
+
+extern output_c_file output_stdout;
+extern output_c_file output_stderr;
 
 /**
  * \brief Progress bar.

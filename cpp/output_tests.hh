@@ -2,9 +2,7 @@
 #define __OUTPUT_TESTS_HH__
 
 
-#include "dds.hh"
 #include "output.hh"
-#include "method.hh"
 
 #include <cxxtest/TestSuite.h>
 
@@ -36,17 +34,21 @@ public:
 
 		char* buf = NULL;
 		size_t len = 0;
-		FILE* f = open_memstream(&buf, &len);
+		FILE* mf = open_memstream(&buf, &len);
+		output_file* f = new output_c_file(mf);
+		f->bind(tab);
 
-		tab.emit_header(f);
-		tab.emit(f);
-		tab.emit(f);
-		tab.emit(f);
+		tab.prolog();
+		tab.emit_row();
+		tab.emit_row();
+		tab.emit_row();
+		tab.epilog();
 
-		fclose(f);
+		delete f;
+		fclose(mf);
 
 		const char* expected =
-		"#INDEX,count,mean_x,label\n"
+		"# INDEX,count,mean_x,label\n"
 		"SILLY,1,3.140000,Hello\n"
 		"SILLY,1,3.140000,Hello\n"
 		"SILLY,1,3.140000,Hello\n";
@@ -80,10 +82,10 @@ public:
 
 	void test_output_file() 
 	{
-		fileset_t fset;
+		output_c_file* fset[2];
 
-		fset.push_back(new output_file(fmemopen(NULL, 8192, "w+"),true));
-		fset.push_back(new output_file(fmemopen(NULL, 8192, "w+"),true));
+		fset[0] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
+		fset[1] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
 
 		silly_table tab("SILLY");
 
@@ -92,17 +94,17 @@ public:
 		tab.label = "Hello";
 
 		tab.bind_all(fset);
-		tab.emit_header_row();
+		tab.prolog();
 		tab.emit_row();
 
 		char buf[2][8192];
 		fseek(fset[0]->file(), 0, SEEK_SET);
 		fseek(fset[1]->file(), 0, SEEK_SET);
-		TS_ASSERT_EQUALS(fread(buf[0], 1, 8191, fset[0]->file()), 49);
-		TS_ASSERT_EQUALS(fread(buf[1], 1, 8191, fset[1]->file()), 49);
-		buf[0][49] = buf[1][49] = 0;
+		TS_ASSERT_EQUALS(fread(buf[0], 1, 8191, fset[0]->file()), 50);
+		TS_ASSERT_EQUALS(fread(buf[1], 1, 8191, fset[1]->file()), 50);
+		buf[0][50] = buf[1][50] = 0;
 		TS_ASSERT_EQUALS( buf[0], buf[1] );
-		auto expected = "#INDEX,count,mean_x,label\n"
+		auto expected = "# INDEX,count,mean_x,label\n"
 						"SILLY,1,3.140000,Hello\n";
 		TS_ASSERT_EQUALS( buf[0], expected );
 
@@ -114,9 +116,9 @@ public:
 	{
 		silly_table T1("table1"), T2("table2");
 
-		output_file* f1 = new output_file("/dev/null");
-		output_file* f2 = new output_file("/dev/null");
-		output_file* f3 = new output_file("/dev/null");
+		output_file* f1 = new output_c_file("/dev/null");
+		output_file* f2 = new output_c_file("/dev/null");
+		output_file* f3 = new output_c_file("/dev/null");
 
 		T1.bind(f1);
 		TS_ASSERT_EQUALS(T1.bindings().size(), 1);

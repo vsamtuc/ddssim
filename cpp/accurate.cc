@@ -85,6 +85,7 @@ void selfjoin_exact_method::process_record(const dds_record& rec)
 			curest -= 2*x - 1;
 		}
 	}
+	series = curest;
 }
 
 void selfjoin_exact_method::finish()
@@ -132,6 +133,7 @@ void twoway_join_exact_method::process_record(const dds_record& rec)
 		dojoin(hist2, hist1, rec);		
 	} 
 	// else, discard the sample
+	series = curest;
 }
 
 void twoway_join_exact_method::finish()
