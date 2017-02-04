@@ -80,7 +80,7 @@ inline void emit(Event evt)
   */
 struct reactive
 {
-	std::vector<eca_rule> eca_rules;
+	std::list<eca_rule> eca_rules;
 
 	reactive() { }
 	reactive(const reactive&) = delete;
@@ -89,7 +89,13 @@ struct reactive
 	reactive& operator=(reactive&&) = delete;
 
 	virtual ~reactive() {
-		for(auto rule : eca_rules) CTX.cancel_rule(rule);	
+		cancel_all();
+	}
+
+	inline eca_rule add_rule(Event evt, action* action) {
+		eca_rule rule = CTX.add_rule(evt, action);
+		eca_rules.push_back(rule);
+		return rule;		
 	}
 
 	template <typename Action>
@@ -104,6 +110,15 @@ struct reactive
 		eca_rule rule = ON(evt, cond, action);
 		eca_rules.push_back(rule);
 		return rule;
+	}
+
+	inline void cancel(eca_rule rule) {
+		CTX.cancel_rule(rule);
+		eca_rules.remove(rule);
+	}
+
+	inline void cancel_all() {
+		for(auto rule : eca_rules) CTX.cancel_rule(rule);
 	}
 };
 

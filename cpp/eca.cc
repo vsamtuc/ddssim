@@ -7,7 +7,39 @@
 
 using namespace dds;
 
-using namespace std::literals;
+//using namespace std::literals;
+
+
+void basic_control::cancel_rule(eca_rule rule)
+{
+	// Rule cancelation is complicated by the fact
+	// that we need to delete the action
+	// BUT!!! The action may be already in the
+	// action queue, or worse, may be the current
+	// action!!!
+	action_seq& aseq = rules[rule.first];
+	action_seq::iterator i = rule.second;
+
+	if( (*i) == current_action) {
+		// if (*i) is the current action, we
+		// cannot remove it!
+		assert(! purge_current);
+		purge_current = true;
+	} else {
+		purge_action(*i);
+	}
+
+	aseq.erase(i);
+}
+
+void basic_control::purge_action(action* a)
+{
+	// remove from the action queue ( O(n) time ...)
+	auto pos = remove(action_queue.begin(), action_queue.end(), a);
+	auto num_instances = distance(pos, action_queue.end());
+	action_queue.resize(action_queue.size()-num_instances);
+}
+
 
 void basic_control::empty_handler()
 {
@@ -52,6 +84,10 @@ void basic_control::run_action(action* a)
 {
 	current_action = a;
 	a->run();
+	if(purge_current) {
+		purge_action(current_action);
+		purge_current = false;
+	}
 	current_action = nullptr;
 }
 
@@ -103,7 +139,7 @@ void basic_control::dispatch_event(Event evt)
 
 void basic_control::run()
 {
-	while(state != End) {
+	while(true) {
 
 		if(!action_queue.empty()) {
 
@@ -117,11 +153,9 @@ void basic_control::run()
 			event_queue.pop_front();
 			dispatch_event(evt);
 
-		} else {
-
-			empty_handler();
-
-		}
+		} else if(state != End) {
+			empty_handler();			
+		} else break;
 
 	}
 

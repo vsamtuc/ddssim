@@ -175,11 +175,15 @@ struct basic_control
 protected:
 
 	// State for ECA callbacks
-	event_queue_t event_queue;
-	action_queue_t action_queue;
-	eca_map rules;
-	action* current_action;
 
+	event_queue_t event_queue; // the emitted but not dispatched events
+	action_queue_t action_queue; // the dispatched actions
+	eca_map rules;  // the rules
+	action* current_action;  // the current action, or null
+	bool purge_current = false; // denote that the current action 
+							// is to be purged asap (or null)
+
+	void purge_action(action* a);
 
 	// used for an invalid data source
 	struct __invalid_data_source : analyzed_data_source {
@@ -200,6 +204,7 @@ protected:
 	void advance();
 	void proceed();
 
+
 public:
 
 	enum State { 
@@ -208,8 +213,10 @@ public:
 		End
 	};
 
+protected:
 	State state = Start;
 
+public:
 	inline State get_state() const { return state; }
 
 	inline timestamp now() const { return _now; }
@@ -237,22 +244,16 @@ public:
 		when the rule is cancelled, i.e. the context takes
 		ownership.
 	 */
-	template <typename T>
-	inline eca_rule add_rule(Event evt, T* action) {
+	inline eca_rule add_rule(Event evt, action* _action) {
 		action_seq& aseq = rules[evt];
-		action_seq::iterator i = aseq.insert(aseq.end(), action);
+		action_seq::iterator i = aseq.insert(aseq.end(), _action);
 		return std::make_pair(evt, i);
 	}
 
 	/**
 		Cancel an ECA rule.
 	  */
-	inline void cancel_rule(eca_rule rule) {
-		action_seq& aseq = rules[rule.first];
-		action_seq::iterator i = rule.second;
-		delete (*i);
-		aseq.erase(i);
-	}
+	void cancel_rule(eca_rule rule);
 
 	/// Used to add ECA rules
 	template <typename Action>

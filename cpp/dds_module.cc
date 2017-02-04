@@ -8,31 +8,6 @@
 
 namespace { // Avoid cluttering the global namespace.
 
-  // Converts a std::pair instance to a Python tuple.
-  template <typename T1, typename T2>
-  struct std_pair_to_tuple
-  {
-    static PyObject* convert(std::pair<T1, T2> const& p)
-    {
-      return boost::python::incref(
-        boost::python::make_tuple(p.first, p.second).ptr());
-    }
-    static PyTypeObject const *get_pytype () {return &PyTuple_Type; }
-  };
-
-	// Helper for convenience.
-	template <typename T1, typename T2>
-	struct std_pair_to_python_converter
-	{
-		std_pair_to_python_converter()
-		{
-			boost::python::to_python_converter<
-				std::pair<T1, T2>,
-				std_pair_to_tuple<T1, T2>,
-				true //std_pair_to_tuple has get_pytype
-			>();
-		}
-	};
 
 	inline void __wrap_dataset_load(dds::dataset& D, 
 		std::auto_ptr<dds::data_source> p)
@@ -75,6 +50,47 @@ namespace { // Avoid cluttering the global namespace.
 	};
 
 
+	struct pyaction : dds::action
+	{
+		object action;
+		pyaction(object _action) : action(_action) {}
+		virtual void run() override {
+			action();
+		}
+	};
+	struct pycondaction : pyaction 
+	{
+		object cond;
+		pycondaction(object _cond, object _action)
+		: pyaction(_action), cond(_cond) {}
+		virtual void run() override {
+			if(extract<bool>(cond()))
+				action();
+		}
+	};
+
+	dds::eca_rule on_pyaction(dds::basic_control* self, 
+		dds::Event evt, object action)
+	{
+		return self->add_rule(evt, new pyaction(action));
+	}
+	dds::eca_rule on_pycondaction(dds::basic_control* self, 
+		dds::Event evt, object cond, object action)
+	{
+		return self->add_rule(evt, new pycondaction(cond,action));
+	}
+	dds::eca_rule react_on_pyaction(dds::reactive* self, 
+		dds::Event evt, object action)
+	{
+		return self->add_rule(evt, new pyaction(action));
+	}
+	dds::eca_rule react_on_pycondaction(dds::reactive* self, 
+		dds::Event evt, object cond, object action)
+	{
+		return self->add_rule(evt, new pycondaction(cond,action));
+	}
+
+
 } // namespace anonymous
 
 
@@ -113,6 +129,7 @@ BOOST_PYTHON_MODULE(dds)
     	.add_property("type", &dds::basic_query::type)
     	.def(self == other<dds::basic_query>())
     	.def(self != other<dds::basic_query>())
+    	.def(repr(self))
     	;
 
     class_< dds::self_join, bases<dds::basic_query> >("self_join", 
@@ -256,6 +273,41 @@ BOOST_PYTHON_MODULE(dds)
      *
      **********************************************/
 
+	class_<dds::Event>("Event", init<int>())
+		.def(self == other<dds::Event>())
+		.def(self < other<dds::Event>())
+		.def(int_(self))
+		;
+
+	scope().attr("INIT") = dds::INIT;
+	scope().attr("DONE") = dds::DONE;
+	scope().attr("START_STREAM") = dds::START_STREAM;
+	scope().attr("END_STREAM") = dds::END_STREAM;
+	scope().attr("START_RECORD") = dds::END_RECORD;
+	scope().attr("END_RECORD") = dds::END_RECORD;
+	scope().attr("VALIDATE") = dds::VALIDATE;
+	scope().attr("REPORT") = dds::REPORT;
+
+	class_< dds::eca_rule >("eca_rule", 
+		init<const dds::eca_rule&>())
+		.def_readonly("event", &dds::eca_rule::first)
+		;
+
+	class_< dds::basic_control >("basic_control", init<>())
+		.def("now", &dds::basic_control::now)
+		.def("stream_record", &dds::basic_control::stream_record,
+			return_value_policy<copy_const_reference>())
+		.def("metadata", &dds::basic_control::metadata,
+			return_value_policy<copy_const_reference>())
+		.def("data_feed", &dds::basic_control::data_feed)
+		.def("run", &dds::basic_control::run)
+		//.def("add_rule", &dds::basic_control::add_rule,
+		//	return_value_policy<return_by_value>())
+		.def("on", on_pyaction, return_value_policy<return_by_value>())
+		.def("on", on_pycondaction, return_value_policy<return_by_value>())
+		.def("cancel_rule", &dds::basic_control::cancel_rule)
+		;
+
 
 
     /**********************************************
@@ -264,10 +316,9 @@ BOOST_PYTHON_MODULE(dds)
      *
      **********************************************/
 
-	class_< dds::context, boost::noncopyable >("context")
+	class_< dds::context, bases<dds::basic_control>, boost::noncopyable >
+		("context", no_init)
 		.def("run", &dds::context::run)
-		.def("metadata", &dds::context::metadata,
-			return_value_policy<copy_const_reference>() )
 		.def_readonly("timeseries", &dds::context::timeseries)
 		.def("open", 
 			// a big typecast !
@@ -278,7 +329,11 @@ BOOST_PYTHON_MODULE(dds)
 		;
 
 
-	class_< dds::reactive, boost::noncopyable>("reactive")
+	class_< dds::reactive, boost::noncopyable>("reactive", init<>())
+		.def("on", react_on_pyaction, return_value_policy<return_by_value>())
+		.def("on", react_on_pycondaction, return_value_policy<return_by_value>())
+		.def("cancel", &dds::reactive::cancel)
+		.def("cancel_all", &dds::reactive::cancel_all)
 		;
 
 	//
