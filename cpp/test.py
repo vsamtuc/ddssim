@@ -1,7 +1,6 @@
 import sys
 from dds import *
 
-
 def prepare_data():
 	wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
 

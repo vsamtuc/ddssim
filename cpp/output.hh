@@ -29,7 +29,7 @@ protected:
 	string _format;
 	friend class output_table;
 public:
-	basic_column(const char* _name, const char* f)
+	basic_column(const string& _name, const char* f)
 	: named(_name), _table(0), _format(f) { }
 
 	basic_column(const basic_column&)=delete;
@@ -47,7 +47,7 @@ class column : public basic_column
 protected:
 	T val;
 public:
-	column(const char* _n, const char* fmt) 
+	column(const string& _n, const char* fmt) 
 	: basic_column(_n, fmt) { }
 	inline T value() const { return val; }
 	inline T& operator=(T v) { val=v; return val; }
@@ -62,7 +62,7 @@ class column<string> : public basic_column
 protected:
 	string val;
 public:
-	column(const char* _n, const char* fmt) 
+	column(const string& _n, const char* fmt) 
 	: basic_column(_n, fmt) { }
 
 	inline const char* value() const { return this->val.c_str(); }

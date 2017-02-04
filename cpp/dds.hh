@@ -6,6 +6,7 @@
 #include <utility>
 #include <string>
 #include <set>
+#include <iterator>
 #include <limits>
 #include <array>
 #include <cassert>
@@ -143,6 +144,24 @@ public:
 	inline key_type maxkey() const { return kmax; }	
 	inline const set<stream_id>& stream_ids() const { return sids; }
 	inline const set<source_id>& source_ids() const { return hids; }
+
+	// mutable interface
+	void set_size(size_t s) { scount = s; }
+	void set_ts_range(timestamp _ts, timestamp _te) { ts=_ts; te=_te; }
+	void set_key_range(key_type _kmin, key_type _kmax) { kmin=_kmin; kmax=_kmax; }
+
+	template <typename Iter>
+	void set_stream_range(Iter from, Iter to) {
+		sids.clear();
+		std::copy(from, to, std::inserter(sids, sids.end()));
+	}
+
+	template <typename Iter>
+	void set_source_range(Iter from, Iter to) {
+		hids.clear();
+		std::copy(from, to, std::inserter(hids, hids.end()));
+	}
+
 };
 
 

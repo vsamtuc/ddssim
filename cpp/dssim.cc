@@ -76,6 +76,64 @@ void execute()
 }
 
 
+void execute_generated()
+{
+	/* Set up data stream */
+
+	auto ds = new uniform_data_source(5, 25, 1000000, 100000);
+	CTX.data_feed(ds);
+
+
+	/* Create components */
+
+	std::vector<reactive*> components;
+	std::vector<stream_id> sids;
+	std::copy(CTX.metadata().stream_ids().begin(),
+		CTX.metadata().stream_ids().end(),
+		back_inserter(sids));
+
+	cout << "Treating " << sids.size() << " streams" << endl;
+
+	for(size_t i=0; i<sids.size(); i++) {
+		cout << "Treating stream " << i << endl;
+		components.push_back(new selfjoin_exact_method(sids[i]));
+		for(size_t j=i; j>0; j--)
+			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));
+	}
+
+	data_source_statistics stat;
+
+	/* Create output files */
+
+	output_file* sto = CTX.open(stdout);
+	output_file* wcout = CTX.open("uni_tseries.dat",open_mode::truncate);
+	
+	/* Bind files to outputs */
+
+	CTX.timeseries.bind(sto);
+	//CTX.timeseries.bind(wcout);
+
+	/* Configure the timeseries reporting */
+	reporter repter(10000);
+
+	/* Print a progress bar */
+	progress_reporter pbar(stdout, 40, "Progress: ");
+
+	/* Run */
+	using namespace std::chrono;
+	steady_clock::time_point startt = steady_clock::now();
+	CTX.run();
+	steady_clock::time_point endt = steady_clock::now();
+	cout << "Execution time=" 
+		<< duration_cast<milliseconds>(endt-startt).count()/1000.0
+		<< "sec" << endl;
+
+	/* Clean up */
+	for(auto p : components)
+		delete p;
+	CTX.close_result_files();	
+}
+
 
 
 using libconfig::Config;
@@ -88,7 +146,8 @@ int main(int argc, char** argv)
 		cfg.readFile(argv[1]);
 	}
 
-	execute();
+	//execute();
+	execute_generated();
 	return 0;
 }
 

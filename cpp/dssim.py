@@ -44,6 +44,27 @@ def execute():
 	CTX.close_result_files()
 
 
+def execute_generated():
+	CTX.data_feed(uniform_data_source(5, 25, 1000000, 100000))
+	components = prepare_components()
+
+	wcout = CTX.open("uni_tseries.dat",open_mode.truncate)
+	sout = output_pyfile(sys.stdout)
+
+	CTX.timeseries.bind(wcout)
+	print("timeseries=", CTX.timeseries.size())
+
+	repter = reporter(1000)
+
+	# run
+	CTX.run()
+
+	# cleanup
+	CTX.close_result_files()
+
+
 if __name__=='__main__':
-	execute()
+	#execute()
+	execute_generated()
 	pass
+

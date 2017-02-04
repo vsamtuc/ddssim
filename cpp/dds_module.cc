@@ -178,15 +178,30 @@ BOOST_PYTHON_MODULE(dds)
      *
      **********************************************/
 
-    class_<dds::data_source>("data_source")
+    class_<dds::data_source, boost::noncopyable>("data_source")
     	.add_property("valid", &dds::data_source::valid)
     	.def("get", &dds::data_source::get, 
     		return_value_policy<copy_const_reference>())
     	.def("advance", &dds::data_source::advance)
+		.def("__iter__", iterator<dds::data_source>())    	
     	;
 
     def("wcup_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
     def("crawdad_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
+
+    class_< dds::analyzed_data_source, bases<dds::data_source>, 
+    	boost::noncopyable>(
+    		"analyzed_data_source", no_init)
+    	.def("metadata", &dds::analyzed_data_source::metadata,
+    		return_value_policy<copy_const_reference>())
+    	;
+
+    class_< dds::uniform_data_source, bases<dds::analyzed_data_source>, 
+    	boost::noncopyable>(
+    		"uniform_data_source",
+    		init<dds::stream_id, dds::source_id, dds::key_type, dds::timestamp>()
+    	)
+    	;
 
 	class_< dds::buffered_dataset >("buffered_dataset")    
 		.def("__iter__", iterator< dds::buffered_dataset >())
@@ -299,7 +314,8 @@ BOOST_PYTHON_MODULE(dds)
 			return_value_policy<copy_const_reference>())
 		.def("metadata", &dds::basic_control::metadata,
 			return_value_policy<copy_const_reference>())
-		.def("data_feed", &dds::basic_control::data_feed)
+		.def("data_feed", &dds::basic_control::data_feed,
+			with_custodian_and_ward<1,2>())
 		.def("run", &dds::basic_control::run)
 		//.def("add_rule", &dds::basic_control::add_rule,
 		//	return_value_policy<return_by_value>())

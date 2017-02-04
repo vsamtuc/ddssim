@@ -133,6 +133,58 @@ public:
 		delete ds;
 	}
 
+	void test_uniform()
+	{
+		const stream_id maxstream = 10;
+		const source_id maxsource = 20;
+		const key_type maxkey = 1000000;
+		const timestamp maxtime = 10000;
+
+		auto ds = new uniform_data_source(maxstream, maxsource, maxkey, maxtime);
+
+		buffered_dataset dset;
+		dset.load(ds);
+		ds_metadata m;
+		dset.analyze(m);
+
+		// check data
+		TS_ASSERT_EQUALS( dset.size(), maxtime );
+		TS_ASSERT_EQUALS( m.size(), maxtime );
+		TS_ASSERT_EQUALS(1, m.mintime());
+		TS_ASSERT_EQUALS(m.maxtime(), maxtime);
+		TS_ASSERT_LESS_THAN_EQUALS(1, m.minkey());
+		TS_ASSERT_LESS_THAN_EQUALS(m.maxkey(), maxkey);
+
+		for(auto sid: m.stream_ids()) {
+			TS_ASSERT_LESS_THAN_EQUALS(1, sid);
+			TS_ASSERT_LESS_THAN_EQUALS(sid, maxstream);
+		}
+
+		for(auto hid: m.source_ids()) {
+			TS_ASSERT_LESS_THAN_EQUALS(1, hid);
+			TS_ASSERT_LESS_THAN_EQUALS(hid, maxsource);
+		}
+
+		// check stream metadata against dataset metadata
+		ds_metadata dsm = ds->metadata();
+		TS_ASSERT_EQUALS(dsm.size(), m.size());
+		TS_ASSERT_EQUALS(dsm.mintime(), m.mintime());
+		TS_ASSERT_EQUALS(dsm.maxtime(), m.maxtime());
+		TS_ASSERT_LESS_THAN_EQUALS(dsm.minkey(), m.minkey());
+		TS_ASSERT_LESS_THAN_EQUALS(m.maxkey(), dsm.maxkey());
+
+		TS_ASSERT_EQUALS( dsm.stream_ids().size(), maxstream);
+		TS_ASSERT( all_of(dsm.stream_ids().begin(), dsm.stream_ids().end(), 
+			[=](auto s) { return 1<=s && s<= maxstream; }));
+
+		TS_ASSERT_EQUALS( dsm.source_ids().size(), maxsource);
+		TS_ASSERT( all_of(dsm.source_ids().begin(), dsm.source_ids().end(), 
+			[=](auto s) { return 1<=s && s<= maxsource; }));
+
+		TS_ASSERT( all_of(dset.begin(), dset.end(), 
+			[](auto rec){return rec.sop==INSERT;}));
+	}
+
 };
 
 

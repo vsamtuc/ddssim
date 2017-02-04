@@ -6,11 +6,17 @@
 #include <queue>
 #include <vector>
 #include <type_traits>
+#include <random>
+
+#include <boost/iterator/counting_iterator.hpp>
 
 #include "dds.hh"
 
 
 namespace dds {
+
+
+class data_source;
 
 
 /**
@@ -21,8 +27,33 @@ class data_source
 {
 protected:
 	bool isvalid;
-	dds::dds_record rec;
+	dds_record rec;
+	friend struct iterator;
 public:
+
+	struct iterator 
+		: std::iterator<std::input_iterator_tag,
+			const dds_record>
+	{
+	private:
+		data_source* src;
+		inline data_source* __eff() const { 
+			return (src && src->isvalid)?src:nullptr; 
+		}
+	public:
+		iterator() : src(nullptr) {}
+		iterator(data_source* _src) : src(_src) {}
+
+		iterator& operator++(int) { src->advance(); return *this; }
+		reference operator*() const { return src->rec; }
+		bool operator==(iterator other) const { 
+			return this->__eff() == other.__eff();
+		}
+		bool operator!=(iterator other) const { return !(*this == other); }
+	};
+
+	inline iterator begin() { return iterator(this); }
+	inline iterator end() { return iterator(nullptr); }
 
 	inline data_source() : isvalid(true) {}
 
@@ -53,10 +84,16 @@ public:
 		return ret; 
 	}
 
-
 	/// Virtual destructor
 	virtual ~data_source() { }
 };
+
+
+//------------------------------------
+//
+//  Filtered and generated data sources
+//
+//------------------------------------
 
 
 
@@ -113,6 +150,14 @@ inline auto generated_ds(const dds_record& rec, const Func& func)
 {
 	return new filtered_data_source<Func>(rec, func);
 }
+
+
+//------------------------------------
+//
+//  Helpers for filtering functions
+//
+//------------------------------------
+
 
 
 /**
@@ -269,6 +314,12 @@ inline auto time_window(data_source* ds, timestamp Tw)
 }
 
 
+//------------------------------------
+//
+//  Data files
+//
+//------------------------------------
+
 
 
 /**
@@ -277,6 +328,109 @@ inline auto time_window(data_source* ds, timestamp Tw)
 
 data_source* crawdad_ds(const std::string& fpath);
 data_source* wcup_ds(const std::string& fpath);
+
+
+//------------------------------------
+//
+//  Synthetic data sources
+//
+//------------------------------------
+
+/**
+	Base class for a data source with metadata.
+  */
+class analyzed_data_source : public data_source
+{
+protected:
+	ds_metadata dsm;
+public:
+	/// The metadata for this source
+	inline const ds_metadata& metadata() const { return dsm; }
+};
+
+
+/**
+	Generates a stream of random stream records
+  */
+struct uniform_generator
+{
+private:
+	static std::mt19937 rng;
+public:
+
+	template <typename T>
+	using uni = std::uniform_int_distribution<T>;
+
+	uni<stream_id> stream_distribution;
+	uni<source_id> source_distribution;
+	uni<key_type> key_distribution;
+	timestamp maxtime;
+	timestamp now;
+
+	uniform_generator(stream_id maxsid, 
+			source_id maxhid, 
+			key_type maxkey):
+		stream_distribution(1,maxsid), source_distribution(1, maxhid),
+		key_distribution(1, maxkey), now(0)
+	{ }
+
+	void set(dds_record& rec) {
+		rec.sid = stream_distribution(rng);
+		rec.hid = source_distribution(rng);
+		rec.sop = INSERT;
+		rec.ts = ++now;
+		rec.key = key_distribution(rng);
+	}
+
+	inline dds_record operator()() {
+		dds_record ret;
+		set(ret);
+		return ret;
+	}
+};
+
+struct uniform_data_source : analyzed_data_source
+{
+	uniform_generator gen;
+	timestamp maxtime;
+
+	uniform_data_source(stream_id maxsid, source_id maxhid,
+		 key_type maxkey, timestamp maxt)
+	: gen(maxsid, maxhid, maxkey), maxtime(maxt)
+	{
+		dsm.set_size(maxtime);
+		dsm.set_ts_range(1, maxtime);
+		dsm.set_key_range(1, maxkey);
+
+		typedef boost::counting_iterator<stream_id> sid_iter;
+		dsm.set_stream_range(sid_iter(1), sid_iter(maxsid+1));
+
+		typedef boost::counting_iterator<source_id> hid_iter;
+		dsm.set_source_range(hid_iter(1), hid_iter(maxhid+1));
+		advance();
+	}
+
+	void advance() override 
+	{
+		if(isvalid) {
+			if(gen.now < maxtime) {
+				gen.set(rec);
+			} else {
+				isvalid = false;
+			}
+		}
+	}
+};
+
+
+
+
+//------------------------------------
+//
+//  Data buffering in memory
+//
+//------------------------------------
+
 
 
 /**
@@ -304,17 +458,6 @@ public:
 };
 
 
-/**
-	Base class for a data source with metadata
-  */
-class analyzed_data_source : public data_source
-{
-protected:
-	ds_metadata dsm;
-public:
-	/// The metadata for this source
-	inline const ds_metadata& metadata() const { return dsm; }
-};
 
 
 /**
@@ -348,7 +491,9 @@ public:
 	void advance() override;
 };
 
-
+/**
+	A buffered data source which includes the dataset internally. 
+  */
 class materialized_data_source : public buffered_data_source
 {
 protected:

@@ -160,6 +160,7 @@ struct reporter : reactive
 			CTX.timeseries.prolog();
 		});
 		on(REPORT, every_n_times(n_times), [&]() { 
+			CTX.timeseries.now = CTX.now();
 			CTX.timeseries.emit_row();
 		});
 		on(END_STREAM, [&]() {

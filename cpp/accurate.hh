@@ -5,6 +5,7 @@
 #include <set>
 #include <map>
 #include <vector>
+#include <string>
 
 #include "dds.hh"
 #include "method.hh"
@@ -16,6 +17,8 @@ namespace dds {
 using std::set;
 using std::cout;
 using std::endl;
+
+using namespace std::string_literals;
 
 class data_source_statistics : public reactive
 {
@@ -39,6 +42,11 @@ public:
 
 using std::map;
 
+/*************************************
+ *
+ *  Methods based on histgrams
+ *
+ *************************************/
 
 template <qtype QType>
 class exact_method : public reactive
@@ -52,7 +60,7 @@ protected:
 	column<double> series;
 public:
 	exact_method(query_type _Q) 
-	: Q(_Q), series(repr(Q).c_str(), string("%.0f").c_str())
+	: Q(_Q), series("HIST:"s+repr(Q), string("%.0f").c_str())
 	{
 		CTX.timeseries.add(series);
 	}
@@ -88,6 +96,14 @@ class twoway_join_exact_method : public exact_method<qtype::JOIN>
 public:
 	twoway_join_exact_method(stream_id s1, stream_id s2);
 };
+
+
+/*************************************
+ *
+ *  Methods based on histgrams
+ *
+ *************************************/
+
 
 
 

@@ -264,6 +264,15 @@ data_source* dds::wcup_ds(const string& fpath)
 }
 
 
+
+std::mt19937 uniform_generator::rng(1961969);
+
+
+
+
+
+
+
 void buffered_dataset::analyze(ds_metadata& meta) const
 {
 	for(auto& rec : *this) {
