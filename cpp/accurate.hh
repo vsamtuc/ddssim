@@ -11,6 +11,7 @@
 #include "method.hh"
 #include "mathlib.hh"
 #include "output.hh"
+#include "agms.hh"
 
 namespace dds {
 
@@ -100,9 +101,70 @@ public:
 
 /*************************************
  *
- *  Methods based on histgrams
+ *  Methods based on AGMS sketches
  *
  *************************************/
+
+
+
+
+template <qtype QType>
+class agms_method : public reactive
+{
+public:
+	typedef typed_query<QType> query_type;
+	typedef typename agms::index_type index_type;
+	typedef typename agms::depth_type depth_type;
+protected:
+	query_type Q;
+	double curest = 0.0;
+
+	column<double> series;
+
+public:
+	static string make_name(query_type q, 
+		depth_type D, index_type L) 
+	{
+		using std::ostringstream;
+		ostringstream s;
+		s << "AGMS<"<<D<<"x"<<L<<">:" << repr(q);
+		return s.str();
+	}
+
+
+	agms_method(query_type _Q, agms::depth_type _D, agms::index_type _L) 
+	: Q(_Q), series(make_name(_Q,_D,_L), "%.0f")
+	{
+		CTX.timeseries.add(series);
+	}
+
+	const query_type& query() const { return Q; }
+
+	inline double current_estimate() const { return curest; }
+};
+
+
+class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
+{
+	agms::sketch sk;
+
+	void process_record(const dds_record& rec);
+	void finish();
+public:
+	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
+};
+
+
+class twoway_join_agms_method : public agms_method<qtype::JOIN>
+{
+	agms::sketch sk1, sk2;
+
+	// callbacks
+	void process_record(const dds_record& rec);
+	void finish();
+public:
+	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
+};
 
 
 

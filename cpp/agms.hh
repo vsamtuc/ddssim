@@ -3,8 +3,31 @@
 
 #include <cassert>
 #include <algorithm>
+#include <valarray>
+
 
 #include "dds.hh"
+
+
+namespace agms {
+
+using std::valarray;
+using namespace std;
+
+
+/// The index type
+typedef size_t index_type;
+
+/// The depth type
+typedef unsigned int depth_type;
+
+using key_type = dds::key_type;
+
+
+typedef valarray<double> Vec;
+typedef valarray<size_t> Index;
+typedef valarray<bool> Mask;
+
 
 /**
 	Return the k-th order statistic from an array.
@@ -14,7 +37,6 @@ inline T order_select(int k, int n, T* ptr) {
         nth_element(ptr, ptr+k, ptr+n);
         return ptr[k];
 }
-
 
 
 /**
@@ -30,22 +52,13 @@ inline T order_select(int k, int n, T* ptr) {
 	\c fourwise to map a key \f$ x \f$ of type \c key_type to 
 	an index \f$ z \f$ of type \c index_type.
   */
-class agms_hash_family
+class hash_family
 {
 public:
-	/// The key type
-	typedef dds::key_type key_type;
-
-	/// The index type
-	typedef int32_t index_type;
-
-	/// The depth type
-	typedef int depth_type;
-
 	/// Construct a hash family of the given depth
-	agms_hash_family(depth_type D);
+	hash_family(depth_type D);
 
-	~agms_hash_family();
+	~hash_family();
 
 	/// Return the hash for a key
 	inline index_type hash(depth_type d, key_type x) const {
@@ -73,10 +86,76 @@ protected:
 	int64_t * F[6];
 
 public:
-	static agms_hash_family* get_cached(depth_type D);
+	static hash_family* get_cached(depth_type D);
 
 };
 
+
+/**
+	An AGMS projection defines a projection 
+	of a high-dimensional vector space on a
+	specific sketch space.
+
+	The epsilon error and the probability
+	of error of estimates for the given projection
+	are computed as per the Alon et al paper
+  */
+class projection
+{
+public:
+
+	hash_family* const hf;
+	const index_type L;
+
+	inline depth_type depth() const { return hf->depth(); }
+	inline index_type width() const { return L; }
+	inline size_t size() const { return depth()*width(); }
+
+	projection() : hf(0), L(0) {}
+
+	projection(hash_family* _hf, index_type _L)
+	: hf(_hf), L(_L)
+	{ }
+
+	projection(depth_type _D, index_type _L)
+	: hf(hash_family::get_cached(_D)), L(_L)
+	{ }
+
+
+	inline void update_index(key_type key, Index& idx) const
+	{
+		assert(idx.size()==depth());
+		size_t stride = 0;
+		for(size_t d=0; d<depth(); d++) {
+			idx[d] = stride + hf->hash(d, key) % L;
+			stride += width();
+		}
+	}
+
+	inline void update_mask(key_type key, Mask& mask) const 
+	{
+		assert(mask.size()==depth());
+		for(size_t d=0; d<depth(); d++) {
+			mask[d] = hf->fourwise(d, key);
+		}		
+	}
+
+	inline slice S(size_t d) const { return slice(d*width(), width(),1); }
+
+	inline bool operator==(const projection& p) const {
+		return hf==p.hf && width()==p.width();
+	}
+
+	inline bool operator!=(const projection& p) const {
+		return !(*this == p);
+	}
+
+
+	/** Sketch performance bounds according to Alon et al. */
+	inline double epsilon() const { return 4./sqrt(L); }
+	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
+
+};
 
 
 /**
@@ -92,73 +171,42 @@ public:
 
 	An agms sketch supports all basic vector operations.
  */
-class agms
+class sketch : public Vec
 {
 public:
-	/// The index type
-	typedef agms_hash_family::index_type index_type;
-
-	/// The key type
-	typedef agms_hash_family::key_type key_type;
-
-	/// The depth type
-	typedef agms_hash_family::depth_type depth_type;
 
 	/// Initialize to a null sketch
-	inline agms() : hf(0), L(0), S(0), counter(0) {}
+	inline sketch() {}
+
+	/// Initialize by a given projection
+	inline sketch(const projection& _proj)
+	: Vec(_proj.size()), proj(_proj) {}
 
 	/// Initialize to a zero sketch
-	inline agms(agms_hash_family* _hf, index_type _L) {
-		initialize(_hf, _L);
-		set_zero();
-	}
+	inline sketch(hash_family* _hf, index_type _L)
+	: sketch(projection(_hf,_L))
+	{  }
 
 	/// Initialize to a zero sketch
-	inline agms(depth_type _D, index_type _L) {
-		initialize(agms_hash_family::get_cached(_D), _L);
-		set_zero();
-	}
+	inline sketch(depth_type _D, index_type _L) 
+	: sketch(projection(_D,_L))
+	{ }
 
-	/// Move constructor
-	inline agms(agms&& sk) {
-		hf = sk.hf;
-		L = sk.L;
-		S = sk.S;
-		counter = sk.counter; 
-		sk.counter = 0;
-	}
+	using Vec::operator=;
 
-	/// Copy constructor
-	inline agms(const agms& sk) {
-		initialize(sk.hf, sk.L);
-		if(sk.initialized()) 
-			std::copy(sk.counter, sk.counter+S, counter);
-	}
+	/// The hash family
+	inline hash_family* hashf() const { return proj.hf; }
 
-	~agms();
-
-	/// The hash family for this sketch
-	inline agms_hash_family* hash_family() const { return hf; }
+	/// The projection
+	inline const projection& projectn() const { return proj; }
 
 	/// The dimension \f$L\f$ of the sketch.
-	inline index_type width() const { return L; }
+	inline index_type width() const { return proj.width(); }
 
 	/// The depth \f$D \f$ of the sketch.
-	inline depth_type depth() const { return hf->depth(); }
+	inline depth_type depth() const { return proj.depth(); }
 
-	/// The vector size of the sketch
-	inline size_t size() const { return S; }
-
-	/// Return true if the sketch is not initialized
-	inline bool initialized() const { return hf != 0; }
-
-	/// Return the beginning of the vector array
-	inline double* begin() { return counter; }
-
-	/// Return the end of the vector array
-	inline double* end() { return counter+S; }
-
-	/// Update the sketch
+	/// Update the sketch.
 	void update(key_type key, double freq = 1.0);
 
 	/// Insert a key into the sketch
@@ -168,90 +216,195 @@ public:
 	inline void erase(key_type key) { update(key, -1.0); }
 
 	/// Return true if this sketch is compatible to sk
-	inline bool compatible(const agms& sk) const {
-		return hf == sk.hf && L == sk.L;
+	inline bool compatible(const sketch& sk) const {
+		return proj == sk.proj;
 	}
-
-	/// Assignment
-	inline agms& operator=(const agms& sk) {
-		if(!initialized()) {
-			initialize(sk.hf, sk.L);
-		} else {
-			assert(compatible(sk));
-		}
-		std::copy(sk.counter, sk.counter+S, counter);
-		return *this;
-	}
-
-
-	/// Constant assignment
-	inline agms& operator=(double x) {
-		assert(initialized());
-		std::fill(counter, counter+S, x);
-		return *this;
-	}
-
-
-	/// Move assignment
-	inline agms& operator=(agms&& sk) {
-		using std::swap;
-		swap(hf, sk.hf);
-		swap(counter, sk.counter);
-		swap(L, sk.L);		
-		swap(S, sk.S);		
-		return *this;
-	}
-
-
-	inline agms& operator += (const agms& sk) {
-		assert(compatible(sk));
-		for(index_type i=0; i<S; i++) 
-			counter[i] += sk.counter[i];
-		return *this;
-	}
-
-
-	inline agms& operator *= (double a) {
-		assert(initialized());
-		for(index_type i=0; i<S; i++) 
-			counter[i] *= a;
-		return *this;
-	}
-
 
 	inline double norm_squared() const {
-		assert(initialized());
-		double s = 0.0;
-		for(index_type i=0; i<S; i++) {
-			double x = counter[i];
-			s += x*x;
-		}
-		return s;
+		return ((*this)*(*this)).sum();
 	}
 
 
 protected:
-	agms_hash_family* hf;
-	index_type L, S;
-	double* counter;
-
-private:
-	void initialize(agms_hash_family*, index_type);
-	void set_zero();
+	agms::projection proj;
 };
+
+
+/**
+	A container for a single sketch and 
+	data for for fast incremental updates.
+  */
+struct incremental_sketch
+{
+	sketch sk;  // the sketch
+
+	// temporaries, used to avoid parameter passing
+	Index idx;
+	Mask mask;
+	Vec delta;
+
+	inline const projection& proj() { return sk.projectn(); }
+	inline depth_type depth() { return proj().depth(); }
+	inline depth_type width() { return proj().width(); }
+
+	incremental_sketch(const projection& proj)
+	: 	sk(proj), 
+		idx(proj.depth()), 
+		mask(proj.depth()), 
+		delta(proj.depth())
+	{ 	}
+
+	void prepare_indices(key_type key)
+	{
+		proj().update_index(key, idx);
+		proj().update_mask(key, mask);		
+	}
+
+	void update_counters(double freq)
+	{
+		delta[mask] = freq;
+		delta[!mask] = -freq;
+		sk[idx] += delta;
+	}
+
+	void update(key_type key, double freq=1.0) 
+	{
+		prepare_indices(key);
+		update_counters(freq);
+	}
+
+	void insert(key_type key) { update(key,1.0); }
+	void erase(key_type key) { update(key,-1.0); }
+};
+
+
+/**
+	Can incrementally update the value of the 
+	squared norm.
+  */
+struct incremental_norm2
+{
+	incremental_sketch* isk;
+	Vec cur_norm2;
+
+	incremental_norm2(incremental_sketch* _isk)
+	: isk(_isk), cur_norm2(_isk->depth())
+	{
+		update_directly();  // initializing
+	}
+		
+	// init the cur norm2 vector
+	void update_directly()
+	{
+		const size_t D = isk->depth();
+		const size_t L = isk->width();
+		sketch& sk = isk->sk;
+
+		size_t off = 0;
+		for(size_t d=0; d < D; ++d) {
+			double sum = 0.0;
+			for(size_t i=0; i< L; i++) {
+				double x = sk[off++];
+				sum += x*x;
+			}
+			cur_norm2[d] = sum;
+		}
+	}
+
+	/* 
+		Note! the update has already been applied to
+		the sketch. I.e., we now have available
+		the value S' = S+delta.
+
+		The update is taken by updating 
+		cur_norm2  +=  2*delta*S' - delta^2
+	*/
+	void update_incremental()
+	{
+		Vec& delta = isk->delta;
+		Vec& sk = isk->sk;
+		Index& idx = isk->idx;
+		// unoptimized!!!
+		cur_norm2 += 2.*delta*sk[idx] - delta * delta;
+	}
+
+};
+
+
+/**
+	Can incrementally update the value of the 
+	inner product.
+  */
+struct incremental_prod
+{
+	incremental_sketch *isk1, *isk2;
+	Vec cur_prod;
+
+	incremental_prod(incremental_sketch* sk1, incremental_sketch* sk2)
+	: isk1(sk1), isk2(sk2), cur_prod(isk1->depth())
+	{ 
+		assert(isk1->sk.compatible(isk2->sk));
+		update_directly();
+	}
+
+	void update_directly() 
+	{
+		sketch &sk1 = isk1->sk;
+		sketch &sk2 = isk2->sk;
+		const size_t D = sk1.depth();
+		const size_t L = sk1.width();
+
+		size_t off = 0;
+		for(size_t d=0; d < D; ++d) {
+			double sum = 0.0;
+			for(size_t i=0; i< L; i++) {
+				double x = sk1[off]*sk2[off];
+				sum += x;
+				off++;
+			}
+			cur_prod[d] = sum;
+		}
+	}	
+
+	/*
+		Just  cur_prod += U.delta * V.sk[idx];
+	 */
+	void _update_incremental(incremental_sketch& U, incremental_sketch& V)
+	{
+		Vec& delta = U.delta;
+		Vec& sk = V.sk;
+		Index& idx = U.idx;
+		cur_prod += 1.*delta * sk[idx]; // BRAINDEAD!!!! without 1.*...
+	}
+
+	// call on lhs update
+	void update_incremental_1()
+	{
+		_update_incremental(*isk1, *isk2);
+	}
+
+	// call on rhs update
+	void update_incremental_2()
+	{
+		_update_incremental(*isk2, *isk1);
+	}
+};
+
 
 
 /**
 	Addition of two AGMS sketches.
   */
-inline agms operator+(const agms& s1, const agms& s2)
+inline sketch operator+(const sketch& s1, const sketch& s2)
 {
-	agms result = s1;
+	assert(s1.compatible(s2));
+	sketch result = s1;
 	result += s2;
 	return result;
 }
 
 
+}  // end namespace agms
 
 
 #endif

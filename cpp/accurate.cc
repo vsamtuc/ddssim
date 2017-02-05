@@ -144,3 +144,36 @@ void twoway_join_exact_method::finish()
 }
 
 
+//
+//////////////////////////////////////////////
+//
+
+
+selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
+	depth_type D, index_type L)
+: agms_method<qtype::SELFJOIN>(self_join(sid), D, L), sk(D,L)
+{ 
+	on(START_RECORD, [&](){ process_record(CTX.stream_record()); });
+	on(END_STREAM, [&](){  finish(); });
+}
+
+void selfjoin_agms_method::process_record(const dds_record& rec)
+{
+	
+
+	series = curest;
+}
+
+void selfjoin_agms_method::finish()
+{ 
+	cout << "agms:selfjoin(" << Q.param << ")=" << curest << endl;
+}
+
+
+
+
+
+//
+//////////////////////////////////////////////
+//
+

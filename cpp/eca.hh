@@ -11,6 +11,7 @@
 #include "dds.hh"
 #include "data_source.hh"
 #include "output.hh"
+#include "eca_event.hh"
 
 namespace dds {
 
@@ -36,57 +37,10 @@ namespace dds {
 	- pointers to config objects
 	- pointers to data output objects
 	- etc
+
+
+	New event types can be added in eca_event.hh
  */
-
-
-/**
-	The ECA event types
-  */
-class Event
-{
-	int id;
-public:
-	Event() : id(0) { }
-
-	// used to construct new event ids, usually a global constants.
-	constexpr Event(int _id): id(_id) { }
-
-	constexpr inline bool operator==(Event evt) const {
-		return id==evt.id;
-	}
-	constexpr inline bool operator<(Event evt) const {
-		return id<evt.id;
-	}
-
-	constexpr inline operator int () const { return id; }
-};
-
-}
-// Extend the hash<> template in namespace std
-namespace std {
-template<> struct hash<dds::Event>
-{
-    typedef dds::Event argument_type;
-    typedef std::size_t result_type;
-    result_type operator()(argument_type s) const
-    {
-    	return hash<int>()(s);
-    }
-};
-}
-
-// back to dds
-namespace dds {
-
-
-constexpr Event INIT(1);
-constexpr Event DONE(2);
-constexpr Event START_STREAM(3);
-constexpr Event END_STREAM(4);
-constexpr Event START_RECORD(5);
-constexpr Event END_RECORD(6);
-constexpr Event VALIDATE(7);
-constexpr Event REPORT(8);
 
 
 using event_queue_t = std::deque<Event>;

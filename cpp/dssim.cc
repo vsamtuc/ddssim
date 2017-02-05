@@ -47,7 +47,8 @@ void execute()
 	/* Create output files */
 
 	output_file* sto = CTX.open(stdout);
-	output_file* wcout = CTX.open("wc_tseries.dat",open_mode::truncate);
+	//output_file* wcout = 
+	CTX.open("wc_tseries.dat",open_mode::truncate);
 	
 	/* Bind files to outputs */
 
@@ -106,7 +107,8 @@ void execute_generated()
 	/* Create output files */
 
 	output_file* sto = CTX.open(stdout);
-	output_file* wcout = CTX.open("uni_tseries.dat",open_mode::truncate);
+	//output_file* wcout = 
+	CTX.open("uni_tseries.dat",open_mode::truncate);
 	
 	/* Bind files to outputs */
 

@@ -1,0 +1,8 @@
+*_tests.cc
+*_tests
+doc
+*.dat
+*.kst
+*~
+.depend
+dssim
