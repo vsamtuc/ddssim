@@ -12,7 +12,7 @@ DEBUG=0
 endif
 
 
-CXXFLAGS= -Wall -fPIC -I/usr/include/python3.5m
+CXXFLAGS= -Wall -fPIC -I/usr/include/python3.5m -std=gnu++17
 
 DEBUGFLAGS=  -g3 
 OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
@@ -58,7 +58,7 @@ dssim: dssim.o libdds.a
 	$(CXX) -o $@ $< -L. -ldds -lconfig++
 
 dds_module.o: dds_module.cc
-	$(CXX) -Wno-deprecated -fPIC -o $@ -c $<  -I/usr/include/python3.5m
+	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
 
 dds.so: dds_module.o libdds.a
 	$(CXX) -shared -o $@ $^ -lboost_python-py35

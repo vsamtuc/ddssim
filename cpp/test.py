@@ -2,7 +2,8 @@ import sys
 from dds import *
 
 def prepare_data():
-	wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
+	#wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
+	wcup = wcup_ds("/storage/tuclocal/vsam/src/datasets/wc_day44")
 
 	D = dataset()
 	D.load(wcup)

@@ -18,7 +18,8 @@ void execute()
 	/* Set up data stream */
 
 	//data_source* wcup = crawdad_ds("/home/vsam/src/datasets/wifi_crawdad_sorted");
-	data_source* wcup = wcup_ds("/home/vsam/src/datasets/wc_day44");
+	//data_source* wcup = wcup_ds("/home/vsam/src/datasets/wc_day44");
+	data_source* wcup = wcup_ds("/storage/tuclocal/vsam/src/datasets/wc_day44");
 
 	dataset D;
 	D.load(wcup);
