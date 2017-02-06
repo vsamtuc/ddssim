@@ -201,6 +201,7 @@ public:
 
 	inline dds::source_id site() const { return server; }
 
+	//inline dds::key_type value() const { return size; }
 	inline dds::key_type value() const { return clientID; }
 
 	inline dds::timestamp tstamp() const { return timestamp; }

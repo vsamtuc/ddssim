@@ -1,4 +1,6 @@
 
+#include <boost/functional/hash.hpp>
+
 #include "method.hh"
 #include "mathlib.hh"
 
@@ -90,5 +92,18 @@ void dataset::create() {
 
 	CTX.data_feed(src);
 	src=0;
+}
+
+
+size_t dds::__hash_hashes(size_t* ptr, size_t n)
+{
+	using boost::hash_value;
+	using boost::hash_combine;
+
+	size_t seed = 0;
+	while(n--) {
+		hash_combine(seed, *ptr++);
+	}
+	return seed;
 }
 

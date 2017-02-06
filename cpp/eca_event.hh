@@ -49,6 +49,10 @@ constexpr Event REPORT(8);
 */
 
 
+// from accurate
+constexpr Event STREAM_SKETCH_UPDATED(100);
+
+
 }
 
 

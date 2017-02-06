@@ -61,7 +61,7 @@ protected:
 	column<double> series;
 public:
 	exact_method(query_type _Q) 
-	: Q(_Q), series("HIST:"s+repr(Q), string("%.0f").c_str())
+	: Q(_Q), series("hist_"s+repr(Q), string("%.0f").c_str())
 	{
 		CTX.timeseries.add(series);
 	}
@@ -105,9 +105,37 @@ public:
  *
  *************************************/
 
+/*
+	This holds and updates incrementally 
+	an AGMS sketch on a specific
+	stream.
+*/
+struct agms_sketch_updater : reactive
+{
+	stream_id sid;
+	agms::incremental_sketch isk;
+
+	agms_sketch_updater(stream_id _sid, agms::projection proj)
+	: sid(_sid), isk(proj)
+	{
+		ON(START_RECORD, [&]() {
+			const dds_record& rec = CTX.stream_record();
+			if(rec.sid==sid) {
+				isk.update(rec.key, (rec.sop==INSERT)?1.0:-1.0);
+				emit(STREAM_SKETCH_UPDATED);
+			}
+		});
+	}
+};
+
+// Factory
+extern factory<agms_sketch_updater, stream_id, agms::projection> 
+	agms_sketch_updater_factory;
 
 
-
+/*
+	Base for AGMS query estimators
+ */
 template <qtype QType>
 class agms_method : public reactive
 {
@@ -127,7 +155,7 @@ public:
 	{
 		using std::ostringstream;
 		ostringstream s;
-		s << "AGMS<"<<D<<"x"<<L<<">:" << repr(q);
+		s << "agms_" << repr(q);
 		return s.str();
 	}
 
@@ -144,20 +172,26 @@ public:
 };
 
 
+/*
+	Self-join query estimator. It uses an incremental_updated
+ */
 class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 {
-	agms::sketch sk;
+	agms::incremental_norm2 norm2_estimator;
 
-	void process_record(const dds_record& rec);
+	void process_record();
 	void finish();
 public:
 	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
 };
 
 
+/*
+	Join query estimator. It uses 2 incremental_updater objects.
+ */
 class twoway_join_agms_method : public agms_method<qtype::JOIN>
 {
-	agms::sketch sk1, sk2;
+	agms::incremental_prod prod_estimator;
 
 	// callbacks
 	void process_record(const dds_record& rec);
