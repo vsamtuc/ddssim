@@ -229,6 +229,8 @@ namespace {
 template <typename T, typename ...Args >
 struct factory
 {
+	static_assert( std::is_same<decltype(T((Args())...)),T>::value );
+
 	typedef std::tuple<Args...> index_type;
 
 	struct hasher {

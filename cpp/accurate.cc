@@ -151,6 +151,7 @@ void twoway_join_exact_method::finish()
 factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
+
 selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
 	depth_type D, index_type L)
 : agms_method<qtype::SELFJOIN>(self_join(sid), D, L), 
