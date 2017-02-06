@@ -20,7 +20,7 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	D.set_max_length(100000);
+	//D.set_max_length(100000);
 	D.hash_sources(4);
 	D.set_time_window(3600);
 	D.create();
@@ -148,8 +148,8 @@ int main(int argc, char** argv)
 		cfg.readFile(argv[1]);
 	}
 
-	//execute();
-	execute_generated();
+	execute();
+	//execute_generated();
 	return 0;
 }
 

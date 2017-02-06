@@ -186,7 +186,7 @@ module Method
 
 
 //	The StreamBroadcaster is just a copying module, whose job is to
-//	multiplex k*S local streams  M*k*S outgoing connections. This is done
+//	multiplex k*S local streams to M*k*S outgoing connections. This is done
 //	in order to feed the k*S incoming connections of each of M methods.
 
 simple StreamBroadcaster

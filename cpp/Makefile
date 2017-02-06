@@ -8,7 +8,7 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=1
+DEBUG=0
 endif
 
 
