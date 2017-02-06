@@ -61,13 +61,13 @@ public:
 	~hash_family();
 
 	/// Return the hash for a key
-	inline index_type hash(depth_type d, key_type x) const {
+	inline long long hash(depth_type d, key_type x) const {
 		assert(d<D);
 		return hash31(F[0][d], F[1][d], x);
 	}
 
 	/// Return a 4-wise independent bit
-	inline index_type fourwise(depth_type d, key_type x) const {
+	inline long long fourwise(depth_type d, key_type x) const {
 		return hash31(hash31(hash31(x,F[2][d],F[3][d]), x, F[4][d]),x,F[5][d]);
 	}
 
@@ -76,7 +76,7 @@ public:
 
 protected:
 
-	static inline int32_t hash31(int64_t a, int64_t b, int64_t x) {
+	static inline long long hash31(int64_t a, int64_t b, int64_t x) {
 		// use 64-bit arithmetic
 		int64_t result = (a * x)+b;
 		return ((result>>31)+result) & 2147483647ll;
@@ -328,6 +328,14 @@ struct incremental_norm2
 		cur_norm2 += 2.*delta*sk[idx] - delta * delta;
 	}
 
+	double norm2_estimate() const {
+		const depth_type D = isk->depth();
+		assert(cur_norm2.size()==D);
+		double est[D];
+		copy(begin(cur_norm2), end(cur_norm2), est);
+		return order_select(D/2, D, est);
+	}
+
 };
 
 
@@ -403,8 +411,24 @@ inline sketch operator+(const sketch& s1, const sketch& s2)
 	return result;
 }
 
-
 }  // end namespace agms
+
+
+/*
+	Make agms::projection hashable
+ */
+
+namespace std
+{
+	using namespace agms;
+    template <>
+    struct hash<projection>
+    {
+        size_t operator()( const projection& p ) const;
+    };
+}
+
+
 
 
 #endif

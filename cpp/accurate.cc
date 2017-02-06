@@ -148,19 +148,28 @@ void twoway_join_exact_method::finish()
 //////////////////////////////////////////////
 //
 
+factory<agms_sketch_updater, stream_id, agms::projection>
+	dds::agms_sketch_updater_factory ;
 
 selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
 	depth_type D, index_type L)
-: agms_method<qtype::SELFJOIN>(self_join(sid), D, L), sk(D,L)
+: agms_method<qtype::SELFJOIN>(self_join(sid), D, L), 
+	norm2_estimator(
+		& agms_sketch_updater_factory(sid, 
+			agms::projection(D,L))
+			->isk
+		)
 { 
-	on(START_RECORD, [&](){ process_record(CTX.stream_record()); });
+	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
 	on(END_STREAM, [&](){  finish(); });
 }
 
-void selfjoin_agms_method::process_record(const dds_record& rec)
+void selfjoin_agms_method::process_record()
 {
-	
-
+	if(CTX.stream_record().sid==Q.param) {
+		norm2_estimator.update_incremental();
+		curest = norm2_estimator.norm2_estimate();
+	}
 	series = curest;
 }
 
@@ -168,9 +177,6 @@ void selfjoin_agms_method::finish()
 { 
 	cout << "agms:selfjoin(" << Q.param << ")=" << curest << endl;
 }
-
-
-
 
 
 //

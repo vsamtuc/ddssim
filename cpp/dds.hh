@@ -262,6 +262,7 @@ inline auto join(stream_id s1, stream_id s2) {
 
 
 std::ostream& operator<<(std::ostream& s, const basic_query& q);
+std::ostream& operator<<(std::ostream& s, qtype qt);
 
 inline std::string repr(const basic_query& q)
 {

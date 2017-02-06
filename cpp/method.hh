@@ -5,6 +5,7 @@
 #include <map>
 #include <deque>
 #include <list>
+#include <utility>
 
 #include <boost/optional.hpp>
 
@@ -184,6 +185,89 @@ struct progress_reporter : reactive, progress_bar
 		on(END_STREAM, [&](){ finish(); });
 	}
 };
+
+
+/****************************************
+
+	Factories for on-demand components
+
+ ****************************************/
+
+size_t __hash_hashes(size_t* from, size_t n);
+
+namespace {  
+	// use an anonymous namespace for some 
+	// template metaprogramming
+
+	// a sequence, e.g.,  seq<0,1,2,2,3>  used to access tuple elements
+	// in an unpacking
+	template<size_t ...> struct seq { };
+
+	// A compact way to generate a sequence
+	// Example:  the inheritance for genseq<3> is
+	// genseq<3> : genseq<2,2> : genseq<1, 1, 2> : genseq<0, 0, 1, 2>
+	// and genseq<0, 0, 1, 2> defines the type 'type'
+	template<size_t N, size_t ...S> struct genseq : genseq<N-1, N-1, S...> { };
+	template<size_t ...S>  struct genseq<0, S...> {
+	  typedef seq<S...> type;
+	};
+
+	// hash for a tuple based on hashes of its elements
+	template <typename ...Args, size_t ...S>
+	inline size_t __hash_tuple(const std::tuple<Args...>& tuple, seq<S...> _s)
+	{
+		// unpack hashes of elements in an array (on the stack)
+		std::array<size_t, sizeof...(Args)> hashes = {
+			(std::hash<Args>()(std::get<S>(tuple)))...
+		};
+		// return the hash of hashes
+		return __hash_hashes(&hashes[0], sizeof...(Args));		
+	}
+
+}
+
+template <typename T, typename ...Args >
+struct factory
+{
+	typedef std::tuple<Args...> index_type;
+
+	struct hasher {
+		typedef typename genseq<sizeof...(Args)>::type seq_type;
+		inline size_t operator()(const index_type& tuple) const {
+			return __hash_tuple(tuple, seq_type());
+		}
+	};
+
+	std::unordered_map<index_type, T*, hasher > registry;
+
+	inline T* operator()(Args... args) {
+		index_type key(args...);
+		auto f = registry.find(key);
+		if(f==registry.end()) {
+			T* ret = new T(args...);
+			registry[key] = ret;
+			return ret;
+		}
+		else
+			return f->second;
+	}
+};
+
+
+template <typename T>
+struct factory<T>
+{
+	typedef std::tuple<> index_type;
+	T* registry;
+
+	inline T* operator()() {
+		if(!registry)
+			registry = new T();
+		return registry;
+	}
+	factory() : registry(nullptr) {}
+};
+
 
 
 /**
