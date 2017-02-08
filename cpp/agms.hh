@@ -3,15 +3,12 @@
 
 #include <cassert>
 #include <algorithm>
-#include <valarray>
-
 
 #include "dds.hh"
-
+#include "mathlib.hh"
 
 namespace agms {
 
-using std::valarray;
 using namespace std;
 
 
@@ -23,20 +20,12 @@ typedef unsigned int depth_type;
 
 using key_type = dds::key_type;
 
-
+using std::valarray;
 typedef valarray<double> Vec;
 typedef valarray<size_t> Index;
 typedef valarray<bool> Mask;
 
 
-/**
-	Return the k-th order statistic from an array.
-  */
-template <typename T>
-inline T order_select(int k, int n, T* ptr) {
-        nth_element(ptr, ptr+k, ptr+n);
-        return ptr[k];
-}
 
 
 /**
@@ -61,26 +50,15 @@ public:
 	~hash_family();
 
 	/// Return the hash for a key
-	inline long long hash(depth_type d, key_type x) const {
-		assert(d<D);
-		return hash31(F[0][d], F[1][d], x);
-	}
+	long long hash(depth_type d, key_type x) const;
 
-	/// Return a 4-wise independent bit
-	inline long long fourwise(depth_type d, key_type x) const {
-		return hash31(hash31(hash31(x,F[2][d],F[3][d]), x, F[4][d]),x,F[5][d]);
-	}
+	/// Return a 4-wise independent 
+	bool fourwise(depth_type d, key_type x) const;
 
 	/// Depth of the hash family
 	inline depth_type depth() const { return D; }
 
 protected:
-
-	static inline long long hash31(int64_t a, int64_t b, int64_t x) {
-		// use 64-bit arithmetic
-		int64_t result = (a * x)+b;
-		return ((result>>31)+result) & 2147483647ll;
-	}
 
 	depth_type D;
 	int64_t * F[6];
@@ -102,45 +80,31 @@ public:
   */
 class projection
 {
+	hash_family* hf;
+	index_type L;
+
 public:
 
-	hash_family* const hf;
-	const index_type L;
-
+	inline hash_family* hashf() const { return hf; }
 	inline depth_type depth() const { return hf->depth(); }
 	inline index_type width() const { return L; }
 	inline size_t size() const { return depth()*width(); }
 
-	projection() : hf(0), L(0) {}
+	inline projection() : hf(0), L(0) {}
 
-	projection(hash_family* _hf, index_type _L)
+	inline projection(hash_family* _hf, index_type _L)
 	: hf(_hf), L(_L)
 	{ }
 
-	projection(depth_type _D, index_type _L)
+	inline projection(depth_type _D, index_type _L)
 	: hf(hash_family::get_cached(_D)), L(_L)
 	{ }
 
 
-	inline void update_index(key_type key, Index& idx) const
-	{
-		assert(idx.size()==depth());
-		size_t stride = 0;
-		for(size_t d=0; d<depth(); d++) {
-			idx[d] = stride + hf->hash(d, key) % L;
-			stride += width();
-		}
-	}
+	void update_index(key_type key, Index& idx) const;
 
-	inline void update_mask(key_type key, Mask& mask) const 
-	{
-		assert(mask.size()==depth());
-		for(size_t d=0; d<depth(); d++) {
-			mask[d] = hf->fourwise(d, key);
-		}		
-	}
+	void update_mask(key_type key, Mask& mask) const; 
 
-	inline slice S(size_t d) const { return slice(d*width(), width(),1); }
 
 	inline bool operator==(const projection& p) const {
 		return hf==p.hf && width()==p.width();
@@ -169,36 +133,64 @@ public:
 	matrix, or alternatively, as a (composite) vector of dimension
 	\f$D\cdot L\f$.
 
+	An AGMS row will be a vector of size L. 
+
 	An agms sketch supports all basic vector operations.
  */
 class sketch : public Vec
 {
 public:
+	/// the projection of the sketch
+	agms::projection proj;
 
 	/// Initialize to a null sketch
 	inline sketch() {}
 
 	/// Initialize by a given projection
 	inline sketch(const projection& _proj)
-	: Vec(_proj.size()), proj(_proj) {}
+	: Vec(0.0,_proj.size()), proj(_proj) 
+	{ }
 
 	/// Initialize to a zero sketch
 	inline sketch(hash_family* _hf, index_type _L)
 	: sketch(projection(_hf,_L))
-	{  }
+	{ }
 
 	/// Initialize to a zero sketch
 	inline sketch(depth_type _D, index_type _L) 
 	: sketch(projection(_D,_L))
 	{ }
 
-	using Vec::operator=;
+	sketch(const sketch&) = default;
+	sketch(sketch&&) = default;
+
+	//using Vec::operator=;
+	inline sketch& operator=(const sketch& sk) = default;
+	inline sketch& operator=(sketch&& sk) = default;
+	inline sketch& operator=(const Vec& v) {
+		if(v.size()!=size()) throw length_error("wrong vector size for sketch");
+		this->Vec::operator=(v);
+		return *this;
+	}
+	inline sketch& operator=(double v) { 
+		this->Vec::operator=(v); return *this; 
+	}
+	inline sketch& operator=(const std::slice_array<double>& other) {
+		this->Vec::operator=(other); return *this;
+	}
+	inline sketch& operator=(const std::gslice_array<double>& other) {
+		this->Vec::operator=(other); return *this;
+	}
+	inline sketch& operator=(const std::mask_array<double>& other) {
+		this->Vec::operator=(other); return *this;
+	}
+	inline sketch& operator=(const std::indirect_array<double>& other) {
+		this->Vec::operator=(other); return *this;
+	}
+
 
 	/// The hash family
-	inline hash_family* hashf() const { return proj.hf; }
-
-	/// The projection
-	inline const projection& projectn() const { return proj; }
+	inline hash_family* hashf() const { return proj.hashf(); }
 
 	/// The dimension \f$L\f$ of the sketch.
 	inline index_type width() const { return proj.width(); }
@@ -220,14 +212,88 @@ public:
 		return proj == sk.proj;
 	}
 
-	inline double norm_squared() const {
-		return ((*this)*(*this)).sum();
+	inline auto row_begin(size_t row) const {
+		return begin(*this)+row*width();
 	}
 
+	inline auto row_end(size_t row) const {
+		return begin(*this)+(row+1)*width();
+	}
 
-protected:
-	agms::projection proj;
+	inline double norm2_squared() const {
+		return dds::dot(*this, *this);
+	}
+
 };
+
+
+
+/**
+	Return a vector of the dot products of 
+	parallel rows of two sketches.
+  */
+
+Vec dot_estvec(const sketch& s1, const sketch& s2);
+
+
+/**
+	A shorthand for dot_estvec(s,s)
+  */
+inline Vec dot_estvec(const sketch& s) { 
+	return dot_estvec(s,s); 
+}
+
+
+/**
+	Return the (robust) estimate of the inner product
+	by two agms sketches
+  */
+inline double dot_est(const sketch& s1, const sketch& s2)
+{
+	return dds::median(dot_estvec(s1,s2));
+}
+
+
+// Vector space operations
+
+/**
+	Addition of two AGMS sketches.
+  */
+inline sketch operator+(const sketch& s1, const sketch& s2)
+{
+	assert(s1.compatible(s2));
+	sketch result = s1;
+	result += s2;
+	return result;
+}
+inline sketch operator-(const sketch& s1, const sketch& s2)
+{
+	assert(s1.compatible(s2));
+	sketch result = s1;
+	result -= s2;
+	return result;
+}
+inline sketch operator*(double a, const sketch& s)
+{
+	sketch result = s;
+	result *= a;
+	return result;
+}
+inline sketch operator*(const sketch& s, double a)
+{
+	sketch result = s;
+	result *= a;
+	return result;
+}
+inline sketch operator/(const sketch& s, double a)
+{
+	sketch result = s;
+	result /= a;
+	return result;
+}
+
+
+
 
 
 /**
@@ -243,31 +309,16 @@ struct incremental_sketch
 	Mask mask;
 	Vec delta;
 
-	inline const projection& proj() { return sk.projectn(); }
+	inline const projection& proj() { return sk.proj; }
 	inline depth_type depth() { return proj().depth(); }
 	inline depth_type width() { return proj().width(); }
 
-	incremental_sketch(const projection& proj)
-	: 	sk(proj), 
-		idx(proj.depth()), 
-		mask(proj.depth()), 
-		delta(proj.depth())
-	{ 	}
+	incremental_sketch(const projection& proj);
 
-	void prepare_indices(key_type key)
-	{
-		proj().update_index(key, idx);
-		proj().update_mask(key, mask);		
-	}
+	void prepare_indices(key_type key);
+	void update_counters(double freq);
 
-	void update_counters(double freq)
-	{
-		delta[mask] = freq;
-		delta[!mask] = -freq;
-		sk[idx] += delta;
-	}
-
-	void update(key_type key, double freq=1.0) 
+	void update(key_type key, double freq=1.0)
 	{
 		prepare_indices(key);
 		update_counters(freq);
@@ -278,37 +329,44 @@ struct incremental_sketch
 };
 
 
+
+
+/**
+	Base class for incremental_norm2 and incremental_prod
+  */
+struct incremental_est
+{
+	Vec row_est;
+
+	incremental_est() {}
+	incremental_est(size_t D) : row_est(D) {}
+	incremental_est(const Vec& _v) : row_est(_v) {}
+	incremental_est(Vec&& _v) : row_est(_v) {}
+
+	inline double median_estimate() const {
+		const depth_type D = row_est.size();
+		return dds::order_select(D/2, row_est);
+	}
+
+};
+
+
 /**
 	Can incrementally update the value of the 
 	squared norm.
   */
-struct incremental_norm2
+struct incremental_norm2 : incremental_est
 {
 	incremental_sketch* isk;
-	Vec cur_norm2;
 
 	incremental_norm2(incremental_sketch* _isk)
-	: isk(_isk), cur_norm2(_isk->depth())
-	{
-		update_directly();  // initializing
-	}
+	: incremental_est(dot_estvec(_isk->sk)), isk(_isk)
+	{ }
 		
 	// init the cur norm2 vector
 	void update_directly()
 	{
-		const size_t D = isk->depth();
-		const size_t L = isk->width();
-		sketch& sk = isk->sk;
-
-		size_t off = 0;
-		for(size_t d=0; d < D; ++d) {
-			double sum = 0.0;
-			for(size_t i=0; i< L; i++) {
-				double x = sk[off++];
-				sum += x*x;
-			}
-			cur_norm2[d] = sum;
-		}
+		row_est = dot_estvec(isk->sk);
 	}
 
 	/* 
@@ -325,15 +383,7 @@ struct incremental_norm2
 		Vec& sk = isk->sk;
 		Index& idx = isk->idx;
 		// unoptimized!!!
-		cur_norm2 += 2.*delta*sk[idx] - delta * delta;
-	}
-
-	double norm2_estimate() const {
-		const depth_type D = isk->depth();
-		assert(cur_norm2.size()==D);
-		double est[D];
-		copy(begin(cur_norm2), end(cur_norm2), est);
-		return order_select(D/2, D, est);
+		row_est += 2.*delta*sk[idx] - delta * delta;
 	}
 
 };
@@ -343,13 +393,12 @@ struct incremental_norm2
 	Can incrementally update the value of the 
 	inner product.
   */
-struct incremental_prod
+struct incremental_prod : incremental_est
 {
 	incremental_sketch *isk1, *isk2;
-	Vec cur_prod;
 
 	incremental_prod(incremental_sketch* sk1, incremental_sketch* sk2)
-	: isk1(sk1), isk2(sk2), cur_prod(isk1->depth())
+	: isk1(sk1), isk2(sk2)
 	{ 
 		assert(isk1->sk.compatible(isk2->sk));
 		update_directly();
@@ -357,22 +406,8 @@ struct incremental_prod
 
 	void update_directly() 
 	{
-		sketch &sk1 = isk1->sk;
-		sketch &sk2 = isk2->sk;
-		const size_t D = sk1.depth();
-		const size_t L = sk1.width();
-
-		size_t off = 0;
-		for(size_t d=0; d < D; ++d) {
-			double sum = 0.0;
-			for(size_t i=0; i< L; i++) {
-				double x = sk1[off]*sk2[off];
-				sum += x;
-				off++;
-			}
-			cur_prod[d] = sum;
-		}
-	}	
+		row_est = dot_estvec(isk1->sk, isk2->sk);
+	}
 
 	/*
 		Just  cur_prod += U.delta * V.sk[idx];
@@ -382,7 +417,7 @@ struct incremental_prod
 		Vec& delta = U.delta;
 		Vec& sk = V.sk;
 		Index& idx = U.idx;
-		cur_prod += 1.*delta * sk[idx]; // BRAINDEAD!!!! without 1.*...
+		row_est += 1.*delta * sk[idx]; // BRAINDEAD!!!! without 1.*...
 	}
 
 	// call on lhs update
@@ -396,22 +431,16 @@ struct incremental_prod
 	{
 		_update_incremental(*isk2, *isk1);
 	}
+
+
 };
 
 
 
-/**
-	Addition of two AGMS sketches.
-  */
-inline sketch operator+(const sketch& s1, const sketch& s2)
-{
-	assert(s1.compatible(s2));
-	sketch result = s1;
-	result += s2;
-	return result;
-}
-
 }  // end namespace agms
+
+
+
 
 
 /*

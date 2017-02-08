@@ -8,7 +8,7 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=0
+DEBUG=1
 endif
 
 
@@ -27,7 +27,7 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= output.cc eca.cc agms.cc data_source.cc method.cc \
+DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc dsarch.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \

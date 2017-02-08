@@ -11,6 +11,7 @@ using std::end;
 
 using namespace agms;
 
+
 class AGMSTestSuite : public CxxTest::TestSuite
 {
 public:
@@ -72,7 +73,7 @@ public:
     	TS_ASSERT(all_of(begin(sk3), end(sk3), 
     		[](double x) { return x==0.0; } ));
 
-    	TS_ASSERT_EQUALS(sk3.projectn().hf, 
+    	TS_ASSERT_EQUALS(sk3.proj.hashf(), 
     			hash_family::get_cached(5));
 
     	sketch sk4 = sketch(7, 100);
@@ -87,18 +88,33 @@ public:
     }
 
 
+    void test_assign()
+    {
+    	sketch sk(2,2);
+    	sk = sketch(1,2);
+    	TS_ASSERT_EQUALS(sk.depth(),1);
+    	TS_ASSERT_EQUALS(sk.width(),2);
+    	TS_ASSERT_EQUALS(sk.size(), 2);
+
+    	TS_ASSERT_THROWS( (sk=Vec{1,2,3}) , std::length_error);
+    	TS_ASSERT_THROWS_NOTHING( (sk=Vec{1,2}) );
+
+    }
+
+
 	void testUpdate() {
 		sketch sk(5, 500);
 
 		for(key_type k = 10; k< 1000; k+=17) 
 			sk.insert(k);
-		TS_ASSERT_DIFFERS(sk.norm_squared(), 0.0);
+		TS_ASSERT_DIFFERS(sk.norm2_squared(), 0.0);
 
 		for(key_type k = 10; k< 1000; k+=17) 
 			sk.erase(k);
-		TS_ASSERT_EQUALS(sk.norm_squared(), 0.0);
+		TS_ASSERT_EQUALS(sk.norm2_squared(), 0.0);
 		TS_ASSERT(sk.size()==2500);
 	}
+
 
 
 	void testAssignConst() {
@@ -115,10 +131,10 @@ public:
 		sk = 0;
 		for(auto x = begin(sk); x!=end(sk); x++ )
 			TS_ASSERT_EQUALS(*x, 0.0);
-		TS_ASSERT_EQUALS(sk.norm_squared(), 0.0);
+		TS_ASSERT_EQUALS(sk.norm2_squared(), 0.0);
 	}
 
-	void testAdd() {
+	void test_vecops() {
 		sketch sk1(5, 500);
 		sketch sk2 = sk1;
 
@@ -126,10 +142,23 @@ public:
 		sk2 = 12;
 
 		sketch sk = sk1+sk2;
-
+		TS_ASSERT_EQUALS(sk.width(), 500);
+		TS_ASSERT_EQUALS(sk.depth(), 5);
 		for(auto x = begin(sk); x!=end(sk); x++ )
 			TS_ASSERT_EQUALS(*x, 15.0);
+
+		sketch sk3 = 3.0*sk1;
+		TS_ASSERT_EQUALS(sk3.proj, sk1.proj);
+		TS_ASSERT( (sk3==9.0).min() );
+
+		sketch sk4 = 4.0*sk1;
+		TS_ASSERT_EQUALS(sk4.proj, sk1.proj);
+		TS_ASSERT( ((sk4-sk3)==3.0).min() );
+
+		TS_ASSERT( ((sk4/2.0)==6.0).min() );
+		TS_ASSERT( (sk4/2.0).proj == sk1.proj );
 	}
+
 
 	void test_incremental()
 	{
@@ -161,30 +190,30 @@ public:
 		}
 
 		// Check against precise
-		Vec incr[2] = { SJ[0].cur_norm2, SJ[1].cur_norm2  };
+		Vec incr[2] = { SJ[0].row_est, SJ[1].row_est  };
 		SJ[0].update_directly();
 		SJ[1].update_directly();
 
 		for(size_t k=0; k<2; k++) {
-			Vec dif = SJ[k].cur_norm2 - incr[k];
-			dif *= dif;
+			Vec dif = SJ[k].row_est - incr[k];
 
-			double err_num = abs(dif.sum());
-			double err_denom = SJ[k].cur_norm2.sum();
+			dif *= dif;
+			double err_num = sqrt(dif.sum());
+			double err_denom = sqrt(pow(SJ[k].row_est,2.0).sum());
 			double err = err_num/err_denom;	
 			TS_ASSERT( err <= 1E-9 );
 		}
 
-		Vec incrP = P.cur_prod;
+		Vec incrP = P.row_est;
 		P.update_directly();
-		Vec dif = P.cur_prod - incrP;
-		dif = dif*dif;
-
-		double err_num = abs(dif.sum());
-		double err_denom = P.cur_prod.sum();
+		Vec dif = P.row_est - incrP;
+		dif *= dif;
+		double err_num = dif.sum();
+		double err_denom = sqrt(pow(P.row_est,2.0).sum());
 		double err = err_num/err_denom;
 		TS_ASSERT( err <= 1E-9 );
 
 	}
+
 
 };

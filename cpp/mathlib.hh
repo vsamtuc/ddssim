@@ -6,6 +6,8 @@
   */
 
 #include <map>
+#include <numeric>
+#include <valarray>
 #include <iostream>
 
 #include <boost/numeric/ublas/vector.hpp>
@@ -21,6 +23,74 @@
 
 
 namespace dds {
+
+/*
+	Vector functions based on valarray
+ */
+
+using std::valarray;
+
+/** A real vector */
+typedef valarray<double> Vec;
+
+/** A vector of size_t, useful as an
+    index to Vec
+  */
+typedef valarray<size_t> Index;
+
+/** A vector of bool, useful as an
+    index to Vec
+  */
+typedef valarray<bool> Mask;
+
+
+/**
+	Return the dot product of two Vec objects.
+  */
+template <typename T>
+inline auto dot(const valarray<T>& a, const valarray<T>& b)
+{
+	return std::inner_product(begin(a),end(a),begin(b), (T)0);
+}
+
+
+/**
+	Return the k-th order statistic from an array.
+  */
+template <typename T>
+inline T order_select(int k, int n, T* ptr) {
+        std::nth_element(ptr, ptr+k, ptr+n);
+        return ptr[k];
+}
+
+/**
+	Return the k-th order statistic of a Vec.
+  */
+double order_select(size_t k, Vec v);
+
+
+/**
+   Return the median of a Vec.
+  */
+double median(Vec v);
+
+// Norms 
+double norm_L1(const Vec& v);
+double norm_L2(const Vec& v);
+double norm_Linf(const Vec& v);
+
+
+/**
+	Return the relative error between an exact
+	value and an estimate
+  */
+inline double relative_error(double exact, double estimate)
+{
+	return (exact==0.0)?
+	 	(estimate==0.0 ? 0.0 : estimate)
+	 	: fabs((exact-estimate)/exact);
+}
+
 
 /**
 	A distinct histogram is used to hold a frequency
@@ -93,19 +163,17 @@ public:
 				tag::rolling_mean,tag::rolling_variance> 
 			>;
 	error_tally tally;
-	estimate_error_observer(size_t window) 
-		: tally(tag::rolling_window::window_size = window)
-		{}
 
-	void observe(double est, double exact) {
-		using namespace std;
-		double err = (exact==0.0)?0.0: abs((est-exact)/exact);
-		//cout << "err=" << err << endl;
-		tally(err);
-	}
+	/**
+		Construct an observer with the given parameter for
+		rolling window
+	  */
+	estimate_error_observer(size_t window);
 
-	//void report(std::osteam&);
-
+	/**
+		Add an error observation
+	  */
+	void observe(double exact, double est);
 };
 
 

@@ -153,12 +153,12 @@ factory<agms_sketch_updater, stream_id, agms::projection>
 
 
 selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
-	depth_type D, index_type L)
-: agms_method<qtype::SELFJOIN>(self_join(sid), D, L), 
-	norm2_estimator(
-		& agms_sketch_updater_factory(sid, 
-			agms::projection(D,L))
-			->isk
+	depth_type D, index_type L
+	) : agms_method<qtype::SELFJOIN>(self_join(sid), D, L), 
+		norm2_estimator(
+			& agms_sketch_updater_factory(sid, 
+				agms::projection(D,L))
+				->isk
 		)
 { 
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
@@ -169,18 +169,52 @@ void selfjoin_agms_method::process_record()
 {
 	if(CTX.stream_record().sid==Q.param) {
 		norm2_estimator.update_incremental();
-		curest = norm2_estimator.norm2_estimate();
+		curest = norm2_estimator.median_estimate();
 	}
 	series = curest;
 }
 
 void selfjoin_agms_method::finish()
 { 
-	cout << "agms:selfjoin(" << Q.param << ")=" << curest << endl;
+	cout << Q << "=" << curest << endl;
 }
 
 
 //
 //////////////////////////////////////////////
 //
+
+twoway_join_agms_method::twoway_join_agms_method(
+	stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L
+	) : agms_method<qtype::JOIN>(join(s1,s2), D, L),
+		prod_estimator(
+			& agms_sketch_updater_factory(s1, 
+				agms::projection(D,L))
+				->isk
+			,
+			& agms_sketch_updater_factory(s2, 
+				agms::projection(D,L))
+				->isk
+		)
+	{
+		on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
+		on(END_STREAM, [&](){  finish(); });
+	}
+
+void twoway_join_agms_method::process_record()
+{
+	if(CTX.stream_record().sid==Q.param.first) {
+		prod_estimator.update_incremental_1();
+		curest = prod_estimator.median_estimate();
+	} else if(CTX.stream_record().sid==Q.param.second) {
+		prod_estimator.update_incremental_2();
+		curest = prod_estimator.median_estimate();		
+	}
+	series = curest;
+}
+
+void twoway_join_agms_method::finish()
+{ 
+	cout << Q << "=" << curest << endl;
+}
 

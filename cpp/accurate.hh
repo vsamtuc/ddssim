@@ -194,7 +194,7 @@ class twoway_join_agms_method : public agms_method<qtype::JOIN>
 	agms::incremental_prod prod_estimator;
 
 	// callbacks
-	void process_record(const dds_record& rec);
+	void process_record();
 	void finish();
 public:
 	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);

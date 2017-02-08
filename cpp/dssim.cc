@@ -41,7 +41,7 @@ void execute()
 	for(size_t i=0; i<sids.size(); i++) {
 		cout << "Treating stream " << i << endl;
 		components.push_back(new selfjoin_exact_method(sids[i]));
-		components.push_back(new selfjoin_agms_method(sids[i], 17, 50000));
+		components.push_back(new selfjoin_agms_method(sids[i], 17, 500));
 		for(size_t j=i; j>0; j--){
 		//	components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
 		}
