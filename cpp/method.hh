@@ -229,7 +229,8 @@ namespace {
 template <typename T, typename ...Args >
 struct factory
 {
-	static_assert( std::is_same<decltype(T((Args())...)),T>::value );
+	static_assert( std::is_same<decltype(T((Args())...)),T>::value ,
+		"There does not seem to be a constructor with the given arguments");
 
 	typedef std::tuple<Args...> index_type;
 
