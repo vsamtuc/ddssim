@@ -414,5 +414,34 @@ BOOST_PYTHON_MODULE(dds)
 			&dds::twoway_join_exact_method::current_estimate)
 		;
 
+	class_< dds::selfjoin_agms_method,
+			bases<dds::reactive>,
+			boost::noncopyable
+			>
+		("selfjoin_agms_method", 
+			init<dds::stream_id, agms::depth_type, agms::index_type>()
+		)
+		.def("query", &dds::selfjoin_agms_method::query,
+			return_value_policy<copy_const_reference>())
+		.add_property("current_estimate", 
+			&dds::selfjoin_agms_method::current_estimate)
+		;
+
+
+	class_< dds::twoway_join_agms_method,
+			bases<dds::reactive>,
+			boost::noncopyable
+			>
+		("twoway_join_agms_method", 
+			init<dds::stream_id, dds::stream_id, 
+				agms::depth_type, agms::index_type>()
+		)
+		.def("query", &dds::twoway_join_agms_method::query,
+			return_value_policy<copy_const_reference>())
+		.add_property("current_estimate", 
+			&dds::twoway_join_agms_method::current_estimate)
+		;
+		
+
 }
 

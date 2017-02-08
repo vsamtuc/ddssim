@@ -88,7 +88,7 @@ long long hash_family::hash(depth_type d, key_type x) const {
 }
 
 /// Return a 4-wise independent bit
-inline bool hash_family::fourwise(depth_type d, key_type x) const {
+bool hash_family::fourwise(depth_type d, key_type x) const {
 	return 
 		hash31(hash31(hash31(x,F[2][d],F[3][d]), x, F[4][d]),x,F[5][d]) 
 		& (1<<15);
