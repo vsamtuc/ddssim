@@ -1,5 +1,6 @@
 
 #include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <libconfig.h++>
 
@@ -19,7 +20,8 @@ void execute()
 
 	//data_source* wcup = crawdad_ds("/home/vsam/src/datasets/wifi_crawdad_sorted");
 	//data_source* wcup = wcup_ds("/home/vsam/src/datasets/wc_day44");
-	data_source* wcup = wcup_ds("/storage/tuclocal/vsam/src/datasets/wc_day44");
+	data_source* wcup = wcup_ds(string(getenv("HOME"))+
+		"/src/datasets/wc_day44");
 
 	dataset D;
 	D.load(wcup);
@@ -42,9 +44,11 @@ void execute()
 	for(size_t i=0; i<sids.size(); i++) {
 		cout << "Treating stream " << i << endl;
 		components.push_back(new selfjoin_exact_method(sids[i]));
-		components.push_back(new selfjoin_agms_method(sids[i], 17, 500));
+		components.push_back(new selfjoin_agms_method(sids[i], 11, 1500));
 		for(size_t j=i; j>0; j--){
-		//	components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
+			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
+			components.push_back(new 
+				twoway_join_agms_method(sids[j-1], sids[i], 11, 1500));
 		}
 	}
 

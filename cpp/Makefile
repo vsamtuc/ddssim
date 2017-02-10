@@ -8,7 +8,7 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=1
+DEBUG=0
 endif
 
 
@@ -67,9 +67,6 @@ dds.so: dds_module.o libdds.a
 #	cxxtestgen --error-printer -o $@ $^
 #unit_tests.o: unit_tests.cc
 
-%_tests.cc : %_tests.hh
-	cxxtestgen --part --error-printer -o $@ $<
-
 #data_tests.cc: data_tests.hh 
 #	cxxtestgen --error-printer -o $@ $^
 
@@ -80,11 +77,14 @@ unit_tests.cc:
 unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
 
-data_tests.cc:
-	cxxtestgen --root --error-printer -o $@ $<	
+data_tests.cc: data_tests.hh
+	cxxtestgen --error-printer -o $@ $<	
 
 data_tests: data_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
+
+%_tests.cc : %_tests.hh
+	cxxtestgen --part --error-printer -o $@ $<
 
 test: unit_tests
 	./unit_tests

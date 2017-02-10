@@ -7,19 +7,143 @@
 #include <algorithm>
 #include <random>
 #include <sstream>
+#include <vector>
+#include <numeric>
+#include <iomanip>
+
 #include "data_source.hh"
+#include "output.hh"
+#include "agms.hh"
 
 using std::unordered_set;
 using std::set;
+using std::vector;
 using std::min_element;
 using std::max_element;
 using std::mt19937;
 
 using namespace dds;
+using namespace agms;
+namespace u = boost::numeric::ublas;
+
+mt19937 rng(123122);
+
+ostream& operator<<(ostream& s, const Vec& v)
+{
+	s << "[";
+	for(auto x:v) 
+		s << x << ",";
+	return s << "]";
+}
 
 class DatasetTestSuite : public CxxTest::TestSuite
 {
 public:
+
+	typedef vector<key_type> Stream;
+	typedef frequency_vector<key_type> FVec;
+
+	Stream make_stream(key_type maxkey, size_t length)
+	{
+		std::uniform_int_distribution<key_type> U(1,maxkey);
+		Stream s;
+		s.reserve(length);
+		for(size_t i=0;i<length;i++) {
+			auto X = U(rng);
+			s.push_back(X);
+		}
+		return s;
+	}
+
+	FVec make_sparse(const Stream& S)
+	{
+		FVec ret(MAX_KEY);
+		for(key_type x : S) {
+			ret[x] += 1;
+		}
+		return ret;
+	}
+
+	sketch make_sketch(projection proj, const FVec& f)
+	{
+		sketch sk(proj);
+		size_t count = 0;
+		for(auto x=begin(f);x!=end(f);x++) {
+			sk.update(x.index(), *x);
+			count ++;
+		}
+		// cout << "FVec has " << count << " distinct keys" << endl;
+		// cout << "sketch dot = " << dot_estvec(sk,sk) << endl;
+		return sk;
+	}
+
+
+	bool success_selfjoin(const projection& proj, 
+		key_type maxkey, size_t length)
+	{
+		Stream S = make_stream(maxkey, length);
+		FVec f = make_sparse(S);
+		sketch sk = make_sketch(proj, f);
+
+		double exc = u::inner_prod(f,f);
+		double est = dot_est(sk,sk);
+		double err = fabs((exc-est)/exc);
+		// cout << "Estimated =" << est 
+		// 	<< "  exact = " << exc 
+		// 	<< "  error = " << err 
+		// 	<< "  theoretical = " << proj.epsilon()
+		// 	<< endl;
+		return err<proj.epsilon();
+	}
+
+	bool selfjoin_agms_accuracy(
+		depth_type D, index_type L,
+		size_t N, 
+		key_type maxkey, size_t length)
+	{
+		projection proj(D, L);
+
+		size_t fails = 0;
+
+		ostringstream msgstream;
+		msgstream
+			<< setw(3) << D 
+			<< setw(6) << L
+			<< setw(9) << maxkey
+			<< setw(9) << length
+			<< " :";
+		progress_bar pb(stdout, 20, msgstream.str());
+		pb.start(N);
+		for(size_t i=0;i<N;i++) {
+			if(!success_selfjoin(proj, maxkey, length)) {
+				fails ++;
+			}
+			pb.tick();
+		}
+		pb.finish();
+
+		double Prfail = (double)fails/ N ;
+
+		cout << "Prob[fail]=" << Prfail
+			<< "   theoretical=" << proj.prob_failure() 
+			<< endl;
+		return Prfail <= proj.prob_failure();
+	}
+
+
+	void test_selfjoin_agms()
+	{
+		cout << endl;
+		for(depth_type D=3; D<=7; D+=2)
+		for(index_type L=500; L<=2500; L+=1000)
+		for(key_type mk = 1000; mk<=100000; mk*=10) {			
+			for(size_t len=1000; len <=100000; len*=10) 
+			{
+				TS_ASSERT(selfjoin_agms_accuracy(D, L, 100, mk, len));
+			}
+		}
+	}
+	
 
 	void test_crawdad()
 	{

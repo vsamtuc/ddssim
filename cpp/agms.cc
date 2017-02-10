@@ -79,7 +79,7 @@ hash_family* hash_family::get_cached(depth_type D)
 inline int64_t hash31(int64_t a, int64_t b, int64_t x) {
 	// use 64-bit arithmetic
 	int64_t result = (a * x)+b;
-	return ((result>>31)+result) & 2147483647ll;
+	return ((result>>31)^result) & 2147483647ll;
 }
 
 long long hash_family::hash(depth_type d, key_type x) const {

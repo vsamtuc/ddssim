@@ -253,6 +253,10 @@ inline double dot_est(const sketch& s1, const sketch& s2)
 	return dds::median(dot_estvec(s1,s2));
 }
 
+inline double dot_est(const sketch& sk)
+{
+	return dds::median(dot_estvec(sk));
+}
 
 // Vector space operations
 
