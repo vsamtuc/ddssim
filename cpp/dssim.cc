@@ -25,8 +25,8 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	//D.set_max_length(100000);
-	D.hash_sources(4);
+	//D.set_max_length(1000);
+	//D.hash_sources(4);
 	//D.hash_streams(1);
 	D.set_time_window(3600);
 	D.create();
@@ -42,30 +42,34 @@ void execute()
 	cout << "Treating " << sids.size() << " streams" << endl;
 
 	for(size_t i=0; i<sids.size(); i++) {
-		cout << "Treating stream " << i << endl;
+		cout << "Treating stream " << sids[i] << endl;
 		components.push_back(new selfjoin_exact_method(sids[i]));
-		components.push_back(new selfjoin_agms_method(sids[i], 11, 1500));
+		components.push_back(new selfjoin_agms_method(sids[i], 15, 10000));
 		for(size_t j=i; j>0; j--){
 			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
 			components.push_back(new 
-				twoway_join_agms_method(sids[j-1], sids[i], 11, 1500));
+				twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		}
 	}
 
-	//data_source_statistics stat;
-
 	/* Create output files */
 
-	output_file* sto = CTX.open(stdout);
-	output_file* wcout = 
-		CTX.open("wc_tseries.dat",open_mode::truncate);
+	//output_file* sto = CTX.open(stdout);
 	
 	/* Bind files to outputs */
 
-	//CTX.timeseries.bind(sto);
-	CTX.timeseries.bind(wcout);
+#if 1
+	output_file* lsstats_file = CTX.open("wc_lsstats.dat");
+	data_source_statistics stat;
+	lsstats.bind(lsstats_file);
+	lsstats.prolog();
+#endif
 
 	/* Configure the timeseries reporting */
+	output_file* wcout = 
+		CTX.open("wc_tseries.dat",open_mode::truncate);
+	//CTX.timeseries.bind(sto);
+	CTX.timeseries.bind(wcout);
 	reporter repter(CTX.metadata().size()/1000);
 
 	/* Print a progress bar */
@@ -84,6 +88,7 @@ void execute()
 	for(auto p : components)
 		delete p;
 	CTX.close_result_files();
+	agms_sketch_updater_factory.clear();
 }
 
 

@@ -48,10 +48,10 @@ public:
 		fclose(mf);
 
 		const char* expected =
-		"# INDEX,count,mean_x,label\n"
-		"SILLY,1,3.140000,Hello\n"
-		"SILLY,1,3.140000,Hello\n"
-		"SILLY,1,3.140000,Hello\n";
+		"count,mean_x,label\n"
+		"1,3.140000,Hello\n"
+		"1,3.140000,Hello\n"
+		"1,3.140000,Hello\n";
 
 		TS_ASSERT_EQUALS( buf, expected );
 		free(buf);
@@ -100,12 +100,12 @@ public:
 		char buf[2][8192];
 		fseek(fset[0]->file(), 0, SEEK_SET);
 		fseek(fset[1]->file(), 0, SEEK_SET);
-		TS_ASSERT_EQUALS(fread(buf[0], 1, 8191, fset[0]->file()), 50);
-		TS_ASSERT_EQUALS(fread(buf[1], 1, 8191, fset[1]->file()), 50);
+		TS_ASSERT_EQUALS(fread(buf[0], 1, 8191, fset[0]->file()), 36);
+		TS_ASSERT_EQUALS(fread(buf[1], 1, 8191, fset[1]->file()), 36);
 		buf[0][50] = buf[1][50] = 0;
 		TS_ASSERT_EQUALS( buf[0], buf[1] );
-		auto expected = "# INDEX,count,mean_x,label\n"
-						"SILLY,1,3.140000,Hello\n";
+		auto expected = "count,mean_x,label\n"
+						"1,3.140000,Hello\n";
 		TS_ASSERT_EQUALS( buf[0], expected );
 
 		delete fset[0];

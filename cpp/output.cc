@@ -98,10 +98,15 @@ result_table::result_table(const string& _name)
 {}
 
 result_table::result_table(const string& _name,
-		std::initializer_list<basic_column *> col)
+		column_list col)
 	: output_table(_name, table_flavor::RESULTS)
 {
-	for(auto c : col) add(*c);
+	add(col);
+}
+
+void result_table::add(column_list col)
+{
+	for(auto c : col) this->output_table::add(*c);	
 }
 
 result_table::~result_table()
@@ -190,23 +195,16 @@ void output_c_file::output_prolog(output_table& table)
 {
 	table_flavor flavor = table.flavor();
 
-	// start the row
-	size_t col = 0;
 	switch(flavor) {
 	case table_flavor::RESULTS:
-		fputs("# INDEX", file());
-		break;
 	case table_flavor::TIMESERIES:
-		fputs(table[0]->name().c_str(), file());
-		col = 1;
 		break;
 	default:
 		throw std::runtime_error("incompatible flavor");
 	}
 
-
-	for(;col < table.size(); col++) {
-		fputs(",", file());
+	for(size_t col=0;col < table.size(); col++) {
+		if(col) fputs(",", file());
 		fputs(table[col]->name().c_str(), file());
 	}
 	fputs("\n", file());	
@@ -216,23 +214,16 @@ void output_c_file::output_row(output_table& table)
 {
 	table_flavor flavor = table.flavor();
 
-	// start the row
-	size_t col = 0;
 	switch(flavor) {
 	case table_flavor::RESULTS:
-		fprintf(file(), "%s", table.name().c_str());
-		break;
 	case table_flavor::TIMESERIES:
-		emit(table[0]);
-		col = 1;
 		break;
 	default:
 		throw std::runtime_error("incompatible flavor");
 	}
 
-
-	for(;col < table.size(); col++) {
-		fputs(",", file());
+	for(size_t col=0;col < table.size(); col++) {
+		if(col) fputs(",", file());
 		emit(table[col]);
 	}
 	fputs("\n", file());

@@ -29,7 +29,7 @@ protected:
 	string _format;
 	friend class output_table;
 public:
-	basic_column(const string& _name, const char* f)
+	basic_column(const string& _name, const string& f)
 	: named(_name), _table(0), _format(f) { }
 
 	basic_column(const basic_column&)=delete;
@@ -47,8 +47,12 @@ class column : public basic_column
 protected:
 	T val;
 public:
-	column(const string& _n, const char* fmt) 
+	column(const string& _n, const string& fmt) 
 	: basic_column(_n, fmt) { }
+
+	column(const string& _n, const string& fmt, const T& _v) 
+	: basic_column(_n, fmt), val(_v) { }
+
 	inline T value() const { return val; }
 	inline T& operator=(T v) { val=v; return val; }
 	void emit(FILE* s) override {
@@ -62,8 +66,11 @@ class column<string> : public basic_column
 protected:
 	string val;
 public:
-	column(const string& _n, const char* fmt) 
+	column(const string& _n, const string& fmt) 
 	: basic_column(_n, fmt) { }
+
+	column(const string& _n, const string& fmt, const string& _v) 
+	: basic_column(_n, fmt), val(_v) { }
 
 	inline const char* value() const { return this->val.c_str(); }
 	inline string& operator=(const string& v) { val=v; return val; }
@@ -169,9 +176,12 @@ class result_table : public output_table
 {
 public:
 	result_table(const string& _name);
+	typedef std::initializer_list<basic_column *> column_list;
 
 	result_table(const string& _name,
-		std::initializer_list<basic_column *> col);
+		column_list col);
+
+	void add(column_list col);
 
 	virtual ~result_table();
 };
@@ -188,7 +198,7 @@ public:
 
 
 enum open_mode { truncate, append };
-
+const open_mode default_open_mode = open_mode::truncate;
 
 class output_file 
 {
@@ -236,7 +246,8 @@ public:
 
 	output_c_file() : stream(0), filepath(), owner(false) {}
 	output_c_file(FILE* _stream, bool _owner=false);
-	output_c_file(const string& _fpath, open_mode mode = append);
+	output_c_file(const string& _fpath, 
+		open_mode mode = default_open_mode);
 
 	inline output_c_file(output_c_file&& other) 
 	: stream(other.stream), filepath(other.filepath), owner(other.owner)
@@ -253,7 +264,8 @@ public:
 
 	virtual ~output_c_file();
 
-	virtual void open(const string& _fpath, open_mode mode = append);
+	virtual void open(const string& _fpath, 
+			open_mode mode = default_open_mode);
 	virtual void close();
 	virtual void flush();
 

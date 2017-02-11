@@ -38,6 +38,7 @@ void basic_control::purge_action(action* a)
 	auto pos = remove(action_queue.begin(), action_queue.end(), a);
 	auto num_instances = distance(pos, action_queue.end());
 	action_queue.resize(action_queue.size()-num_instances);
+	delete a;
 }
 
 

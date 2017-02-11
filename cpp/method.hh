@@ -33,9 +33,12 @@ struct context : basic_control
 	fileset_t result_files;
 
 	output_file* open(FILE* f, bool owner = false);
-	output_file* open(const string& path, open_mode mode);
-	void close_result_files();
+	output_file* open(const string& path, 
+		open_mode mode = default_open_mode);
+	
 
+	void close_result_files();
+	void clear();
 
 	/// Must be default-constructible!
 	context() {}
@@ -49,6 +52,8 @@ struct context : basic_control
 
 ///  The global context
 extern context CTX;
+
+
 
 /// Used to add ECA rules
 template <typename Action>
@@ -226,8 +231,16 @@ namespace {
 
 }
 
+
+class basic_factory {
+public:
+	virtual void clear()=0;
+	virtual ~basic_factory();
+};
+
+
 template <typename T, typename ...Args >
-struct factory
+struct factory : basic_factory
 {
 	static_assert( std::is_same<decltype(T((Args())...)),T>::value ,
 		"There does not seem to be a constructor with the given arguments");
@@ -254,11 +267,21 @@ struct factory
 		else
 			return f->second;
 	}
+
+	void clear() override {
+		for(auto m : registry)
+			delete m.second;
+		registry.clear();		
+	}
+
+	~factory() {
+		clear();
+	}
 };
 
 
 template <typename T>
-struct factory<T>
+struct factory<T> : basic_factory
 {
 	typedef std::tuple<> index_type;
 	T* registry;
@@ -269,8 +292,22 @@ struct factory<T>
 		return registry;
 	}
 	factory() : registry(nullptr) {}
+
+	void clear() override {
+		if(registry) {
+			delete registry;
+			registry = nullptr;
+		}
+	}
+
+	~factory() {
+		clear();
+	}
 };
 
+
+template <typename T, typename ...Args>
+T* inject(Args...args);
 
 
 /**

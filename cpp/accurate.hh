@@ -16,18 +16,42 @@
 namespace dds {
 
 using std::set;
+using std::map;
 using std::cout;
 using std::endl;
 
 using namespace std::string_literals;
+
+struct local_stream_stats_t : result_table
+{
+	local_stream_stats_t();
+
+	column<stream_id> sid { "sid", "%hd" };
+	column<source_id> hid { "hid", "%hd" };
+	column<size_t> stream_len { "stream_len", "%zu", 0 };
+};
+extern local_stream_stats_t lsstats;
 
 class data_source_statistics : public reactive
 {
 	set<stream_id> sids;
 	set<source_id> hids;
 
+	// count total size of local streams
 	distinct_histogram<local_stream_id> lshist;
+
+	// count each stream size
 	frequency_vector<stream_id> stream_size;
+
+	// timeseries for 'active' records per local stream
+	typedef column<int> col_t;
+	map<local_stream_id, col_t*> lssize;
+
+	// timeseries for 'active' records per stream
+	map<stream_id, col_t*> ssize;
+
+	// timeseries for 'active' records per source
+	map<source_id, col_t*> hsize;
 
 	size_t scount=0;
 	timestamp ts=-1, te=-1;
@@ -38,6 +62,7 @@ class data_source_statistics : public reactive
 
 public:
 	data_source_statistics(); 
+	~data_source_statistics();
 };
 
 
@@ -118,7 +143,7 @@ struct agms_sketch_updater : reactive
 	agms_sketch_updater(stream_id _sid, agms::projection proj)
 	: sid(_sid), isk(proj)
 	{
-		ON(START_RECORD, [&]() {
+		on(START_RECORD, [&]() {
 			const dds_record& rec = CTX.stream_record();
 			if(rec.sid==sid) {
 				isk.update(rec.key, (rec.sop==INSERT)?1.0:-1.0);
@@ -131,6 +156,15 @@ struct agms_sketch_updater : reactive
 // Factory
 extern factory<agms_sketch_updater, stream_id, agms::projection> 
 	agms_sketch_updater_factory;
+
+
+template <>
+inline agms_sketch_updater* 
+inject<agms_sketch_updater, stream_id, agms::projection>(stream_id sid, 
+	agms::projection proj)
+{
+	return agms_sketch_updater_factory(sid, proj);
+}
 
 
 /*

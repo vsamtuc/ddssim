@@ -7,8 +7,37 @@ using namespace dds;
 data_source_statistics::data_source_statistics()
 {
 	stream_size.resize(dds::MAX_SID);
-	this->on(START_RECORD, [&](){ process(CTX.stream_record()); });
-	this->on(END_STREAM, [&](){ finish(); });
+	on(START_RECORD, [&](){ process(CTX.stream_record()); });
+	on(END_STREAM, [&](){ finish(); });
+
+	for(auto sid : CTX.metadata().stream_ids())
+		for(auto hid : CTX.metadata().source_ids())
+		{
+			char buf[32];
+			sprintf(buf, "LSSize_%d@%d", sid,hid);
+			col_t *c = new col_t(buf, "%d", 0);
+			lssize[local_stream_id {sid, hid}] = c;
+			CTX.timeseries.add(*c);
+		}
+
+	for(auto sid : CTX.metadata().stream_ids()) 
+	{
+		char buf[32];
+		sprintf(buf, "SSize_%d", sid);
+		col_t *c = new col_t(buf, "%d", 0);
+		ssize[sid] = c;
+		CTX.timeseries.add(*c);
+	}
+
+	for(auto hid : CTX.metadata().source_ids())
+	{
+		char buf[32];
+		sprintf(buf, "SSize@%d", hid);
+		col_t *c = new col_t(buf, "%d", 0);
+		hsize[hid] = c;
+		CTX.timeseries.add(*c);
+	}
+
 }
 
 void data_source_statistics::process(const dds_record& rec)
@@ -20,6 +49,10 @@ void data_source_statistics::process(const dds_record& rec)
 	stream_size.add(rec.sid);
 	//std::cout << rec << std::endl;
 	lshist.add(rec.local_stream());
+	int delta = (rec.sop==INSERT)?1:-1;
+	lssize[rec.local_stream()] += delta;
+	ssize[rec.sid] += delta;
+	hsize[rec.hid] += delta;
 	scount++;
 }
 
@@ -28,6 +61,33 @@ void data_source_statistics::finish()
 {
 	report(std::cout);
 }
+
+
+data_source_statistics::~data_source_statistics()
+{
+	// clear timeseries columns
+	for(auto i : lssize)
+		delete i.second;
+	for(auto i : ssize)
+		delete i.second;
+	for(auto i : hsize)
+		delete i.second;
+}
+
+
+local_stream_stats_t dds::lsstats;
+
+
+local_stream_stats_t::local_stream_stats_t()
+: result_table("local_stream_stats")
+{
+	add({
+		&sid,
+		&hid,
+		&stream_len
+	});
+}
+
 
 void data_source_statistics::report(std::ostream& s)
 {
@@ -49,8 +109,16 @@ void data_source_statistics::report(std::ostream& s)
 
 	for(auto hid: hids) {
 		s << "host "<< setw(3) << hid << ":";
-		for(auto sid: sids) 
-			s << setw(NW) << lshist[std::make_pair(sid,hid)];
+		for(auto sid: sids) {
+			auto stream_len = lshist[std::make_pair(sid,hid)]; 
+
+			lsstats.sid = sid;
+			lsstats.hid = hid;
+			lsstats.stream_len = stream_len;
+			lsstats.emit_row();
+
+			s << setw(NW) << stream_len;
+		}
 		s << endl;
 	}
 
@@ -192,7 +260,10 @@ twoway_join_agms_method::twoway_join_agms_method(
 				agms::projection(D,L))
 				->isk
 			,
-			& agms_sketch_updater_factory(s2, 
+			// & agms_sketch_updater_factory(s2, 
+			// 	agms::projection(D,L))
+			// 	->isk
+			& inject<agms_sketch_updater>(s2, 
 				agms::projection(D,L))
 				->isk
 		)

@@ -8,7 +8,10 @@ using namespace dds;
 
 context dds::CTX;
 
-
+basic_factory::~basic_factory()
+{
+	
+}
 
 output_file* context::open(FILE* f, bool owner) 
 {

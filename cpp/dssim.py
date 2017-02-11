@@ -99,7 +99,7 @@ def relerr(xacc,xest):
 
 
 if __name__=='__main__':
-	execute()
-	#execute_generated()
+	#execute()
+	execute_generated()
 	pass
 
