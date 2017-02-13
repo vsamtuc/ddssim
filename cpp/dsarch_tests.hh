@@ -13,36 +13,36 @@ struct Echo : process
 
 	Echo(network* nw) : process(nw), value(0) {}
 
+	// remote methods
+
 	string echo(const string& msg) {
 		return string("Echoing ")+msg;
 	}
 
-	void send_int(int i) { value=i; }
+	ACK send_int(int i) { value=i; return ACK(); }
 	int get_int() { return value; }
 
-	void init() { }
+	ACK init() { return ACK(); }
 
-	void say_bye(const string& msg) { value=-1; }
-	void finish() { }
+	oneway say_bye(const string& msg) { value=-1; return oneway(); }
+	oneway finish() { return oneway(); }
+
+	int add(int x, int y) { return x+y; }
 };
+
 
 struct Echo_proxy : remote_proxy<Echo>
 {
-	remote_method<Echo, const string&, string> echo;
-	remote_method<Echo, int, void> send_int;
-	remote_method<Echo, void, int> get_int;
-	remote_method<Echo, void, void> init;
-	remote_method<Echo, const string&, oneway> say_bye;
-	remote_method<Echo, void, oneway> finish;
+	REMOTE_METHOD(Echo, echo);
+	REMOTE_METHOD(Echo, send_int);
+	REMOTE_METHOD(Echo, get_int);
+	REMOTE_METHOD(Echo, init);
+	REMOTE_METHOD(Echo, say_bye);
+	REMOTE_METHOD(Echo, finish);
+	REMOTE_METHOD(Echo, add);
 
-	Echo_proxy(process* owner, Echo* obj) 
-	: remote_proxy<Echo>(owner, obj),
-	  echo(this, &Echo::echo),
-	  send_int(this, &Echo::send_int),
-	  get_int(this, &Echo::get_int),
-	  init(this, &Echo::init),
-	  say_bye(this, &Echo::say_bye),
-	  finish(this, &Echo::finish)
+	Echo_proxy(process* owner) 
+	: remote_proxy<Echo>(owner)
 	{}
 };
 
@@ -50,8 +50,8 @@ struct Echo_cli : process
 {
 	Echo_proxy proxy;
 
-	Echo_cli(network* nw, Echo* srv) 
-	: process(nw), proxy(this, srv)
+	Echo_cli(network* nw) 
+	: process(nw), proxy(this)
 	{
 		//proxy = new Echo_proxy(this, srv);
 	}
@@ -94,9 +94,12 @@ public:
 		network nw;
 
 		Echo* srv = new Echo(&nw);
-		Echo_cli* cli = new Echo_cli(&nw, srv);
+		Echo_cli* cli = new Echo_cli(&nw);
+		cli->proxy.connect(srv);
 		auto c12 = cli->proxy.request_channel();
 		auto c21 = cli->proxy.response_channel();
+
+		TS_ASSERT( cli->proxy.response_channel() );
 
 		TS_ASSERT_EQUALS( cli->send_echo("Hi"), "Echoing Hi" );
 		TS_ASSERT_EQUALS(c12->messages(), 3);
@@ -122,7 +125,6 @@ public:
 		TS_ASSERT_EQUALS(c12->bytes(), 2+sizeof(int)+3);
 		TS_ASSERT_EQUALS(c21->messages(), 4);
 		TS_ASSERT_EQUALS(c21->bytes(), 14);
-
 
 	}
 

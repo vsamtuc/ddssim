@@ -8,7 +8,7 @@ data_source_statistics::data_source_statistics()
 {
 	stream_size.resize(dds::MAX_SID);
 	on(START_RECORD, [&](){ process(CTX.stream_record()); });
-	on(END_STREAM, [&](){ finish(); });
+	on(RESULTS, [&](){ finish(); });
 
 	for(auto sid : CTX.metadata().stream_ids())
 		for(auto hid : CTX.metadata().source_ids())
@@ -50,9 +50,9 @@ void data_source_statistics::process(const dds_record& rec)
 	//std::cout << rec << std::endl;
 	lshist.add(rec.local_stream());
 	int delta = (rec.sop==INSERT)?1:-1;
-	lssize[rec.local_stream()] += delta;
-	ssize[rec.sid] += delta;
-	hsize[rec.hid] += delta;
+	lssize[rec.local_stream()]->value() += delta;
+	ssize[rec.sid]->value() += delta;
+	hsize[rec.hid]->value() += delta;
 	scount++;
 }
 

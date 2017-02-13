@@ -164,16 +164,20 @@ public:
 	enum State { 
 		Start,
 		Init, Data, Validate, Report, EndData, 
+		Results,
 		End
 	};
 
 protected:
 	State state = Start;
 
+	size_t _step;
 public:
 	inline State get_state() const { return state; }
 
 	inline timestamp now() const { return _now; }
+
+	inline size_t step() const { return _step; }
 
 	inline const dds_record& stream_record() const { return ds->get(); }
 
@@ -231,6 +235,8 @@ public:
 
 	basic_control() : ds(&__invds)
 	{ }
+
+	~basic_control();
 };
 
 

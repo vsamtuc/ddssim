@@ -272,6 +272,48 @@ inline std::string repr(const basic_query& q)
 }
 
 
+
+/*-----------------------------------
+
+	Byte size for 
+
+  -----------------------------------*/
+
+
+/**
+	By default, types with a "byte_size" method are handled.
+  */
+template <typename MsgType>
+size_t byte_size(const MsgType& m)
+{
+	return m.byte_size();
+}
+
+/**
+	Byte size of types, when serialized for transmission
+  */
+template <>
+inline size_t byte_size<std::string>(const std::string& s)
+{
+	return s.size();
+}
+
+#define BYTE_SIZE_SIZEOF(type)\
+template<>\
+inline size_t byte_size<type>(const type& i) { return sizeof(type); }
+
+BYTE_SIZE_SIZEOF(source_id) // covers stream_id also
+BYTE_SIZE_SIZEOF(int)
+BYTE_SIZE_SIZEOF(unsigned int)
+BYTE_SIZE_SIZEOF(long)
+BYTE_SIZE_SIZEOF(unsigned long)
+BYTE_SIZE_SIZEOF(float)
+BYTE_SIZE_SIZEOF(double)
+
+BYTE_SIZE_SIZEOF(dds_record)
+
+
+
 } // end namespace dds
 
 

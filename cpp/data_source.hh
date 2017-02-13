@@ -389,6 +389,9 @@ public:
 	}
 };
 
+/**
+	A data source from a uniform generator
+  */
 struct uniform_data_source : analyzed_data_source
 {
 	uniform_generator gen;
@@ -456,6 +459,36 @@ public:
 		delete src;
 	}
 };
+
+
+/**
+	Create a uniform dataset with filtering
+  */
+template <typename F>
+inline buffered_dataset 
+make_uniform_dataset(stream_id maxsid, source_id maxhid,
+ key_type maxkey, timestamp maxts, const F& _func)
+{
+	auto ds= new uniform_data_source(maxsid, maxhid, maxkey, maxts);
+	auto fds = filtered_ds(ds, _func);
+	buffered_dataset dset;
+	dset.consume(fds);
+	return dset;
+}
+
+/**
+	Create a uniform dataset without filtering.
+  */
+
+inline buffered_dataset 
+make_uniform_dataset(stream_id maxsid, source_id maxhid,
+ key_type maxkey, timestamp maxts)
+{
+	auto ds= new uniform_data_source(maxsid, maxhid, maxkey, maxts);
+	buffered_dataset dset;
+	dset.consume(ds);
+	return dset;
+}
 
 
 

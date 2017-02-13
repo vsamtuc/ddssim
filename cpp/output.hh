@@ -54,6 +54,7 @@ public:
 	: basic_column(_n, fmt), val(_v) { }
 
 	inline T value() const { return val; }
+	inline T& value() { return val; }
 	inline T& operator=(T v) { val=v; return val; }
 	void emit(FILE* s) override {
 		fprintf(s, format(), value());
@@ -72,10 +73,11 @@ public:
 	column(const string& _n, const string& fmt, const string& _v) 
 	: basic_column(_n, fmt), val(_v) { }
 
-	inline const char* value() const { return this->val.c_str(); }
+	inline const string& value() const { return this->val; }
+	inline string& value() { return val; }
 	inline string& operator=(const string& v) { val=v; return val; }
 	void emit(FILE* s) override {
-		fprintf(s, format(), value());
+		fprintf(s, format(), value().c_str());
 	}
 };
 

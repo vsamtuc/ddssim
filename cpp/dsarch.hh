@@ -11,8 +11,10 @@
 #include <cstring>
 #include <iostream>
 #include <cassert>
+#include <type_traits>
 
 #include "dds.hh"
+#include "output.hh"
 #include "method.hh"
 
 namespace dds {
@@ -47,6 +49,10 @@ public:
 };
 
 
+typedef std::unordered_map<host*, channel*> channel_map;
+typedef std::unordered_set<host*> host_set;
+
+
 /**
 	Hosts are used as nodes in the netork graph
   */
@@ -54,7 +60,7 @@ class host : public named
 {
 protected:
 	network* _net;
-	std::unordered_map<host*, channel*> rtab_to, rtab_from;
+	channel_map rtab_to, rtab_from;
 	virtual ~host();
 public:
 	host(network* n);
@@ -83,12 +89,12 @@ public:
 class network : public named
 {
 protected:
-	std::unordered_set<host*> _hosts;
+	host_set _hosts;
 public:
 
 	network() { }
 
-	inline const std::unordered_set<host*>& hosts() const { 
+	inline const host_set& hosts() const { 
 		return _hosts; 
 	}
 
@@ -96,7 +102,7 @@ public:
 
 	channel* connect(host* src, host* dest);
 
-	inline const std::unordered_map<host*, channel*>& routes_from(host* h) const {
+	inline const channel_map& routes_from(host* h) const {
 		return h->rtab_to;
 	}
 
@@ -104,23 +110,6 @@ public:
 	friend class host;
 };
 
-
-/**
-	A star network topology.
-
-	In a star network, every regular node (spoke) is connected to 
-	a central node (hub).
-  */
-class star_network : public network
-{
-protected:
-	host* _hub;
-public:
-	star_network() : _hub(nullptr) { }
-
-	inline void set_hub(host* h) { _hub = h; }
-	inline host* hub() const { return _hub; }
-};
 
 
 /**
@@ -130,6 +119,8 @@ class process : public host
 {
 public:
 	using host::host;
+
+	virtual void setup_connections() { }
 };
 
 
@@ -152,25 +143,47 @@ public:
 };
 
 
-/**
-	A method that distributes the stream records to sites
- */
-template <typename SiteProc>
-class stream_mapper_method
-{
-protected:
-	std::unordered_map<source_id, SiteProc*> stream_map;
-public:
-	void map_site(SiteProc* proc) 
-	{
-		stream_map[proc->site_id()] = proc;
-	}
 
-	void process(const dds_record& rec) override
+
+/**
+	A star network topology.
+
+	In a star network, every regular node (site) is connected to 
+	a central node (hub).
+
+	Nodes in a star network are local sites.
+
+	This class is a mixin
+  */
+template <typename Net, typename Hub, typename Site>
+struct star_network : public network
+{
+	Hub* hub;
+	std::unordered_map<source_id, Site*> nodes;
+
+	star_network() : hub(nullptr) { }
+
+	template <typename ... Args>
+	void setup(Args...args)
 	{
-		stream_map[rec.sid]->handle(rec);
+		// create the nodes
+		hub = new Hub((Net*)this, args...);
+
+		for(auto hid : CTX.metadata().source_ids()) 
+		{
+			Site* n = new Site((Net*)this, hid, args...);
+			nodes[hid] = n;
+		}
+
+		// make the connections
+		hub->setup_connections();
+		for(auto n : nodes) {
+			n.second->setup_connections();
+		}
 	}
 };
+
+
 
 
 /*	----------------------------------------
@@ -180,54 +193,79 @@ public:
 	--------------------------------------- */
 
 
-
-template <typename MsgType>
-size_t message_size(const MsgType& m);
+/**
+	Marker type for remote methods
+  */
+struct oneway {};
 
 template <>
-inline size_t message_size<std::string>(const std::string& s)
+inline size_t byte_size<oneway>(const oneway& s) { return 0; }
+
+
+/**
+	Marker type for remote methods that 
+	'return void' (N.B.: remote methods cannot 
+	return void)
+  */
+struct ACK {};
+
+template <>
+inline size_t byte_size<ACK>(const ACK& s) { return 0; }
+
+
+
+template <typename...Args>
+inline size_t message_size(Args...args)
 {
-	return s.size();
+	size_t total = 0;
+	typedef size_t swallow[];
+	(void) swallow {0,
+	 	(total+= byte_size(args))...
+	};
+	return total;
 }
 
+template <typename Dest>
+struct proxy_method;
 
-#define MSG_SIZE_SIZEOF(type)\
-template<>\
-inline size_t message_size<type>(const type& i) { return sizeof(type); }
-
-MSG_SIZE_SIZEOF(int)
-MSG_SIZE_SIZEOF(unsigned int)
-MSG_SIZE_SIZEOF(long)
-MSG_SIZE_SIZEOF(unsigned long)
-MSG_SIZE_SIZEOF(double)
-
+template <typename Dest, typename Response, typename...Args>
+struct remote_method;
 
 template <typename Process>
 class remote_proxy 
 {
 protected:
 	process* _owner;
-	Process* _proc;
-	channel* _req_chan;
-	channel* _resp_chan;
+	Process* _proc = nullptr;
+	channel* _req_chan = nullptr;
+	channel* _resp_chan = nullptr;
+
+	bool _oneway = true;
+	template <typename Dest, typename Response, typename...Args>
+	friend struct remote_method;
 public:
-	inline remote_proxy(process* o, Process* p) 
-	: _owner(o), _proc(p) 
-	{
+
+	inline remote_proxy(process* o) 
+	: _owner(o)
+	{ }
+
+	inline bool is_connected() const { return _proc; }
+
+	inline void connect(Process* p) {
+		_proc = p;
 		_req_chan = _owner->connect(p);
-		_resp_chan = p->connect(_owner);
+		if(! _oneway)
+			_resp_chan = p->connect(_owner);
+		else
+			_resp_chan = nullptr;
 	}
+
 	inline channel* request_channel() const { return _req_chan; }
 	inline channel* response_channel() const { return _resp_chan; }
 	inline Process* proc() const { return _proc; }
 	inline process* owner() const { return _owner; }
 };
 
-
-/**
-	Marker type for remote methods
-  */
-struct oneway {};
 
 template <typename Dest>
 struct proxy_method
@@ -246,113 +284,41 @@ struct proxy_method
 	}	
 };
 
-template  <typename Dest, typename Request, typename Response>
-struct remote_method_base : proxy_method<Dest>
+
+template <typename Dest, typename Response, typename ... Args>
+struct remote_method : proxy_method<Dest>
 {
-	typedef	Response (Dest::* method_type)(Request);
+	typedef	Response (Dest::* method_type)(Args...);
 	method_type method;
 
-	remote_method_base(remote_proxy<Dest>* _proxy, method_type _meth)
-	: proxy_method<Dest>(_proxy), method(_meth) {}
-};
-
-template  <typename Dest, typename Response>
-struct remote_method_base<Dest, void, Response> : proxy_method<Dest>
-{
-	typedef	Response (Dest::* method_type)();
-	method_type method;
-
-	remote_method_base(remote_proxy<Dest>* _proxy, method_type _meth)
-	: proxy_method<Dest>(_proxy), method(_meth) {}
-};
-
-
-template <typename Dest, typename Request, typename Response>
-struct remote_method : remote_method_base<Dest, Request, Response>
-{
-	using remote_method_base<Dest, Request, Response>::remote_method_base;
-
-	inline Response operator()(Request s) const
+	remote_method(remote_proxy<Dest>* _proxy, method_type _meth)
+	: proxy_method<Dest>(_proxy), method(_meth) 
 	{
-		this->transmit_request(message_size(s));
-		Response r = (this->proxy->proc()->* (this->method))(s);
-		this->transmit_response(message_size(r));
+		this->proxy->_oneway = this->proxy->_oneway &&
+			std::is_same<Response, oneway>::value;
+	}
+
+	inline Response operator()(Args...args) const
+	{
+		this->transmit_request(message_size(args...));
+		Response r = (this->proxy->proc()->* (this->method))(args...);
+		if(! std::is_same<Response, oneway>::value )
+			this->transmit_response(message_size(r));
 		return r;
 	}
 };
 
-template <typename Dest, typename Response>
-struct remote_method<Dest, void, Response> 
-	: remote_method_base<Dest, void, Response>
+template <typename T, typename Response, typename...Args>
+inline remote_method<T, Response, Args...> 
+make_remote_method(remote_proxy<T>* owner, Response (T::*method)(Args...))
 {
-	using remote_method_base<Dest, void, Response>::remote_method_base;
+	return remote_method<T, Response, Args...>(owner, method);
+}
 
-	inline Response operator()() const
-	{
-		this->transmit_request(0);
-		Response r = (this->proxy->proc()->*(this->method))();
-		this->transmit_response(message_size(r));
-		return r;
-	}
-};
+#define REMOTE_METHOD(RClass, RMethod)\
+ decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
+ 	&RClass::RMethod)) RMethod { this, &RClass::RMethod }
 
-
-template <typename Dest, typename Request>
-struct remote_method<Dest, Request, void>
-	: remote_method_base<Dest, Request, void>
-{
-	using remote_method_base<Dest, Request, void>::remote_method_base;
-
-	inline void operator()(Request s) const
-	{
-		this->transmit_request(message_size(s));
-		(this->proxy->proc()->*(this->method))(s);
-		this->transmit_response(0);
-	}
-};
-
-
-template <typename Dest>
-struct remote_method<Dest, void, void>
-	: remote_method_base<Dest, void, void>
-{
-	using remote_method_base<Dest, void, void>::remote_method_base;
-
-	inline void operator()() const
-	{
-		this->transmit_request(0);
-		(this->proxy->proc()->*(this->method))();
-		this->transmit_response(0);
-	}
-};
-
-
-template <typename Dest, typename Request>
-struct remote_method<Dest, Request, oneway>
-	: remote_method_base<Dest, Request, void>
-{
-	using remote_method_base<Dest, Request, void>::remote_method_base;
-
-	inline void operator()(Request s) const
-	{
-		this->transmit_request(message_size(s));
-		(this->proxy->proc()->*(this->method))(s);
-	}
-};
-
-
-template <typename Dest>
-struct remote_method<Dest, void, oneway>
-	: remote_method_base<Dest, void, void>
-{
-	using remote_method_base<Dest, void, void>::remote_method_base;
-
-	inline void operator()() const
-	{
-		this->transmit_request(0);
-		(this->proxy->proc()->*(this->method))();
-	}
-};
 
 
 

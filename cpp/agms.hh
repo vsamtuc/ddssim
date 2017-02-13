@@ -224,6 +224,9 @@ public:
 		return dds::dot(*this, *this);
 	}
 
+	inline size_t byte_size() const {
+		return sizeof(float)*size();
+	}
 };
 
 
@@ -295,8 +298,6 @@ inline sketch operator/(const sketch& s, double a)
 	result /= a;
 	return result;
 }
-
-
 
 
 

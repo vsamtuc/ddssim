@@ -53,6 +53,15 @@ inline auto dot(const valarray<T>& a, const valarray<T>& b)
 	return std::inner_product(begin(a),end(a),begin(b), (T)0);
 }
 
+/**
+	Return the dot product of a vector with itself.
+  */
+template <typename T>
+inline auto dot(const valarray<T>& v)
+{
+	return dot(v,v);
+}
+
 
 /**
 	Return the k-th order statistic from an array.

@@ -10,6 +10,7 @@
 #include "method.hh"
 #include "accurate.hh"
 #include "output.hh"
+#include "tods.hh"
 
 using namespace dds;
 
@@ -25,10 +26,10 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	//D.set_max_length(1000);
-	//D.hash_sources(4);
-	//D.hash_streams(1);
-	D.set_time_window(3600);
+	D.set_max_length(1000);
+	D.hash_sources(4);
+	D.hash_streams(1);
+	//D.set_time_window(10800);
 	D.create();
 
 	/* Create components */
@@ -51,6 +52,7 @@ void execute()
 				twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		}
 	}
+	components.push_back(new tods::network(7, 400, 0.1));
 
 	/* Create output files */
 
@@ -60,7 +62,8 @@ void execute()
 
 #if 1
 	output_file* lsstats_file = CTX.open("wc_lsstats.dat");
-	data_source_statistics stat;
+	auto lss = new data_source_statistics();
+	components.push_back(lss);
 	lsstats.bind(lsstats_file);
 	lsstats.prolog();
 #endif
@@ -117,6 +120,7 @@ void execute_generated()
 		for(size_t j=i; j>0; j--)
 			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));
 	}
+	components.push_back(new tods::network(7, 10000, 0.05));
 
 	data_source_statistics stat;
 

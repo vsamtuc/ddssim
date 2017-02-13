@@ -47,6 +47,7 @@ void basic_control::empty_handler()
 
 	switch(state) {
 		case Start:
+			_step = 0;
 			emit(INIT);
 			state = Init;
 			break;
@@ -55,8 +56,8 @@ void basic_control::empty_handler()
 				emit(START_STREAM);
 				state = Data;
 			} else {
-				emit(DONE);
-				state = End;
+				emit(RESULTS);
+				state = Results;
 			}
 			break;
 		case Data:
@@ -72,9 +73,14 @@ void basic_control::empty_handler()
 			state = Data;
 			break;
 		case EndData:
+			emit(RESULTS);
+			state = Results;
+
+			break;
+		case Results:
 			emit(DONE);
 			state = End;
-			break;
+			break;			
 		case End:
 			assert(0);
 	}
@@ -83,6 +89,7 @@ void basic_control::empty_handler()
 
 void basic_control::run_action(action* a)
 {
+	_step++;
 	current_action = a;
 	a->run();
 	if(purge_current) {
@@ -188,3 +195,7 @@ void basic_control::data_feed(data_source* src)
 }
 
 
+basic_control::~basic_control()
+{
+	data_feed(nullptr);
+}

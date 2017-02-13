@@ -32,7 +32,7 @@ double dds::median(Vec v)
 }
 
 
-double norm_L1(const Vec& v)
+double dds::norm_L1(const Vec& v)
 {
 	double sum=0.0;
 	for(double x : v)
@@ -41,7 +41,7 @@ double norm_L1(const Vec& v)
 }
 
 
-double norm_L2(const Vec& v)
+double dds::norm_L2(const Vec& v)
 {
 	double sum=0.0;
 	for(double x : v) sum+=x*x;
@@ -49,7 +49,7 @@ double norm_L2(const Vec& v)
 }
 
 
-double norm_Linf(const Vec& v)
+double dds::norm_Linf(const Vec& v)
 {
 	double l = -1.0;
 	for(double x : v) {
