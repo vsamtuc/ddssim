@@ -28,7 +28,8 @@ endif
 ###################################
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc dsarch.cc tods.cc
+	accurate.cc dds.cc dsarch.cc results.cc\
+	tods.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh exec_tests.hh output_tests.hh \
@@ -45,11 +46,13 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 # Rules
 ###################################
 
-.PHONY: all ddslib test clean distclean doc
+.PHONY: all ddslib test clean distclean doc pyapi
 
 all: ddslib dssim $(TEST_SOURCES:.cc=) test
 
-ddslib: libdds.a dds.so
+ddslib: libdds.a 
+
+pyapi: dds.so
 
 libdds.a: $(DDS_OBJ)
 	ar rcs $@ $^

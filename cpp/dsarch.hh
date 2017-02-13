@@ -108,6 +108,10 @@ public:
 
 	virtual ~network();
 	friend class host;
+
+	// fill the traffic entries in comm_results
+	void comm_results_fill_in();
+
 };
 
 

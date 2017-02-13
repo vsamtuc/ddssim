@@ -10,6 +10,7 @@
 #include "method.hh"
 #include "accurate.hh"
 #include "output.hh"
+#include "results.hh"
 #include "tods.hh"
 
 using namespace dds;
@@ -26,7 +27,7 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	D.set_max_length(1000);
+	//D.set_max_length(1000);
 	D.hash_sources(4);
 	D.hash_streams(1);
 	//D.set_time_window(10800);
@@ -56,7 +57,7 @@ void execute()
 
 	/* Create output files */
 
-	//output_file* sto = CTX.open(stdout);
+	output_file* sto = CTX.open(stdout);
 	
 	/* Bind files to outputs */
 
@@ -67,6 +68,10 @@ void execute()
 	lsstats.bind(lsstats_file);
 	lsstats.prolog();
 #endif
+
+	comm_results.bind(sto);
+	comm_results.prolog();
+
 
 	/* Configure the timeseries reporting */
 	output_file* wcout = 

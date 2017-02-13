@@ -75,19 +75,6 @@ data_source_statistics::~data_source_statistics()
 }
 
 
-local_stream_stats_t dds::lsstats;
-
-
-local_stream_stats_t::local_stream_stats_t()
-: result_table("local_stream_stats")
-{
-	add({
-		&sid,
-		&hid,
-		&stream_len
-	});
-}
-
 
 void data_source_statistics::report(std::ostream& s)
 {

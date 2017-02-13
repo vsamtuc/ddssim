@@ -44,52 +44,18 @@ struct node_stream_state
 
 	double theta_2_over_k;	// equal to theta**2/k, used in local condition
 
-	node_stream_state(projection proj, double theta, size_t k) 
-	: E(proj), dE(proj), delta_updates(0), 
-		norm_E_2(0.0), norm_dE_2(0.0),
-		theta_2_over_k(theta*theta/k)
-	{ }
+	node_stream_state(projection proj, double theta, size_t k);
 
 	/// add an update to the state
-	void update(key_type key, double freq) {
-		// update with 
-		dE.update(key, freq);
-		
-		double delta_2 = dot(dE.delta);
-
-		Vec tmp = dE.sk[dE.idx];
-
-		double dnorm_dE_2 = 2.*dot(tmp,  dE.delta) 
-				- delta_2;
-		
-		norm_dE_2 += dnorm_dE_2;
-
-		tmp = E[dE.idx];
-		double dnorm_E_2 = dnorm_dE_2 + 2.*dot(tmp, dE.delta);
-		norm_E_2 += dnorm_E_2;
-
-		delta_updates++;
-	}
+	void update(key_type key, double freq);
 
 	/// check local condition
-	bool local_condition() {
-		return norm_dE_2 < theta_2_over_k * norm_E_2;
-	}
+	bool local_condition() const;
 
 	/// flush dE to E
-	void flush() {
-		E += dE.sk;
-		dE.sk = 0.0;
-		delta_updates = 0;
-		norm_E_2 = pow(norm_L2(E), 2);
-		norm_dE_2 = 0.0;
-	}
+	void flush();
 
-	size_t byte_size() const {
-		size_t E_size = dds::byte_size(dE.sk);
-		size_t Raw_size = sizeof(dds_record)*delta_updates;
-		return std::min(E_size, Raw_size);
-	}
+	size_t byte_size() const;
 };
 
 
@@ -104,11 +70,7 @@ struct coordinator : process
 	~coordinator();
 
 	/// Remote method
-	oneway update(source_id hid, stream_id sid, const node_stream_state& nss)
-	{
-		stream_state[sid]->Etot += nss.dE.sk;
-		return oneway();
-	}
+	oneway update(source_id hid, stream_id sid, const node_stream_state& nss);
 };
 
 
@@ -119,7 +81,6 @@ struct coordinator_proxy : remote_proxy<coordinator>
 	coordinator_proxy(process* owner, coordinator* coord)
 	: remote_proxy<coordinator>(owner)
 	{ }
-
 };
 
 
@@ -157,6 +118,10 @@ struct network
 	{ }
 
 	void process_record();
+	void output_results();
+
+	double maximum_error() const;
+
 
 	~network();
 };

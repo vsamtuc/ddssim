@@ -10,7 +10,7 @@
 #include "dds.hh"
 #include "method.hh"
 #include "mathlib.hh"
-#include "output.hh"
+#include "results.hh"
 #include "agms.hh"
 
 namespace dds {
@@ -21,16 +21,6 @@ using std::cout;
 using std::endl;
 
 using namespace std::string_literals;
-
-struct local_stream_stats_t : result_table
-{
-	local_stream_stats_t();
-
-	column<stream_id> sid { "sid", "%hd" };
-	column<source_id> hid { "hid", "%hd" };
-	column<size_t> stream_len { "stream_len", "%zu", 0 };
-};
-extern local_stream_stats_t lsstats;
 
 class data_source_statistics : public reactive
 {
