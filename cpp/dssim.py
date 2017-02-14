@@ -12,6 +12,7 @@ def prepare_data():
 
 	D = dataset()
 	D.load(wcup)
+	D.set_max_length(10000)
 	D.set_time_window(3600)
 	D.create()
 
@@ -56,7 +57,7 @@ def execute(sids=None):
 
 
 def execute_generated():
-	CTX.data_feed(uniform_data_source(5, 25, 1000000, 100000))
+	CTX.data_feed(uniform_data_source(5, 25, 1000, 1000))
 	components = prepare_components()
 
 	wcout = CTX.open("uni_tseries.dat",open_mode.truncate)
@@ -99,7 +100,7 @@ def relerr(xacc,xest):
 
 
 if __name__=='__main__':
-	#execute()
-	execute_generated()
+	execute()
+	#execute_generated()
 	pass
 

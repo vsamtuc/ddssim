@@ -16,6 +16,13 @@ namespace { // Avoid cluttering the global namespace.
 		p.release();
 	}
 
+	inline dds::data_source* __wrap_time_window(std::auto_ptr<dds::data_source> ds, dds::timestamp ts)
+	{
+		dds::data_source* ret = dds::time_window(ds.get(), ts);
+		ds.release();
+		return ret;
+	}
+
 	using namespace boost::python;
 
 	struct output_pyfile : dds::output_c_file
@@ -90,14 +97,89 @@ namespace { // Avoid cluttering the global namespace.
 		return self->add_rule(evt, new pycondaction(cond,action));
 	}
 
+	template <typename Elem>
+	struct set_ops {
+		typedef std::set<Elem> Set;
+		static bool not_empty(Set const& s) { return !s.empty(); }
+
+		static bool contains(Set const& s, const Elem& e) {
+			return s.find(e)!=s.end();
+		}
+
+		static void add(Set& s, const Elem& e) {
+			s.insert(e);
+		}
+
+		static void union_(Set& s, list l) {
+			l[0];
+		}
+	};
+
+
+	template<class T1, class T2>
+	struct PairToTupleConverter {
+	  static PyObject* convert(const std::pair<T1, T2>& p) {
+	    return incref(make_tuple(p.first, p.second).ptr());
+	  }
+	};
+
+    typedef std::pair<dds::stream_id, dds::stream_id> id_pair;
+
+	struct TupleToIdPairConverter {
+
+		TupleToIdPairConverter() {
+			boost::python::converter::registry::push_back(
+				&convertible,
+				&construct,
+				boost::python::type_id<id_pair>());
+		}
+
+		// Determine if obj_ptr can be converted in a QString
+		static void* convertible(PyObject* obj_ptr)
+		{
+		  	if (!PyTuple_Check(obj_ptr)) return 0;
+		  	if (PyTuple_Size(obj_ptr)!=2) return 0;
+		  	if( !PyLong_Check(PyTuple_GetItem(obj_ptr, 0))
+		  		|| !PyLong_Check(PyTuple_GetItem(obj_ptr, 0)))
+		  	return 0; 
+		  	return obj_ptr;
+		}
+ 	
+		static void construct(	PyObject* obj_ptr,
+			converter::rvalue_from_python_stage1_data* data)
+		{
+			// Extract the character data from the python string
+			dds::stream_id s1 = PyLong_AsLong(PyTuple_GetItem(obj_ptr,0));
+			dds::stream_id s2 = PyLong_AsLong(PyTuple_GetItem(obj_ptr,1));
+
+			// Grab pointer to memory into which to construct the new QString
+			void* storage = (
+			(converter::rvalue_from_python_storage<id_pair>*)
+			data)->storage.bytes;
+
+			// in-place construct the new QString using the character data
+			// extraced from the python object
+			new (storage) id_pair(s1, s2);
+
+			// Stash the memory chunk pointer for later use by boost.python
+			data->convertible = storage;
+		}
+ 
+	};
+
 
 } // namespace anonymous
 
 
 
-BOOST_PYTHON_MODULE(dds)
+BOOST_PYTHON_MODULE(_dds)
 {
     using namespace boost::python;
+
+    to_python_converter< std::pair<short, short>, 
+    	PairToTupleConverter<short, short> > __dummy();
+
+    TupleToIdPairConverter();
 
     /**********************************************
      *
@@ -138,24 +220,37 @@ BOOST_PYTHON_MODULE(dds)
     	;
 
     //std_pair_to_python_converter<dds::stream_id, dds::stream_id>();
-    typedef std::pair<dds::stream_id, dds::stream_id> id_pair;
-    class_< id_pair >("id_pair",
-    	init<dds::stream_id, dds::stream_id>())
-    	.def_readwrite("first", &id_pair::first)
-    	.def_readwrite("second", &id_pair::second)
-    	;
+
+    // class_< id_pair >("id_pair",
+    // 	init<dds::stream_id, dds::stream_id>())
+    // 	.def_readwrite("first", &id_pair::first)
+    // 	.def_readwrite("second", &id_pair::second)
+    // 	;
 
     def("join", dds::join);
 
     class_< dds::twoway_join, bases<dds::basic_query> >("twoway_join", 
     	init< std::pair<dds::stream_id, dds::stream_id>>())
-    	.def_readwrite("param", &dds::twoway_join::param )
+    	//.def_readonly("param", &dds::twoway_join::param )
+    	.add_property("param", make_function(
+    		[](dds::twoway_join& q) {
+    			return make_tuple(q.param.first, q.param.second);
+    		},
+    		return_value_policy<return_by_value>(),
+    		boost::mpl::vector<tuple, dds::twoway_join>()
+    		)
+    	)
     	;
 
     // Also good for std::set<source_id> !!!!
     class_< std::set<dds::stream_id> >("id_set")
     	.def("__len__", & std::set<dds::stream_id>::size )
     	.def("__iter__", iterator<std::set<dds::stream_id>>())
+    	.add_property("empty", &std::set<dds::stream_id>::empty)
+    	.def("clear", &std::set<dds::stream_id>::clear )
+    	.def("__bool__", &set_ops<dds::stream_id>::not_empty )
+    	.def("__contains__", &set_ops<dds::stream_id>::contains )
+    	.def("add", &set_ops<dds::stream_id>::add )    	
     	;
 
     class_<dds::ds_metadata>("ds_metadata")
@@ -164,6 +259,9 @@ BOOST_PYTHON_MODULE(dds)
     	.add_property("maxtime", &dds::ds_metadata::maxtime)
     	.add_property("minkey", &dds::ds_metadata::minkey)
     	.add_property("maxkey", &dds::ds_metadata::maxkey)
+    	.def("set_size", &dds::ds_metadata::set_size)
+    	.def("set_key_range", &dds::ds_metadata::set_key_range)
+    	.def("set_ts_range", &dds::ds_metadata::set_ts_range)
     	.add_property("stream_ids", 
     		make_function(&dds::ds_metadata::stream_ids,
     			return_value_policy<copy_const_reference>()))
@@ -183,17 +281,24 @@ BOOST_PYTHON_MODULE(dds)
     	.def("get", &dds::data_source::get, 
     		return_value_policy<copy_const_reference>())
     	.def("advance", &dds::data_source::advance)
+    	.def("valid", &dds::data_source::valid)
 		.def("__iter__", iterator<dds::data_source>())    	
+    	;
+
+    class_<dds::time_window_source, bases<dds::data_source>, boost::noncopyable>(
+    	"time_window_source", init<dds::data_source*, dds::timestamp>())
+    	.add_property("delay", & dds::time_window_source::delay)
     	;
 
     def("wcup_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
     def("crawdad_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
+    def("time_window", __wrap_time_window, return_value_policy<manage_new_object>());
 
     class_< dds::analyzed_data_source, bases<dds::data_source>, 
     	boost::noncopyable>(
     		"analyzed_data_source", no_init)
     	.def("metadata", &dds::analyzed_data_source::metadata,
-    		return_value_policy<copy_const_reference>())
+    		return_internal_reference<>())
     	;
 
     class_< dds::uniform_data_source, bases<dds::analyzed_data_source>, 
@@ -203,13 +308,24 @@ BOOST_PYTHON_MODULE(dds)
     	)
     	;
 
-	class_< dds::buffered_dataset >("buffered_dataset")    
+	class_< dds::buffered_dataset >("buffered_dataset")
 		.def("__iter__", iterator< dds::buffered_dataset >())
+    	.def("__len__", & dds::buffered_dataset::size )
     	.def("size", & dds::buffered_dataset::size )
     	.def("load", &dds::buffered_dataset::load)
     	.def("analyze", &dds::buffered_dataset::analyze)
 		;
 
+	class_< dds::buffered_data_source, 
+			bases<dds::analyzed_data_source>,
+			boost::noncopyable >("buffered_data_source",
+				init<dds::buffered_dataset&>()[
+					with_custodian_and_ward<1,2>()])
+			.def(init<dds::buffered_dataset&,
+					const dds::ds_metadata&>()[
+						with_custodian_and_ward<1,2>()
+					])
+			;
 
     /**********************************************
      *
@@ -302,6 +418,7 @@ BOOST_PYTHON_MODULE(dds)
 	scope().attr("END_RECORD") = dds::END_RECORD;
 	scope().attr("VALIDATE") = dds::VALIDATE;
 	scope().attr("REPORT") = dds::REPORT;
+	scope().attr("RESULTS") = dds::RESULTS;
 
 	class_< dds::eca_rule >("eca_rule", 
 		init<const dds::eca_rule&>())
@@ -315,7 +432,8 @@ BOOST_PYTHON_MODULE(dds)
 		.def("metadata", &dds::basic_control::metadata,
 			return_value_policy<copy_const_reference>())
 		.def("data_feed", &dds::basic_control::data_feed,
-			with_custodian_and_ward<1,2>())
+				with_custodian_and_ward_postcall<1,2>()
+			)
 		.def("run", &dds::basic_control::run)
 		//.def("add_rule", &dds::basic_control::add_rule,
 		//	return_value_policy<return_by_value>())

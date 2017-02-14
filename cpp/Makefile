@@ -8,7 +8,7 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=0
+DEBUG=1
 endif
 
 
@@ -48,11 +48,11 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 
 .PHONY: all ddslib test clean distclean doc pyapi
 
-all: ddslib dssim $(TEST_SOURCES:.cc=) test
+all: ddslib pyapi dssim $(TEST_SOURCES:.cc=) test
 
 ddslib: libdds.a 
 
-pyapi: dds.so
+pyapi: _dds.so
 
 libdds.a: $(DDS_OBJ)
 	ar rcs $@ $^
@@ -64,8 +64,8 @@ dssim: dssim.o libdds.a
 dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
 
-dds.so: dds_module.o libdds.a
-	$(CXX) -shared -o $@ $^ -lboost_python-py35
+_dds.so: dds_module.o libdds.a
+	$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl  -lutil -lm
 
 #unit_tests.cc: $(UNIT_TESTS) 
 #	cxxtestgen --error-printer -o $@ $^

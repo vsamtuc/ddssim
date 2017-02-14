@@ -28,9 +28,9 @@ void execute()
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(1000);
-	D.hash_sources(4);
-	D.hash_streams(1);
-	//D.set_time_window(10800);
+	//D.hash_sources(4);
+	//D.hash_streams(2);
+	D.set_time_window(26*1800);
 	D.create();
 
 	/* Create components */
@@ -43,16 +43,16 @@ void execute()
 
 	cout << "Treating " << sids.size() << " streams" << endl;
 
-	for(size_t i=0; i<sids.size(); i++) {
-		cout << "Treating stream " << sids[i] << endl;
-		components.push_back(new selfjoin_exact_method(sids[i]));
-		components.push_back(new selfjoin_agms_method(sids[i], 15, 10000));
-		for(size_t j=i; j>0; j--){
-			components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
-			components.push_back(new 
-				twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
-		}
-	}
+	// for(size_t i=0; i<sids.size(); i++) {
+	// 	cout << "Treating stream " << sids[i] << endl;
+	// 	components.push_back(new selfjoin_exact_method(sids[i]));
+	// 	components.push_back(new selfjoin_agms_method(sids[i], 15, 10000));
+	// 	for(size_t j=i; j>0; j--){
+	// 		components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
+	// 		components.push_back(new 
+	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
+	// 	}
+	// }
 	components.push_back(new tods::network(7, 400, 0.1));
 
 	/* Create output files */
@@ -104,7 +104,7 @@ void execute_generated()
 {
 	/* Set up data stream */
 
-	auto ds = new uniform_data_source(5, 25, 1000000, 100000);
+	auto ds = new uniform_data_source(5, 25, 10000, 1000);
 	CTX.data_feed(ds);
 
 
@@ -176,8 +176,8 @@ int main(int argc, char** argv)
 	}
 
 
-	execute();
-	//execute_generated();
+	//execute();
+	execute_generated();
 	return 0;
 }
 

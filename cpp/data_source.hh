@@ -308,7 +308,7 @@ public:
 };
 
 
-inline auto time_window(data_source* ds, timestamp Tw)
+inline data_source* time_window(data_source* ds, timestamp Tw)
 {
 	return new time_window_source(ds, Tw);
 }
@@ -423,6 +423,7 @@ struct uniform_data_source : analyzed_data_source
 			}
 		}
 	}
+
 };
 
 
