@@ -72,6 +72,7 @@ inline T order_select(int k, int n, T* ptr) {
         return ptr[k];
 }
 
+
 /**
 	Return the k-th order statistic of a Vec.
   */
@@ -98,6 +99,20 @@ inline double relative_error(double exact, double estimate)
 	return (exact==0.0)?
 	 	(estimate==0.0 ? 0.0 : estimate)
 	 	: fabs((exact-estimate)/exact);
+}
+
+
+/**
+	Just a printer for vectors
+  */
+template <typename T>
+inline std::ostream& operator<<(std::ostream& s, const valarray<T>& a)
+{
+	s << "[";
+	for(auto x : a) {
+		s << " " << x;
+	}
+	return s << "]";
 }
 
 

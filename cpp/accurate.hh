@@ -128,7 +128,7 @@ public:
 struct agms_sketch_updater : reactive
 {
 	stream_id sid;
-	agms::incremental_sketch isk;
+	agms::isketch isk;
 
 	agms_sketch_updater(stream_id _sid, agms::projection proj)
 	: sid(_sid), isk(proj)

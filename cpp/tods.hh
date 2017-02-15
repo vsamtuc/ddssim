@@ -36,7 +36,7 @@ struct coord_stream_state
 struct node_stream_state
 {
 	sketch E;				// the last sketch sent to the coordinator
-	incremental_sketch dE;	// collects the new updates
+	isketch dE;	// collects the new updates
 	size_t delta_updates; 	// counts the updates in dE
 
 	double norm_E_2;		// dynamically maintained ||E||**2

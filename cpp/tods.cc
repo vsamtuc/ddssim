@@ -82,7 +82,7 @@ coordinator::~coordinator()
 oneway coordinator::update(source_id hid, stream_id sid, 
 	const node_stream_state& nss)
 {
-	stream_state[sid]->Etot += nss.dE.sk;
+	stream_state[sid]->Etot += nss.dE;
 	return oneway();
 }
 
@@ -139,7 +139,7 @@ void node_stream_state::update(key_type key, double freq)
 	
 	double delta_2 = dot(dE.delta);
 
-	Vec tmp = dE.sk[dE.idx];
+	Vec tmp = dE[dE.idx];
 
 	double dnorm_dE_2 = 2.*dot(tmp,  dE.delta) 
 			- delta_2;
@@ -162,8 +162,8 @@ bool node_stream_state::local_condition() const
 /// flush dE to E
 void node_stream_state::flush() 
 {
-	E += dE.sk;
-	dE.sk = 0.0;
+	E += dE;
+	(sketch&)dE = 0.0;  // the cast is necessary, since isketch does not have = op
 	delta_updates = 0;
 	norm_E_2 = pow(norm_L2(E), 2);
 	norm_dE_2 = 0.0;
@@ -171,7 +171,7 @@ void node_stream_state::flush()
 
 size_t node_stream_state::byte_size() const 
 {
-	size_t E_size = dds::byte_size(dE.sk);
+	size_t E_size = dds::byte_size(dE);
 	size_t Raw_size = sizeof(dds_record)*delta_updates;
 	return std::min(E_size, Raw_size);
 }

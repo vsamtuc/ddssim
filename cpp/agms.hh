@@ -302,35 +302,30 @@ inline sketch operator/(const sketch& s, double a)
 
 
 /**
-	A container for a single sketch and 
-	data for for fast incremental updates.
-  */
-struct incremental_sketch
-{
-	sketch sk;  // the sketch
+	An incrementally updatable sketch.
 
+	A container for a single sketch and data for fast incremental updates.
+  */
+struct isketch : sketch
+{
 	// temporaries, used to avoid parameter passing
 	Index idx;
 	Mask mask;
 	Vec delta;
 
-	inline const projection& proj() { return sk.proj; }
-	inline depth_type depth() { return proj().depth(); }
-	inline depth_type width() { return proj().width(); }
-
-	incremental_sketch(const projection& proj);
+	isketch(const projection& proj);
 
 	void prepare_indices(key_type key);
 	void update_counters(double freq);
 
-	void update(key_type key, double freq=1.0)
+	inline void update(key_type key, double freq=1.0)
 	{
 		prepare_indices(key);
 		update_counters(freq);
 	}
 
-	void insert(key_type key) { update(key,1.0); }
-	void erase(key_type key) { update(key,-1.0); }
+	inline void insert(key_type key) { update(key,1.0); }
+	inline void erase(key_type key) { update(key,-1.0); }
 };
 
 
@@ -362,16 +357,16 @@ struct incremental_est
   */
 struct incremental_norm2 : incremental_est
 {
-	incremental_sketch* isk;
+	isketch* isk;
 
-	incremental_norm2(incremental_sketch* _isk)
-	: incremental_est(dot_estvec(_isk->sk)), isk(_isk)
+	incremental_norm2(isketch* _isk)
+	: incremental_est(dot_estvec(*_isk)), isk(_isk)
 	{ }
 		
 	// init the cur norm2 vector
 	void update_directly()
 	{
-		row_est = dot_estvec(isk->sk);
+		row_est = dot_estvec(*isk);
 	}
 
 	/* 
@@ -385,10 +380,9 @@ struct incremental_norm2 : incremental_est
 	void update_incremental()
 	{
 		Vec& delta = isk->delta;
-		Vec& sk = isk->sk;
 		Index& idx = isk->idx;
 		// unoptimized!!!
-		row_est += 2.*delta*sk[idx] - delta * delta;
+		row_est += 2.*delta*(*isk)[idx] - delta * delta;
 	}
 
 };
@@ -400,29 +394,28 @@ struct incremental_norm2 : incremental_est
   */
 struct incremental_prod : incremental_est
 {
-	incremental_sketch *isk1, *isk2;
+	isketch *isk1, *isk2;
 
-	incremental_prod(incremental_sketch* sk1, incremental_sketch* sk2)
+	incremental_prod(isketch* sk1, isketch* sk2)
 	: isk1(sk1), isk2(sk2)
 	{ 
-		assert(isk1->sk.compatible(isk2->sk));
+		assert(isk1->compatible(*isk2));
 		update_directly();
 	}
 
 	void update_directly() 
 	{
-		row_est = dot_estvec(isk1->sk, isk2->sk);
+		row_est = dot_estvec(*isk1, *isk2);
 	}
 
 	/*
 		Just  cur_prod += U.delta * V.sk[idx];
 	 */
-	void _update_incremental(incremental_sketch& U, incremental_sketch& V)
+	void _update_incremental(isketch& U, isketch& V)
 	{
 		Vec& delta = U.delta;
-		Vec& sk = V.sk;
 		Index& idx = U.idx;
-		row_est += 1.*delta * sk[idx]; // BRAINDEAD!!!! without 1.*...
+		row_est += (+delta) * V[idx]; // BRAINDEAD!!!! without (+...), cannot do!
 	}
 
 	// call on lhs update

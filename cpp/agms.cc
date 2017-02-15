@@ -156,18 +156,18 @@ size_t std::hash<projection>::operator()( const projection& p) const
 }
 
 
-incremental_sketch::incremental_sketch(const projection& proj)
-	: 	sk(proj), 
+isketch::isketch(const projection& _proj)
+	: 	sketch(_proj), 
 		idx(proj.depth()), 
 		mask(proj.depth()), 
 		delta(proj.depth())
 	{ 	}
 
 
-void incremental_sketch::prepare_indices(key_type key)
+void isketch::prepare_indices(key_type key)
 {
-	proj().update_index(key, idx);
-	proj().update_mask(key, mask);
+	proj.update_index(key, idx);
+	proj.update_mask(key, mask);
 }
 
 template <typename T>
@@ -180,12 +180,12 @@ void print_vec(const string& name, const T& a)
 	cout << "}" << endl;
 }
 
-void incremental_sketch::update_counters(double freq)
+void isketch::update_counters(double freq)
 {
 	delta[mask] = freq;
 	delta[!mask] = -freq;
 	//print_vec("delta",delta);
-	sk[idx] += delta;
+	(*this)[idx] += delta;
 }
 
 

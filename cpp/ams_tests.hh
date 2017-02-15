@@ -167,8 +167,8 @@ public:
 		//
 
 		projection proj = projection(7,1000);
-		incremental_sketch isk[2] = { 
-			incremental_sketch(proj), incremental_sketch(proj) };
+		isketch isk[2] = { 
+			isketch(proj), isketch(proj) };
 		incremental_norm2  SJ[2] = { & isk[0], & isk[1] };
 		incremental_prod P(&isk[0], &isk[1]);
 
