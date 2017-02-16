@@ -44,8 +44,26 @@ typedef valarray<size_t> Index;
 typedef valarray<bool> Mask;
 
 
+
+/*************************************************
+ *
+ *  Dot product
+ *
+ *************************************************/
+
+
+
 /**
-	Return the dot product of two Vec objects.
+	Return the dot product of two valarray objects.
+
+	This method calls internally the std::inner_product
+	algorithm of STL
+
+	@param a the first vector
+	@param b the second vector
+	@return the dot product of the two vectors
+
+	@see dot
   */
 template <typename T>
 inline auto dot(const valarray<T>& a, const valarray<T>& b)
@@ -53,14 +71,19 @@ inline auto dot(const valarray<T>& a, const valarray<T>& b)
 	return std::inner_product(begin(a),end(a),begin(b), (T)0);
 }
 
+
 /**
-	Return the dot product of a vector with itself.
+	Return \f$ x^2 \f$, the dot product of a vector with itself.
   */
 template <typename T>
 inline auto dot(const valarray<T>& v)
 {
 	return dot(v,v);
 }
+
+
+
+
 
 
 /**
@@ -79,15 +102,35 @@ inline T order_select(int k, int n, T* ptr) {
 double order_select(size_t k, Vec v);
 
 
+
 /**
    Return the median of a Vec.
   */
 double median(Vec v);
 
+
 // Norms 
+
+
+/**
+	Return the L1 norm of a vector
+  */
 double norm_L1(const Vec& v);
+
+
+
+/**
+	Return the L2 (Euclidean) norm of a vector
+  */
 double norm_L2(const Vec& v);
+
+
+
+/**
+	Return the L_inf (Checbyshev) norm of a vector
+  */
 double norm_Linf(const Vec& v);
+
 
 
 /**
@@ -102,18 +145,6 @@ inline double relative_error(double exact, double estimate)
 }
 
 
-/**
-	Just a printer for vectors
-  */
-template <typename T>
-inline std::ostream& operator<<(std::ostream& s, const valarray<T>& a)
-{
-	s << "[";
-	for(auto x : a) {
-		s << " " << x;
-	}
-	return s << "]";
-}
 
 
 /**
@@ -202,7 +233,26 @@ public:
 
 
 
-
 } // end namespace dds
+
+
+
+/**
+	Just a printer for vectors
+  */
+template <typename T>
+inline std::ostream& operator<<(std::ostream& s, const std::valarray<T>& a)
+{
+	s << "[";
+	const char* sep="";
+	for(auto x : a) {
+		s << sep << x;
+		sep = " ";
+	}
+	return s << "]";
+}
+
+
+
 
 #endif

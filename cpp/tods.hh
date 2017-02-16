@@ -46,6 +46,9 @@ struct node_stream_state
 
 	node_stream_state(projection proj, double theta, size_t k);
 
+	node_stream_state(const node_stream_state&)=delete;
+	node_stream_state& operator=(const node_stream_state&)=delete;
+
 	/// add an update to the state
 	void update(key_type key, double freq);
 
@@ -90,7 +93,9 @@ struct coordinator_proxy : remote_proxy<coordinator>
   */
 struct node : local_site
 {
+	/// map from stream_id to stream_state
 	map<stream_id, node_stream_state*> stream_state;
+
 	coordinator_proxy coord;
 
 	node(network*, source_id);

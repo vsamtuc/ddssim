@@ -217,9 +217,29 @@ template <>
 inline size_t byte_size<ACK>(const ACK& s) { return 0; }
 
 
+template <typename T>
+struct msgwrapper
+{
+	T* payload;
+	msgwrapper(T* _p) : payload(_p){}
+	inline size_t byte_size() const { return byte_size((const T&) *payload); }
+};
+template <typename T>
+msgwrapper<T> wrap(T* p) { return msgwrapper<T>(p); }
+template <typename T>
+msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
 
+
+
+
+/**
+	Compute the message size of an argument list.
+
+	This function simply adds the \c byte_size() value
+	of each argument.
+  */
 template <typename...Args>
-inline size_t message_size(Args...args)
+inline size_t message_size(const Args& ...args)
 {
 	size_t total = 0;
 	typedef size_t swallow[];

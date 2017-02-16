@@ -4,6 +4,7 @@
 #include <string>
 #include <cstdio>
 #include <valarray>
+#include <typeinfo>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_sparse.hpp>
@@ -13,17 +14,39 @@
 
 #include "dds.hh"
 #include "output.hh"
+#include "mathlib.hh"
+#include "binc.hh"
+#include "callbacks.hh"
 
 #include <cxxtest/TestSuite.h>
 
 using namespace boost::numeric::ublas;
 using namespace std;
 using namespace dds;
-
+using namespace binc;
+using namespace Simple;
 
 class MiscTestSuite : public CxxTest::TestSuite
 {
 public:
+
+
+
+	void test_print()
+	{
+
+		TS_ASSERT_EQUALS(sprint("This is a test"), string("This is a test"));
+		TS_ASSERT_EQUALS(sprint("pi=", 3.1415926), string("pi= 3.14159"));
+		TS_ASSERT_EQUALS(sprint("x=", Vec{1,2}), string("x= [1 2]"));
+
+		TS_ASSERT_EQUALS(sprint("It is a fact that is",std::boolalpha, 1==1), string("It is a fact that is  true"));
+
+		TS_ASSERT_EQUALS( sprint("My name is", "Aram", "and I am",12), string("My name is Aram and I am 12") );
+
+		int A[3] = { 100, 200, 300 };
+		TS_ASSERT_EQUALS(sprint("[",elements_of(A,", "),"]"), string("[ 100, 200, 300 ]"));
+
+	}
 
 
 	void test_sizes()
@@ -158,6 +181,29 @@ public:
 		TS_ASSERT_EQUALS( std::tuple_size<decltype(t2)>::value, 4);
 	}
 
+	void test_valarray_move()
+	{
+		Vec x { 1.0, 2, 3, 4, 5, 6, 7 };
+		Index I { 2, 6 };
+		Vec delta { 5., 10. };
+
+		x[I] += delta;
+
+		Vec d1 (std::move(delta));
+
+		TS_ASSERT_EQUALS(delta.size(), 0);
+		TS_ASSERT_EQUALS(d1.size(), 2);
+
+		delta = d1;
+
+		TS_ASSERT_EQUALS(delta.size(), 2);
+		TS_ASSERT_EQUALS(d1.size(), 2);
+
+		delta = std::move(d1);
+		TS_ASSERT_EQUALS(delta.size(), 2);
+		TS_ASSERT_EQUALS(d1.size(), 0);
+
+	}
 
 
 };
