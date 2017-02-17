@@ -20,17 +20,18 @@ void execute()
 {
 	/* Set up data stream */
 
-	//data_source* wcup = crawdad_ds("/home/vsam/src/datasets/wifi_crawdad_sorted");
-	//data_source* wcup = wcup_ds("/home/vsam/src/datasets/wc_day44");
-	data_source* wcup = wcup_ds(string(getenv("HOME"))+
-		"/src/datasets/wc_day44");
+	string HOME(getenv("HOME"));
+
+	//data_source* wcup = crawdad_ds(HOME+"/src/datasets/wifi_crawdad_sorted");
+	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
+	data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
 
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(1000);
 	//D.hash_sources(4);
-	//D.hash_streams(2);
-	D.set_time_window(26*1800);
+	D.hash_streams(2);
+	D.set_time_window(4*3600);
 	D.create();
 
 	/* Create components */
@@ -53,7 +54,7 @@ void execute()
 	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 	// 	}
 	// }
-	components.push_back(new tods::network(7, 400, 0.1));
+	components.push_back(new tods::network(7, 1500, 0.1));
 
 	/* Create output files */
 
@@ -176,8 +177,8 @@ int main(int argc, char** argv)
 	}
 
 
-	//execute();
-	execute_generated();
+	execute();
+	//execute_generated();
 	return 0;
 }
 

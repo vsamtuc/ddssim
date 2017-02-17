@@ -32,7 +32,7 @@ struct sep
 
 
 template <>
-int __print_control::handle<sep>(const sep& thesep) {
+inline int __print_control::handle<sep>(const sep& thesep) {
 	_sep = thesep._sep; return 0;
 }
 
@@ -71,13 +71,13 @@ struct __element_range
 	Returns a wrapper for printing the elements of an iterable object.
   */
 template <typename Iterable>
-auto elements_of(const Iterable& container, const std::string& sep=" ") {
+inline auto elements_of(const Iterable& container, const std::string& sep=" ") {
 	return __element_range<decltype(std::begin(container)),decltype(std::end(container)) >
 		(std::begin(container), std::end(container), sep);
 }
 
 template <typename Iter1, typename Iter2>
-std::ostream& operator<< (std::ostream& s, __element_range<Iter1, Iter2> elem_range)
+inline std::ostream& operator<< (std::ostream& s, __element_range<Iter1, Iter2> elem_range)
 {
 	bool start = true;
 	for(auto I=elem_range.iter1; I!=elem_range.iter2; ++I) {

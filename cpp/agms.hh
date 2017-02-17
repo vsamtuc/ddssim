@@ -21,11 +21,10 @@ typedef unsigned int depth_type;
 using key_type = dds::key_type;
 
 using std::valarray;
-typedef valarray<double> Vec;
-typedef valarray<size_t> Index;
-typedef valarray<bool> Mask;
-
-
+using dds::delta_vector;
+using dds::Vec;
+using dds::Index;
+using dds::Mask;
 
 
 /**
@@ -240,6 +239,29 @@ Vec dot_estvec(const sketch& s1, const sketch& s2);
 
 
 /**
+	Incremental version of `dot_estvec`. 
+
+	The incremental state is the previous result. 
+	Therefore this function takes it as its first argument (by reference),
+	mutates it and returns a reference to it.
+
+	@see dot_estvec
+  */
+Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch& s2);
+
+/**
+	Incremental version of `dot_estvec`. 
+
+	The incremental state is the previous result. 
+	Therefore this function takes it as its first argument (by reference),
+	mutates it and returns a reference to it.
+
+	@see dot_estvec
+  */
+Vec& dot_estvec_inc(Vec& oldvalue, const sketch& s1, const delta_vector& s2);
+
+
+/**
 	A shorthand for dot_estvec(s,s)
   */
 inline Vec dot_estvec(const sketch& s) { 
@@ -248,18 +270,86 @@ inline Vec dot_estvec(const sketch& s) {
 
 
 /**
+	Incremental version for dot_estvec(s).
+
+	The incremental state is just the previous value.
+  */
+Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds);
+
+
+/**
 	Return the (robust) estimate of the inner product
-	by two agms sketches
+	of two agms sketches
   */
 inline double dot_est(const sketch& s1, const sketch& s2)
 {
 	return dds::median(dot_estvec(s1,s2));
 }
 
+/**
+	Return the (robust) estimate of the self product
+	of an agms sketch
+  */
 inline double dot_est(const sketch& sk)
 {
 	return dds::median(dot_estvec(sk));
 }
+
+
+/**
+	Return the (robust) estimate of the inner product
+	of two agms sketches and the incremental state (which is overwritten)
+  */
+inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2)
+{
+	incstate.resize(s1.depth());
+	incstate = dot_estvec(s1,s2);
+	return dds::median(incstate);
+}
+
+
+inline double dot_est_inc(Vec& incstate, const delta_vector& ds1, const sketch& s2)
+{
+	return dds::median(dot_estvec_inc(incstate, ds1,s2));
+}
+
+inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& ds2)
+{
+	return dds::median(dot_estvec_inc(incstate, s1, ds2));
+}
+
+
+
+/**
+	Return the (robust) incremental estimate of the inner product
+	of two agms sketches
+  */
+inline double dot_est_with_inc(Vec& incstate, const sketch& sk)
+{
+	incstate.resize(sk.depth());
+	incstate = dot_estvec(sk);
+	return dds::median(incstate);
+}
+
+
+inline double dot_est_inc(Vec& incstate, const delta_vector& dsk)
+{
+	return dds::median(dot_estvec_inc(incstate, dsk));
+}
+
+
+/**
+	Incremental version of norm2_squared
+
+	Just use dot_inc
+
+inline double norm2_squared_inc(double& oldvalue, const delta_vector& dsk)
+{
+	oldvalue += dds::dot(dsk.xnew) - dds::dot(dsk.xold);
+	return oldvalue;
+}
+  */
+
 
 // Vector space operations
 
@@ -304,134 +394,25 @@ inline sketch operator/(const sketch& s, double a)
 /**
 	An incrementally updatable sketch.
 
-	A container for a single sketch and data for fast incremental updates.
+	A container for a single sketch and a delta_vector. 
+	The update method also updates the delta.
   */
 struct isketch : sketch
 {
-	// temporaries, used to avoid parameter passing
-	Index idx;
+	delta_vector delta;
+private:
+	// temporary, used to avoid parameter passing
 	Mask mask;
-	Vec delta;
+public:
 
 	isketch(const projection& proj);
 
-	void prepare_indices(key_type key);
-	void update_counters(double freq);
-
-	inline void update(key_type key, double freq=1.0)
-	{
-		prepare_indices(key);
-		update_counters(freq);
-	}
-
+	void update(key_type key, double freq=1.0);
 	inline void insert(key_type key) { update(key,1.0); }
 	inline void erase(key_type key) { update(key,-1.0); }
 };
 
 
-
-
-/**
-	Base class for incremental_norm2 and incremental_prod
-  */
-struct incremental_est
-{
-	Vec row_est;
-
-	incremental_est() {}
-	incremental_est(size_t D) : row_est(D) {}
-	incremental_est(const Vec& _v) : row_est(_v) {}
-	incremental_est(Vec&& _v) : row_est(_v) {}
-
-	inline double median_estimate() const {
-		const depth_type D = row_est.size();
-		return dds::order_select(D/2, row_est);
-	}
-
-};
-
-
-/**
-	Can incrementally update the value of the 
-	squared norm.
-  */
-struct incremental_norm2 : incremental_est
-{
-	isketch* isk;
-
-	incremental_norm2(isketch* _isk)
-	: incremental_est(dot_estvec(*_isk)), isk(_isk)
-	{ }
-		
-	// init the cur norm2 vector
-	void update_directly()
-	{
-		row_est = dot_estvec(*isk);
-	}
-
-	/* 
-		Note! the update has already been applied to
-		the sketch. I.e., we now have available
-		the value S' = S+delta.
-
-		The update is taken by updating 
-		cur_norm2  +=  2*delta*S' - delta^2
-	*/
-	void update_incremental()
-	{
-		Vec& delta = isk->delta;
-		Index& idx = isk->idx;
-		// unoptimized!!!
-		row_est += 2.*delta*(*isk)[idx] - delta * delta;
-	}
-
-};
-
-
-/**
-	Can incrementally update the value of the 
-	inner product.
-  */
-struct incremental_prod : incremental_est
-{
-	isketch *isk1, *isk2;
-
-	incremental_prod(isketch* sk1, isketch* sk2)
-	: isk1(sk1), isk2(sk2)
-	{ 
-		assert(isk1->compatible(*isk2));
-		update_directly();
-	}
-
-	void update_directly() 
-	{
-		row_est = dot_estvec(*isk1, *isk2);
-	}
-
-	/*
-		Just  cur_prod += U.delta * V.sk[idx];
-	 */
-	void _update_incremental(isketch& U, isketch& V)
-	{
-		Vec& delta = U.delta;
-		Index& idx = U.idx;
-		row_est += (+delta) * V[idx]; // BRAINDEAD!!!! without (+...), cannot do!
-	}
-
-	// call on lhs update
-	void update_incremental_1()
-	{
-		_update_incremental(*isk1, *isk2);
-	}
-
-	// call on rhs update
-	void update_incremental_2()
-	{
-		_update_incremental(*isk2, *isk1);
-	}
-
-
-};
 
 
 

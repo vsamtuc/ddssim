@@ -127,46 +127,51 @@ void node::update(stream_id sid, key_type key, stream_op op)
 
 node_stream_state::node_stream_state(projection proj, double theta, size_t k) 
 : E(proj), dE(proj), delta_updates(0), 
-	norm_E_2(0.0), norm_dE_2(0.0),
+	norm_X_2(0.0), norm_dE_2(0.0),
 	theta_2_over_k(theta*theta/k)
 { }
 
 
 void node_stream_state::update(key_type key, double freq) 
 {
-	// update with 
+	// 1. Update the current state
 	dE.update(key, freq);
 	
-	double delta_2 = dot(dE.delta);
-
-	Vec tmp = dE[dE.idx];
-
-	double dnorm_dE_2 = 2.*dot(tmp,  dE.delta) 
-			- delta_2;
+	// 2. Update  ||dE||^2 incrementally
+	dot_inc(norm_dE_2, dE.delta);
 	
-	norm_dE_2 += dnorm_dE_2;
+	// 3. Update ||dE+E||^2 incrementally
+	//
+	//  In the following, X = E + dE  
+	//
+	delta_vector DX = dE.delta;
+	DX += E;
+	dot_inc(norm_X_2, DX);
 
-	tmp = E[dE.idx];
-	double dnorm_E_2 = dnorm_dE_2 + 2.*dot(tmp, dE.delta);
-	norm_E_2 += dnorm_E_2;
-
+	// 4. Record the update
 	delta_updates++;
 }
 
 /// check local condition
 bool node_stream_state::local_condition() const
 {
-	return norm_dE_2 < theta_2_over_k * norm_E_2;
+	return norm_dE_2 < theta_2_over_k * norm_X_2;
 }
 
 /// flush dE to E
 void node_stream_state::flush() 
 {
+	// 1. Update E
 	E += dE;
+	// the line below is not mathematically necessary, but may be good for accuracy
+	norm_X_2 = dot(E);
+
+	// 2. Update dE
 	(sketch&)dE = 0.0;  // the cast is necessary, since isketch does not have = op
-	delta_updates = 0;
-	norm_E_2 = pow(norm_L2(E), 2);
 	norm_dE_2 = 0.0;
+
+	// 3. Reset the update counter
+	delta_updates = 0;
 }
 
 size_t node_stream_state::byte_size() const 

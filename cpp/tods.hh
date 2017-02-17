@@ -36,12 +36,11 @@ struct coord_stream_state
 struct node_stream_state
 {
 	sketch E;				// the last sketch sent to the coordinator
-	isketch dE;	// collects the new updates
+	isketch dE;				// collects the new updates
 	size_t delta_updates; 	// counts the updates in dE
 
-	double norm_E_2;		// dynamically maintained ||E||**2
+	double norm_X_2;		// dynamically maintained ||E+dE||**2
 	double norm_dE_2;		// dynamically maintained ||dE||**2
-
 	double theta_2_over_k;	// equal to theta**2/k, used in local condition
 
 	node_stream_state(projection proj, double theta, size_t k);

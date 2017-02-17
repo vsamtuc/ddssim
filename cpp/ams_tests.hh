@@ -169,8 +169,15 @@ public:
 		projection proj = projection(7,1000);
 		isketch isk[2] = { 
 			isketch(proj), isketch(proj) };
-		incremental_norm2  SJ[2] = { & isk[0], & isk[1] };
-		incremental_prod P(&isk[0], &isk[1]);
+
+		// the incremental estimates
+		double est_norm2[2], est_prod;
+
+		Vec incstate_norm2[2], incstate_prod;
+
+		est_norm2[0] = dot_est_with_inc(incstate_norm2[0], isk[0]);
+		est_norm2[1] = dot_est_with_inc(incstate_norm2[1], isk[1]);
+		est_prod = dot_est_with_inc(incstate_prod, isk[0], isk[1]);
 
 		int s=0;
 		for(key_type i = 1; i<100000; i++) {
@@ -178,41 +185,24 @@ public:
 
 			isk[s].update(key);
 
-			SJ[s].update_incremental();
+			est_norm2[s] = dot_est_inc(incstate_norm2[s], isk[s].delta);
 
 			if(s==0)
-				P.update_incremental_1();
+				est_prod = dot_est_inc(incstate_prod, isk[0].delta, isk[1]);
+
 			else
-				P.update_incremental_2();
+				est_prod = dot_est_inc(incstate_prod, isk[0], isk[1].delta);
 
 			// switch sketches next round
 			s = 1-s;
 		}
 
 		// Check against precise
-		Vec incr[2] = { SJ[0].row_est, SJ[1].row_est  };
-		SJ[0].update_directly();
-		SJ[1].update_directly();
-
 		for(size_t k=0; k<2; k++) {
-			Vec dif = SJ[k].row_est - incr[k];
-
-			dif *= dif;
-			double err_num = sqrt(dif.sum());
-			double err_denom = sqrt(pow(SJ[k].row_est,2.0).sum());
-			double err = err_num/err_denom;	
-			TS_ASSERT( err <= 1E-9 );
+			TS_ASSERT_DELTA(est_norm2[k], dot_est(isk[k]), 1E-8);
 		}
 
-		Vec incrP = P.row_est;
-		P.update_directly();
-		Vec dif = P.row_est - incrP;
-		dif *= dif;
-		double err_num = dif.sum();
-		double err_denom = sqrt(pow(P.row_est,2.0).sum());
-		double err = err_num/err_denom;
-		TS_ASSERT( err <= 1E-9 );
-
+		TS_ASSERT_DELTA(est_prod, dot_est(isk[0], isk[1]), 1E-8);
 	}
 
 

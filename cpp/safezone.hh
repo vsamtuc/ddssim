@@ -199,7 +199,7 @@ struct quantile_safezone_eikonal : quantile_safezone
 
 		return zinf;
 	}
-	
+
 private:
 	inline static double zeta_I(size_t *I, size_t m, const Vec& zEzX, const Vec& zEzE)
 	{
@@ -283,14 +283,14 @@ struct selfjoin_agms_safezone_lower_bound
 	sketch& E;		// reference vector
 	double T;		// threshold above
 
-	quantile_safezone_eikonal Median;  // used to compose the median
 	Vec norm_E_estvec;	// cached for speed
+	quantile_safezone_eikonal Median;  //  the median
 
 
 	selfjoin_agms_safezone_lower_bound(sketch& _E, double _T)
 	: 	E(_E), T(_T), 
-		Median(sqrt(dot_estvec(E)) - sqrt(T), (E.depth()+1)/2),
-		norm_E_estvec( sqrt(dot_estvec(E,E)) )
+		norm_E_estvec( sqrt(dot_estvec(E)) ),
+		Median( norm_E_estvec - sqrt(T), (E.depth()+1)/2)
 	{ }
 
 	inline double operator()(const sketch& U) 

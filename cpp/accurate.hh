@@ -197,11 +197,12 @@ public:
 
 
 /*
-	Self-join query estimator. It uses an incremental_updated
+	Self-join query estimator. 
  */
 class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 {
-	agms::incremental_norm2 norm2_estimator;
+	agms::isketch* isk;
+	Vec incstate;
 
 	void process_record();
 	void finish();
@@ -211,11 +212,12 @@ public:
 
 
 /*
-	Join query estimator. It uses 2 incremental_updater objects.
+	Join query estimator.
  */
 class twoway_join_agms_method : public agms_method<qtype::JOIN>
 {
-	agms::incremental_prod prod_estimator;
+	agms::isketch *isk1, *isk2;
+	Vec incstate;
 
 	// callbacks
 	void process_record();

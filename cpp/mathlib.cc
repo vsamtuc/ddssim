@@ -4,6 +4,8 @@
 using namespace dds;
 
 
+
+
 double dds::order_select(size_t k, Vec v)
 {
 	if(k>=v.size()) throw std::length_error("order exceeds vector length");
@@ -40,6 +42,12 @@ double dds::norm_L1(const Vec& v)
 	return sum;
 }
 
+double dds::norm_L1_inc(double& S, const delta_vector& dv)
+{
+	S += norm_L1(dv.xnew) - norm_L1(dv.xold);
+	return S;
+}
+
 
 double dds::norm_L2(const Vec& v)
 {
@@ -49,9 +57,23 @@ double dds::norm_L2(const Vec& v)
 }
 
 
+double dds::norm_L2_with_inc(double& S, const Vec& v)
+{
+	S=0.0;
+	for(double x : v) S+=x*x;
+	return sqrt(S);
+}
+
+double dds::norm_L2_inc(double& S, const delta_vector& dv)
+{
+	return sqrt(dot_inc(S, dv));
+}
+
+
+
 double dds::norm_Linf(const Vec& v)
 {
-	double l = -1.0;
+	double l = 0.0;
 	for(double x : v) {
 		double xabs = fabs(x);
 		if(l<xabs) l=xabs;

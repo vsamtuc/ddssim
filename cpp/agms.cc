@@ -144,6 +144,31 @@ Vec agms::dot_estvec(const sketch& s1, const sketch& s2)
 	return ret;
 }
 
+
+Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds1, const sketch& s2)
+{
+	oldstate += (ds1.xnew - ds1.xold)*s2[ds1.index];
+	return oldstate;
+}
+
+
+Vec& agms::dot_estvec_inc(Vec& oldstate, const sketch& s1, const delta_vector& ds2)
+{
+	return dot_estvec_inc(oldstate, ds2, s1);
+}
+
+
+Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds)
+{
+	oldstate += ds.xnew*ds.xnew - ds.xold*ds.xold;
+	return oldstate;
+}
+
+
+
+
+
+
 size_t std::hash<projection>::operator()( const projection& p) const
 {
 	using boost::hash_value;
@@ -158,17 +183,11 @@ size_t std::hash<projection>::operator()( const projection& p) const
 
 isketch::isketch(const projection& _proj)
 	: 	sketch(_proj), 
-		idx(proj.depth()), 
-		mask(proj.depth()), 
-		delta(proj.depth())
+		delta(proj.depth()),
+		mask(proj.depth())
 	{ 	}
 
 
-void isketch::prepare_indices(key_type key)
-{
-	proj.update_index(key, idx);
-	proj.update_mask(key, mask);
-}
 
 template <typename T>
 void print_vec(const string& name, const T& a) 
@@ -180,12 +199,20 @@ void print_vec(const string& name, const T& a)
 	cout << "}" << endl;
 }
 
-void isketch::update_counters(double freq)
-{
-	delta[mask] = freq;
-	delta[!mask] = -freq;
-	//print_vec("delta",delta);
-	(*this)[idx] += delta;
-}
 
+void isketch::update(key_type key, double freq)
+{
+	proj.update_index(key, delta.index);
+	proj.update_mask(key, mask);
+	
+	delta.xold = (*this)[delta.index];
+	for(size_t d=0; d<mask.size(); d++) {
+		if(mask[d])
+			delta.xnew[d] = delta.xold[d] + freq;
+		else
+			delta.xnew[d] = delta.xold[d] - freq;
+	}
+	
+	(*this)[delta.index] = delta.xnew;
+}
 

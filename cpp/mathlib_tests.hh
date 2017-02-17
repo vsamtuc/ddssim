@@ -2,6 +2,7 @@
 #include <cxxtest/TestSuite.h>
 
 #include "mathlib.hh"
+#include "binc.hh"
 
 using namespace dds;
 using namespace std;
@@ -27,29 +28,6 @@ struct vector_update
 
 
 
-
-
-/**
-	A delta vector describes old and new values of
-	a vector view, after an update is applied.
- */
-struct delta_vector
-{
-	Index index;
-	Vec xold, xnew;
-
-	delta_vector(size_t n) : index(n), xold(n), xnew(n) {}
-	delta_vector(const Index& i) : index(i), xold(index.size()), xnew(index.size()) {}
-	delta_vector(Index&& i) : index(i), xold(index.size()), xnew(index.size()) {}
-	delta_vector(const delta_vector&)=default;
-	delta_vector(delta_vector&&)=default;
-	delta_vector& operator=(const delta_vector&)=default;
-	delta_vector& operator=(delta_vector&&)=default;
-};
-
-
-
-
 /**
   	Add to a vector returning a delta.
   */
@@ -66,17 +44,6 @@ delta_vector operator+=(Vec& x, vector_update& dvec)
 	return dx;
 }
 
-
-double dot(double oldval, const delta_vector& dx, const Vec& y)
-{
-	return oldval + ((dx.xnew -  dx.xold)*y[dx.index]).sum() ;
-}
-
-
-double dot(double oldval, const delta_vector& dx)
-{
-	return oldval + dot(dx.xnew) -  dot(dx.xold) ;
-}
 
 
 
@@ -97,12 +64,38 @@ public:
 		
 		double new_dot = dot(x);
 		
-		double ddot = dot(old_dot, dx);
+		double ddot = dot_inc(old_dot, dx);
 
 		TS_ASSERT_EQUALS(ddot , new_dot);
 	}
 
 
+	void test_dot_product() 
+	{
+		using binc::print;
+
+		// create some big vectors
+		Vec X(1000);
+		Vec Y(1000);
+		std::iota(std::begin(X), std::end(X), 0.0);
+		Y = sqrt(X);
+
+		// compute the initial dot product
+		double xy = dot(X, Y);
+
+		// make a small change in X
+		Index index { 2,114, 256 };
+		delta_vector DX(index);
+		DX.xold = X[index];
+		X[index] = Vec { 0.0, 1, -10 };
+		DX.xnew = X[index];
+
+		// update the value of dot (X,Y)
+		xy = dot_inc(xy, DX, Y);
+
+		// check that all went well!
+		TS_ASSERT_DELTA( xy , dot(X,Y), 1E-6 );
+	}
 
 	void test_order_select()
 	{
