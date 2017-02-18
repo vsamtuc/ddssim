@@ -1,4 +1,5 @@
 
+#include <random>
 #include "mathlib.hh"
 
 using namespace dds;
@@ -80,6 +81,20 @@ double dds::norm_Linf(const Vec& v)
 	}
 	return l;
 }
+
+
+static std::mt19937 RNG(24534623);
+
+Vec dds::uniform_random_vector(size_t n, double a, double b)
+{	
+	using namespace std;
+	Vec v(n);
+	uniform_real_distribution<> U(a,b);
+	generate(begin(v), end(v), [&]() { return U(RNG); });
+	return v;
+};
+
+
 
 
 estimate_error_observer::estimate_error_observer(size_t window) 

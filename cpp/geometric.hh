@@ -5,9 +5,11 @@
 #include <unordered_map>
 #include <memory>
 #include <algorithm>
+#include <cmath>
 
 #include "dsarch.hh"
 #include "agms.hh"
+#include "safezone.hh"
 
 using std::cout;
 using std::endl;
@@ -212,19 +214,108 @@ struct coordinator;
 
 
 
-
 struct coordinator : process
 {
-	coordinator(network*, const projection&);
+	sketch Eglobal;
+
+	coordinator(network* nw, const projection& proj) 
+	: process(nw), Eglobal(proj)
+	{ }
+
+	oneway threshold_crossed(int bits);
 
 };
 
+
+struct coord_proxy
+{
+	REMOTE_METHOD(coordinator, threshold_crossed);
+	coord_proxy(coordinator* c) : remote_proxy<coordinator>(c) { }
+};
+
+
+
+// Wrapper for safe zone classes
+struct safezone
+{
+	selfjoin_agms_safezone* szone;
+	sketch* Eglobal;
+	selfjoin_agms_safezone::incremental_state incstate;
+
+	double zeta_E;			// This is acquired by calling the safezone 
+
+	void reset(selfjoin_agms_safezone* sz, sketch* E) 
+	{
+		szone = sz;
+		Eglobal = E;
+		zeta_E = (*szone)(incstate, *Eglobal);
+	}
+
+	double operator(const isketch& U)
+	{
+		return (*szone)(incstate, U.delta);
+	}
+};
 
 
 
 struct node : local_site
 {
-	node(network*, source_id hid, const projection& _proj);
+	safezone szone;	// pointer to the safezone (shared among objects)
+
+	int bitno;
+	double zeta;
+	double min_zeta;
+
+	isketch U;				// drift vector
+	size_t update_count;	// number of updates in drift vector
+
+	coord_proxy coord;
+
+	node(network* net, source_id hid, const projection& proj)
+	: local_site(net, hid), szone(nullptr), zeta_E(0.0),
+		U(proj), update_count(0),
+		coord( net->hub() )
+	{ }
+
+
+	void update_stream() {
+		assert(CTX.stream_record().hid == site_id());
+
+		U.update(CTX.stream_record().key, CTX.stream_record().sop==INSERT?1.0:-1.0 );
+		update_count++;
+
+		zeta = szone();
+		if(zeta < min_zeta) {
+			min_zeta = zeta;
+
+			int nbit = std::floor( min_zeta / ((szone->zeta_E)/2) );
+			if(nbit < bitno) {
+				coord_proxy.threshold_crossed(bitno - nbit);
+				nbit = bitno;
+			}
+		}
+	}
+
+	// Remote methods
+	oneway reset_safezone(selfjoin_agms_safezone* sz, sketch* Eg) { 
+		// reset the safezone object
+		szone.reset(sz, Eg);
+		bitno = 1;
+		min_zeta = szone.zeta_E;
+		return oneway();
+	}
+
+	isketch* get_drift() {
+		return &U;
+	}
+};
+
+
+struct node_proxy
+{
+	REMOTE_METHOD(node, reset_safezone);
+	node_proxy(node* n) : remote_proxy<node>(n) {}
 };
 
 

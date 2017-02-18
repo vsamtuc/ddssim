@@ -2,8 +2,6 @@
 #define __SAFEZONE_HH__
 
 
-#include <iomanip>
-
 #include "mathlib.hh"
 #include "agms.hh"
 
@@ -18,7 +16,9 @@ namespace dds {
 using namespace agms;
 
 
-
+/*
+	TODO: Maybe this does not belong here!
+ */
 struct selfjoin_query
 {
 	double beta; 	// the overall precision
@@ -54,276 +54,179 @@ struct selfjoin_query
 
 
 /**
-	Base function for boolean quantile safezones.
+	Safezone for boolean quorum queries.
 
-	This class is used to prepare a safezone function
-	for quantile queries, both eikonal and non-eikonal,
-	by projecting out the components of the space 
-	where the reference point is false.
+	A \f$(n,k)\f$-quorum boolean function is the boolean function 
+	which is true if and only if \f$k\f$ or more of its
+	inputs are true. In particular:
+	* For \f$k=1\f$ this function is the logical OR.
+	* For \f$k=n\f$ it is the logical AND.
+	* For \f$k=(n+1)/2\f$, it is the majority function.
+
+	This implementation computes an expensive version of the
+	safe zone function. In particular, it preserves eikonality
+	and non-redundancy of the inputs. 
+
+	Because of its complexity, evaluating this function is expensive:
+	each invocation takes time \f$O(k\binom{l}{k-1})\f$ which can
+	be quite high (\f$l \leq n \f$ is the number of true components
+	in the original estimate vector, or, equivalently, the number
+	of positive elements of vector \f$zE\f$ passed at construction). 
+
+	Because it is so expensive for large \f$n\f$, a fast implementation
+	is also available.
+
+	@see quorum_safezone_fast
   */
-struct quantile_safezone
+struct quorum_safezone
 {
 	size_t n;	/// the number of inputs
+	size_t k;	/// the lower bound on true inputs
 	Index L;  	/// the legal inputs index from n to zetaE
 	Vec zetaE;	/// the reference vector's zetas, where zE >= 0.
 
-	quantile_safezone() : n(0) { }
+	quorum_safezone();
+	quorum_safezone(const Vec& zE, size_t _k);
 
-	quantile_safezone(const Vec& zE) 
-	: n(zE.size())
-	{
-		// count legal inputs
-		size_t Legal[n];
-		size_t pos = 0;
-		for(size_t i=0; i<n; i++)
-			if(zE[i]>0) Legal[pos++] = i;
 
-		// create the index and the other matrices
-		Index Ltmp(Legal, pos);
-		Ltmp.swap(L);
-		zetaE.resize(L.size());
-		zetaE = zE[L];
-	}
+	void prepare(const Vec& zE, size_t _k);
 
-	quantile_safezone(quantile_safezone&&) = default;
-	quantile_safezone& operator=(quantile_safezone&&) = default;
+	double operator()(const Vec& zX);
+
 };
 
 
+
 /**
-	The non-eikonal safezone function for a boolean quantile query.
+	Fast, non-eikonal safezone function for a boolean quorum query.
 
-	The quantile boolean function, \f$ Q_{k,n} (x_1, ... , x_n)\f$, 
-	is the boolean function which is
-	true iff at least \f$k,  1\leq k \leq n\f$, of the 
-	\f$ x_i\f$ inputs are true.
-	For \f$ k=1 \f$, this is equivalent to the "or" and
-	for \f$ k=n \f$ this is equivalent to the "and".
-	The resulting function is non-eikonal and can be
-	computed in time \f$ O(n) \f$.
+	This safezone function defines the same safezone as the
+	one defined by the `quorum_safezone` class. Its advantage is that 
+	it is quite efficient: each call takes \f$O(l)\f$ time.
+	Its drawback is that it is not eikonal in general.
 
-	@see quantile_safezone_eikonal
+	@see quorum_safezone
   */
-struct quantile_safezone_non_eikonal : quantile_safezone
+struct quorum_safezone_fast : quorum_safezone
 {
-	size_t k;	// the lower bound on true inputs
 
-	quantile_safezone_non_eikonal() { }
+	using quorum_safezone::quorum_safezone;
 
-	quantile_safezone_non_eikonal(quantile_safezone&& qsz, size_t _k) 
-	: k(_k) 
-	{
-		this->quantile_safezone::operator=(std::move(qsz));
-		assert(1<=k && k<=n);
-		if(L.size()<k)
-			throw std::length_error("The reference vector is non-admissible");		
-	}
-
-	quantile_safezone_non_eikonal(const Vec& zE, size_t _k) 
-	: quantile_safezone(zE), k(_k)
-	{
-		assert(1<=k && k<=n);
-		if(L.size()<k)
-			throw std::length_error("The reference vector is non-admissible");
-	}
-
-	double operator()(const Vec& zX) {
-		Vec zEzX = zetaE;
-		zEzX *= zX[L];
-		std::nth_element(begin(zEzX), begin(zEzX)+(L.size()-k), end(zEzX));
-		return std::accumulate(begin(zEzX), begin(zEzX)+(L.size()-k+1), 0.0);
-	}
-
-};
-
-
-/**
-	The eikonal safezone function for a boolean quantile query.
-
-	The quantile boolean function, 
-		\f[ Q_{k,n} (x_1, ... , x_n),\f]
-	is the boolean function which is
-	true iff at least \f$k,  1\leq k \leq n\f$, of the 
-	\f$ x_i\f$ inputs are true.
-	For \f$ k=1 \f$, this is equivalent to the "or" and
-	for \f$ k=n \f$ this is equivalent to the "and".
-
-	The resulting function is eikonal and will be
-	computed in time \f$ O(\binom{|L|}{k-1}) \f$.
-  */
-struct quantile_safezone_eikonal : quantile_safezone
-{
-	size_t k;	/// the quantile
-
-	quantile_safezone_eikonal() { }
-
-	/// Construct by moving a quantile safezone
-	quantile_safezone_eikonal(quantile_safezone&& qsz, size_t _k) 
-	: k(_k) 
-	{
-		this->quantile_safezone::operator=(std::move(qsz));
-		assert(1<=k && k<=n);
-		if(L.size()<k)
-			throw std::length_error("The reference vector is non-admissible");
-	}
-
-	/**
-		 Construct the function for given reference vector and \f$k\f$
-	 */
-	quantile_safezone_eikonal(const Vec& zE, size_t _k) 
-	: quantile_safezone(zE), k(_k)
-	{
-		assert(1<=k && k<=n);
-		if(L.size()<k)
-			throw std::length_error("The reference vector is non-admissible");
-	}
-
-
-	double operator()(const Vec& zX) {
-		Vec zEzX = zetaE;
-		zEzX *= zX[L];
-		Vec zEzE = zetaE*zetaE;
-
-		// find the minimum over all m-sets from [0:L.size())
-		size_t l = L.size();
-		size_t m = L.size()-k+1;
-
-		size_t I[m];
-		std::iota(I, I+m, 0);
-
-		double zinf = zeta_I(I, m, zEzX, zEzE);
-		while(next_I(I, m, l)) {
-			double zI = zeta_I(I, m, zEzX, zEzE);
-			zinf = std::min(zI, zinf);
-		}
-
-		return zinf;
-	}
-
-private:
-	inline static double zeta_I(size_t *I, size_t m, const Vec& zEzX, const Vec& zEzE)
-	{
-		double num = 0.0;
-		double denom = 0.0;
-		for(size_t i=0; i<m; i++) {
-			num += zEzX[I[i]];
-			denom += zEzE[I[i]];
-		}
-		return num/sqrt(denom);
-	}
-
-	/**
-		Helper to iterate over all strictly increasing m-long
-		sequences over [0:l)
-	  */
-	inline static bool next_I(size_t *I, size_t m, size_t l) 
-	{
-		for(size_t i=1; i<=m; i++) {
-			if(I[m-i] < l-i) {
-				I[m-i]++;
-				for(size_t j=1;j<i;j++) 
-					I[m-i+j] = I[m-i]+j;
-				return true;
-			}
-		}
-		return false;
-	}
-
+	double operator()(const Vec& zX);
 
 };
 
 
 
+
+
 /**
-	The safe zone function for the selfjoin estimate of a sketch.
+	The safe zone function for the upper bound on the selfjoin estimate of an AGMS sketch.
 
-	The admissible region is \f$ A =\{ X | \median{X_i^2}  \leq T \}\f$.
+	Let \f$ X = [X_1, ... , X_d]\f$ be am AGMS sketch of depth \f$d\f$.
+	The admissible region is 
+	\f[ A =\{ X | \median{X_i^2 \,|\, i=1,\ldots , D}  \leq T \}.\f]
 
-	The safe zone is defined as follows: 
-	zeta_i(U_i)  =   sqrt(T) - ||E_i+U_i||
+	The safe zone is defined as follows:
+	Let  \f$ D \f$ be the set \f$ [0:d)\f$ where \f$d \f$ is the depth of
+	the sketch and let \f$ E = [E_1, \ldots, E_d ]\f$ be the reference point.
+	Define 
+	\f[   \zeta_i(X_i) = \sqrt{T} - \|X_i\| \f]
+	as the safe zone for each individual condition \f$ X_i^2 \leq T\f$.
 
-	zeta = inf_{I in (D choose K)}  [ \sum_{i\in I} zeta_i(0)*\zeta_i(U_i) ]
+	The overall safe zone is defined as the median quorum over these
+	values.
 
-	TODO: Make it incremental! Current complexity is O(|sketch|)
   */
 struct selfjoin_agms_safezone_upper_bound
 {
-	sketch& E;		// reference vector
-	double T;		// threshold above
+	double sqrt_T;		// threshold above
+	quorum_safezone Median;
 
-	quantile_safezone_eikonal Median;
+	typedef Vec incremental_state;
 
+	selfjoin_agms_safezone_upper_bound(const sketch& E, double T);
 
-	selfjoin_agms_safezone_upper_bound(sketch& _E, double _T)
-	: 	E(_E), T(_T), 
-		Median(sqrt(T) - sqrt(dot_estvec(E)), (E.depth()+1)/2)
-	{ }
+	double operator()(const sketch& X); 
 
-	inline double operator()(const sketch& U) 
-	{
-		Vec z = sqrt(T) - sqrt(dot_estvec(E+U));
-		return Median(z);
-	}
+	double with_inc(incremental_state& incstate, const sketch& X);
+
+	double inc(incremental_state& incstate, const delta_vector& DX);
+
 };
 
 
 
 /**
-	The safe zone function for the selfjoin estimate of a sketch.
+	The safe zone function for the lower bound on the selfjoin estimate 
+	of an AGMS sketch.
 
-	The admissible region is \f$ A =\{ X | \median{X_i^2}  \geq T \}\f$.
+	Let \f$ X = [X_1, ... , X_d]\f$ be am AGMS sketch of depth \f$d\f$.
+	The admissible region is 
+	\f[ A =\{ X | \median{X_i^2 \,|\, i=1,\ldots , D}  \geq T \}.\f]
 
-	The safe zone is defined as follows: 
-	zeta_i(U_i)  =   U \frac{E}{\norm{E}} + \norm{E} - \sqrt{T}
+	The safe zone is defined as follows:
+	Let  \f$ D \f$ be the set \f$ [0:d)\f$ where \f$d \f$ is the depth of
+	the sketch and let \f$ E = [E_1, \ldots, E_d ]\f$ be the reference point.
+	Define 
+	\f[   \zeta_i(X_i) = X_i \frac{E_i}{\|E_i \|} - \sqrt{T}  \f]
+	as the safe zone for each individual condition \f$ X_i^2 \geq T\f$.
 
-	zeta = inf_{I in (D choose K)}  [ \sum_{i\in I} zeta_i(0)*\zeta_i(U_i) ]
+	The overall safe zone is defined as the median quorum over these
+	values.
+
   */
 struct selfjoin_agms_safezone_lower_bound
 {
-	sketch& E;		// reference vector
-	double T;		// threshold above
+	sketch Ehat;		// normalized reference vector
+	double sqrt_T;			// threshold above
 
-	Vec norm_E_estvec;	// cached for speed
-	quantile_safezone_eikonal Median;  //  the median
+	quorum_safezone Median;  //  the median
 
+	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_lower_bound(sketch& _E, double _T)
-	: 	E(_E), T(_T), 
-		norm_E_estvec( sqrt(dot_estvec(E)) ),
-		Median( norm_E_estvec - sqrt(T), (E.depth()+1)/2)
-	{ }
+	selfjoin_agms_safezone_lower_bound(const sketch& E, double T);
 
-	inline double operator()(const sketch& U) 
-	{
-		Vec z = dot_estvec(U,E)/norm_E_estvec + norm_E_estvec - sqrt(T);
-		return Median(z);
-	}
+	double operator()(const sketch& X);
+
+	double with_inc(incremental_state& incstate, const sketch& X);
+
+	double inc(incremental_state& incstate, const delta_vector& DX);
+
 };
 
 
+/**
+	Safezone for the condition  Tlow <= dot_est(X) <= Thigh.
 
+	This is essentially a wrapper for two safezones,
+	one for upper bound and one for lower bound.
 
+	@see selfjoin_agms_safezone_upper_bound
+	@see selfjoin_agms_safezone_lower_bound
+ */
 struct selfjoin_agms_safezone
 {
-	sketch E;					// reference vector E
-	double Tlow, Thigh;
-
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
 	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
 
-	selfjoin_agms_safezone(const sketch& _E, double _Tlow, double _Thigh)
-	: E(_E), Tlow(_Tlow), Thigh(_Thigh),
-		lower_bound(E, _Tlow),
-		upper_bound(E, _Thigh)
-	{}
+	struct incremental_state
+	{
+		selfjoin_agms_safezone_lower_bound::incremental_state lower;
+		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
+	};
 
-	selfjoin_agms_safezone(selfjoin_query& q) 
-	:  selfjoin_agms_safezone(q.E, q.Tlow, q.Thigh)
-	{ }
+	selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh);
 
-	inline double operator()(const sketch& U) {
-		return min(lower_bound(U), upper_bound(U));
-	}
+	selfjoin_agms_safezone(selfjoin_query& q);
+
+
+	// from-scratch computation
+	double operator()(const sketch& X);
+
+	double with_inc(incremental_state& incstate, const sketch& X);
+
+	double inc(incremental_state& incstate, const delta_vector& DX);
 };
 
 

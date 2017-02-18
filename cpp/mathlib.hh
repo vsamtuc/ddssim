@@ -377,6 +377,12 @@ inline double relative_error(double exact, double estimate)
 
 
 
+/**
+	Return a random vector with elements drawn uniformly from \f$[a,b]\f$.
+  */
+Vec uniform_random_vector(size_t n, double a, double b);
+
+
 
 /**
 	A distinct histogram is used to hold a frequency
@@ -482,7 +488,6 @@ inline std::ostream& operator<<(std::ostream& s, const std::valarray<T>& a)
 	}
 	return s << "]";
 }
-
 
 
 
