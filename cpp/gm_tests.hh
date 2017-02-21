@@ -29,9 +29,9 @@ public:
 		gm::network *nw = new gm::network(proj);
 
 		TS_ASSERT_EQUALS(nw->size(), k+1);
-		TS_ASSERT_EQUALS(nw->nodes.size(), k);
+		TS_ASSERT_EQUALS(nw->sites.size(), k);
 
-		for(auto i : nw->nodes) {
+		for(auto i : nw->sites) {
 			node* n = i.second;
 			TS_ASSERT_EQUALS( n->site_id(), i.first );
 
@@ -44,7 +44,63 @@ public:
 
 	}
 
+	void test_gm2_network()
+	{
+		using namespace dds::gm2;
 
+		// load a dataset to the coord
+		CTX.data_feed(new uniform_data_source(1, 10, 1000, 1000));
+
+		gm2::network net(0, projection(5, 400), 0.5);
+
+		TS_ASSERT_EQUALS( net.sites.size(), 10);
+		TS_ASSERT_EQUALS( net.hub->k, 10);
+		TS_ASSERT_EQUALS( net.hub->proxy.size(), 10);
+
+		for(auto p : net.hub->proxy) {
+			node_proxy *np = p.second;
+			TS_ASSERT_EQUALS(np->proc(), p.first)
+			TS_ASSERT_EQUALS(np->owner(), net.hub);
+			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p.first]] , p.first);
+		}
+
+		for(auto _n : net.sites) {
+			gm2::node* n = _n.second;
+
+			TS_ASSERT_EQUALS(n->coord.owner(), n);
+			TS_ASSERT_EQUALS(n->coord.proc(), net.hub);
+		}
+	}
+
+	void notest_safezone()
+	{
+		projection proj(5,400);
+
+		CTX.data_feed(new uniform_data_source(1, 10, 1000, 1000));
+		gm2::network net(0, proj, 0.5);
+
+		net.hub->start_round();
+
+		isketch W(proj);
+		(Vec&)W = uniform_random_vector(proj.size(), -2, 2);
+
+		isketch V(proj);
+		V = W;
+		W.update(1341234);
+		double w = net.hub->query.safe_zone(W);
+
+		for(auto _s : net.sites) {
+			gm2::safezone& sz = _s.second->szone;
+
+			TS_ASSERT(sz.valid());
+			TS_ASSERT_EQUALS(sz.szone, & net.hub->query.safe_zone);
+			TS_ASSERT_EQUALS(sz.Eglobal, & net.hub->query.E);
+			sz.prepare_inc(V);
+			TS_ASSERT_EQUALS(sz(W), w);
+			TS_ASSERT_EQUALS(sz.zeta_E, net.hub->query.zeta_E);
+		}
+
+	}
 
 
 };

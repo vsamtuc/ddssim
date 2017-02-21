@@ -128,6 +128,10 @@ void basic_control::dispatch_event(Event evt)
 			proceed();				
 			break;
 
+		case START_RECORD:
+			_recno++;
+			break;
+
 		case END_RECORD:
 			advance();
 			break;
@@ -141,7 +145,7 @@ void basic_control::dispatch_event(Event evt)
 	}
 
 	auto aseq = rules[evt];
-	std::copy(aseq.begin(), aseq.end(), back_inserter(action_queue));	
+	std::copy(aseq.begin(), aseq.end(), back_inserter(action_queue));
 }
 
 

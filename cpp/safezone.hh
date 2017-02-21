@@ -16,39 +16,15 @@ namespace dds {
 using namespace agms;
 
 
-/*
-	TODO: Maybe this does not belong here!
- */
-struct selfjoin_query
+/**
+	A base class for safe zone functions, marking them
+	as valid or not. Invalid safe zones are e.g. not-initialized
+  */
+struct safezone_base
 {
-	double beta; 	// the overall precision
-	sketch E;   	// The current estimate for the stream
-
-	double Qest; 	// current estimate
-	double Tlow;    // admissible region: Tlow <= Q(t) <= Thigh
-	double Thigh;   // 
-
-
-	selfjoin_query(double _beta, projection _proj)
-	: beta(_beta), E(_proj)
-	{
-		assert(_proj.epsilon() < beta);
-		Qest = 0.0;
-
-		// initialize the current estimate to 0
-		Tlow = Thigh = Qest = 0.0;
-	}
-
-
-	void update_estimate(const sketch& newE)
-	{
-		// compute the admissible region
-		E = newE;
-		Qest = dot_est(E);
-
-		Tlow = (1+E.proj.epsilon())*Qest/(1.0+beta);
-		Thigh = (1-E.proj.epsilon())*Qest/(1.0-beta);
-	}
+	bool isvalid;
+	safezone_base() : isvalid(true){}
+	safezone_base(bool v) : isvalid(v) {}
 };
 
 
@@ -78,7 +54,7 @@ struct selfjoin_query
 
 	@see quorum_safezone_fast
   */
-struct quorum_safezone
+struct quorum_safezone : safezone_base
 {
 	size_t n;	/// the number of inputs
 	size_t k;	/// the lower bound on true inputs
@@ -138,12 +114,14 @@ struct quorum_safezone_fast : quorum_safezone
 	values.
 
   */
-struct selfjoin_agms_safezone_upper_bound
+struct selfjoin_agms_safezone_upper_bound : safezone_base
 {
 	double sqrt_T;		// threshold above
 	quorum_safezone Median;
 
 	typedef Vec incremental_state;
+
+	selfjoin_agms_safezone_upper_bound() : safezone_base(false) {}
 
 	selfjoin_agms_safezone_upper_bound(const sketch& E, double T);
 
@@ -176,7 +154,7 @@ struct selfjoin_agms_safezone_upper_bound
 	values.
 
   */
-struct selfjoin_agms_safezone_lower_bound
+struct selfjoin_agms_safezone_lower_bound : safezone_base
 {
 	sketch Ehat;		// normalized reference vector
 	double sqrt_T;			// threshold above
@@ -184,6 +162,8 @@ struct selfjoin_agms_safezone_lower_bound
 	quorum_safezone Median;  //  the median
 
 	typedef Vec incremental_state;
+
+	selfjoin_agms_safezone_lower_bound() : safezone_base(false) {}
 
 	selfjoin_agms_safezone_lower_bound(const sketch& E, double T);
 
@@ -196,6 +176,9 @@ struct selfjoin_agms_safezone_lower_bound
 };
 
 
+struct selfjoin_query;
+
+
 /**
 	Safezone for the condition  Tlow <= dot_est(X) <= Thigh.
 
@@ -205,7 +188,7 @@ struct selfjoin_agms_safezone_lower_bound
 	@see selfjoin_agms_safezone_upper_bound
 	@see selfjoin_agms_safezone_lower_bound
  */
-struct selfjoin_agms_safezone
+struct selfjoin_agms_safezone : safezone_base
 {
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
 	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
@@ -216,10 +199,12 @@ struct selfjoin_agms_safezone
 		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
 	};
 
+	selfjoin_agms_safezone() : safezone_base(false) {}
+
 	selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh);
 
 	selfjoin_agms_safezone(selfjoin_query& q);
-
+	selfjoin_agms_safezone& operator=(selfjoin_agms_safezone&&)=default;
 
 	// from-scratch computation
 	double operator()(const sketch& X);
@@ -228,6 +213,61 @@ struct selfjoin_agms_safezone
 
 	double inc(incremental_state& incstate, const delta_vector& DX);
 };
+
+
+
+
+/*
+	TODO: Maybe this does not belong here!
+ */
+struct selfjoin_query
+{
+	double beta; 	// the overall precision
+	sketch E;   	// The current estimate for the stream
+
+	double Qest; 	// current estimate
+	double Tlow;    // admissible region: Tlow <= Q(t) <= Thigh
+	double Thigh;   // 
+
+	selfjoin_agms_safezone safe_zone;
+	double zeta_E;
+
+	selfjoin_query(double _beta, projection _proj)
+	: beta(_beta), E(_proj)
+	{
+		assert( norm_Linf(E)==0.0);
+		assert(_proj.epsilon() < beta);
+		compute();
+		assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
+	}
+
+
+	void update_estimate(const sketch& newE)
+	{
+		// compute the admissible region
+		E += newE;
+		compute();
+	}
+
+	void compute()
+	{
+		Qest = dot_est(E);
+
+		if(Qest>0) {
+			Tlow = (1+E.proj.epsilon())*Qest/(1.0+beta);
+			Thigh = (1-E.proj.epsilon())*Qest/(1.0-beta);
+			safe_zone = std::move(selfjoin_agms_safezone(*this)); 
+		}
+		else {
+			Tlow = 0.0; Thigh=1.0;
+			safe_zone = selfjoin_agms_safezone(E,0.0,1.0);
+		}
+
+		zeta_E = safe_zone(E);
+	}
+};
+
+
 
 
 } // end namespace dds

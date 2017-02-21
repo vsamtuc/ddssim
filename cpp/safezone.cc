@@ -12,7 +12,7 @@ using namespace dds;
 /////////////////////////////////////////////////////////
 
 quorum_safezone::quorum_safezone() 
-: n(0) { }
+: safezone_base(false) { }
 
 quorum_safezone::quorum_safezone(const Vec& zE, size_t _k) 
 {
@@ -159,33 +159,45 @@ double selfjoin_agms_safezone_upper_bound::inc(incremental_state& incstate, cons
 selfjoin_agms_safezone_lower_bound::selfjoin_agms_safezone_lower_bound(const sketch& E, double T)
 : 	Ehat(E), sqrt_T(sqrt(T))
 { 
-	assert(T>0.0);   // T must be positive
-	Vec dest = sqrt(dot_estvec(E));
-	Median.prepare( dest - sqrt_T, (E.depth()+1)/2);
+	assert(T>=0.0);   // T must be positive
 
 	//
-	// Normalize E: divide each row  E_i by ||E_i||
+	//  If T == 0.0, the function returns +inf
 	//
-	size_t L = E.width();
-	for(size_t d=0; d<E.depth(); d++) {
-		if(dest[d]>0.0)  {
-			// Note: this is an aliased assignment, but should
-			// be ok, because it is pointwise aliased!
-			Vec tmp = Ehat[slice(d*L,L,1)];
-			Ehat[slice(d*L,L,1)] = tmp/dest[d];
+
+	if(T>0.0) {
+
+		Vec dest = sqrt(dot_estvec(E));
+		Median.prepare( dest - sqrt_T, (E.depth()+1)/2);
+
+		//
+		// Normalize E: divide each row  E_i by ||E_i||
+		//
+		size_t L = E.width();
+		for(size_t d=0; d<E.depth(); d++) {
+			if(dest[d]>0.0)  {
+				// Note: this is an aliased assignment, but should
+				// be ok, because it is pointwise aliased!
+				Vec tmp = Ehat[slice(d*L,L,1)];
+				Ehat[slice(d*L,L,1)] = tmp/dest[d];
+			}
+			// else, if dest[d]==0, the Ehat[slice(d)] == 0! leave it
 		}
-		// else, if dest[d]==0, the Ehat[slice(d)] == 0! leave it
+
 	}
+
 }
 
 double selfjoin_agms_safezone_lower_bound::operator()(const sketch& X) 
 {
+	if(sqrt_T==0.0) return INFINITY;
 	Vec z = dot_estvec(X,Ehat) - sqrt_T ;
 	return Median(z);
 }
 
 double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const sketch& X)
 {
+	if(sqrt_T==0.0) return INFINITY;
 	incstate = dot_estvec(X,Ehat);
 	Vec z = incstate - sqrt_T;
 	return Median(z);
@@ -194,6 +206,7 @@ double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate,
 
 double selfjoin_agms_safezone_lower_bound::inc(incremental_state& incstate, const delta_vector& DX)
 {
+	if(sqrt_T==0.0) return INFINITY;
 	Vec z = dot_estvec_inc(incstate, DX, Ehat) - sqrt_T ;
 	return Median(z);
 }

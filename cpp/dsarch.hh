@@ -14,6 +14,7 @@
 #include <type_traits>
 
 #include "dds.hh"
+#include "agms.hh"
 #include "output.hh"
 #include "method.hh"
 
@@ -163,12 +164,12 @@ template <typename Net, typename Hub, typename Site>
 struct star_network : public network
 {
 	Hub* hub;
-	std::unordered_map<source_id, Site*> nodes;
+	std::unordered_map<source_id, Site*> sites;
 
 	star_network() : hub(nullptr) { }
 
 	template <typename ... Args>
-	void setup(Args...args)
+	Net* setup(Args...args)
 	{
 		// create the nodes
 		hub = new Hub((Net*)this, args...);
@@ -176,18 +177,18 @@ struct star_network : public network
 		for(auto hid : CTX.metadata().source_ids()) 
 		{
 			Site* n = new Site((Net*)this, hid, args...);
-			nodes[hid] = n;
+			sites[hid] = n;
 		}
 
 		// make the connections
 		hub->setup_connections();
-		for(auto n : nodes) {
+		for(auto n : sites) {
 			n.second->setup_connections();
 		}
+
+		return (Net*)this;
 	}
 };
-
-
 
 
 /*	----------------------------------------
@@ -269,6 +270,8 @@ protected:
 	friend struct remote_method;
 public:
 
+	typedef Process proxied_type;
+
 	inline remote_proxy(process* o) 
 	: _owner(o)
 	{ }
@@ -309,6 +312,27 @@ struct proxy_method
 };
 
 
+/*
+	Typed wrapper for remote sites
+ */
+
+template <typename T>
+struct context_wrapper {
+	T const arg;
+	explicit context_wrapper(T _arg) : arg(_arg) { }
+	size_t byte_size() const { return 0; }
+};
+
+template <typename U>
+U context_unwrap(U&& x) { return x; }
+
+template <typename U>
+U context_unwrap(context_wrapper<U>&& wrapper) { return wrapper.arg; }
+
+template <typename U>
+context_wrapper<U> by_context(U x) { return context_wrapper<U>(x); }
+
+
 template <typename Dest, typename Response, typename ... Args>
 struct remote_method : proxy_method<Dest>
 {
@@ -325,7 +349,8 @@ struct remote_method : proxy_method<Dest>
 	inline Response operator()(Args...args) const
 	{
 		this->transmit_request(message_size(args...));
-		Response r = (this->proxy->proc()->* (this->method))(args...);
+		Response r = (this->proxy->proc()->* (this->method))(
+			std::forward<Args>(context_unwrap(args))...);
 		if(! std::is_same<Response, oneway>::value )
 			this->transmit_response(message_size(r));
 		return r;
@@ -342,6 +367,27 @@ make_remote_method(remote_proxy<T>* owner, Response (T::*method)(Args...))
 #define REMOTE_METHOD(RClass, RMethod)\
  decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
  	&RClass::RMethod)) RMethod { this, &RClass::RMethod }
+
+
+
+/*	----------------------------------------
+
+	Messages for common types
+
+	--------------------------------------- */
+
+
+struct compressed_sketch
+{
+	const agms::sketch& sk;
+	size_t updates;
+
+	size_t byte_size() const {
+		size_t E_size = dds::byte_size(sk);
+		size_t Raw_size = sizeof(dds_record)*updates;
+		return std::min(E_size, Raw_size);
+	}
+};
 
 
 

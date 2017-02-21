@@ -12,6 +12,7 @@
 #include "output.hh"
 #include "results.hh"
 #include "tods.hh"
+#include "geometric.hh"
 
 using namespace dds;
 
@@ -24,13 +25,14 @@ void execute()
 
 	//data_source* wcup = crawdad_ds(HOME+"/src/datasets/wifi_crawdad_sorted");
 	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
+	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44_1");
 	data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
 
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(1000);
 	//D.hash_sources(4);
-	D.hash_streams(2);
+	D.hash_streams(1);
 	D.set_time_window(4*3600);
 	D.create();
 
@@ -54,7 +56,10 @@ void execute()
 	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 	// 	}
 	// }
-	components.push_back(new tods::network(7, 1500, 0.1));
+	projection proj(7 , 5000);
+	tods::network* tmeth = new tods::network(proj, proj.epsilon());
+	components.push_back(tmeth);
+	components.push_back(new gm2::network(0, proj, tmeth->maximum_error() ));
 
 	/* Create output files */
 
@@ -62,7 +67,7 @@ void execute()
 	
 	/* Bind files to outputs */
 
-#if 1
+#if 0
 	output_file* lsstats_file = CTX.open("wc_lsstats.dat");
 	auto lss = new data_source_statistics();
 	components.push_back(lss);

@@ -8,20 +8,24 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=0
+DEBUG=1
 endif
-
 
 CXXFLAGS= -Wall -fPIC -I/usr/include/python3.5m -std=gnu++17
 
-DEBUGFLAGS=  -g3 
-OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
+DEBUGFLAGS=  -g3 -Og
+OPTFLAGS= -g3 -Ofast  #-DNDEBUG
 
 ifeq ($(DEBUG),1)
 CXXFLAGS+=  $(DEBUGFLAGS)
 else
 CXXFLAGS+=  $(OPTFLAGS)
 endif
+
+ifdef GPROF
+CXXFLAGS += -pg
+endif
+
 
 ###################################
 # File lists
@@ -80,6 +84,7 @@ unit_tests.cc:
 
 unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
+	./unit_tests
 
 data_tests.cc: data_tests.hh
 	cxxtestgen --error-printer -o $@ $<	
@@ -91,7 +96,6 @@ data_tests: data_tests.o libdds.a
 	cxxtestgen --part --error-printer -o $@ $<
 
 test: unit_tests
-	./unit_tests
 
 data_test: data_tests
 	./data_tests

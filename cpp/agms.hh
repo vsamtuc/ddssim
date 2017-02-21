@@ -143,12 +143,16 @@ public:
 	agms::projection proj;
 
 	/// Initialize to a null sketch
-	inline sketch() {}
+	inline sketch() {
+		cout << "Sketch created (default)" << endl;
+	}
 
 	/// Initialize by a given projection
 	inline sketch(const projection& _proj)
 	: Vec(0.0,_proj.size()), proj(_proj) 
-	{ }
+	{ 
+		cout << "Sketch created" << endl;
+	}
 
 	/// Initialize to a zero sketch
 	inline sketch(hash_family* _hf, index_type _L)
