@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <list>
 #include <algorithm>
+#include <H5Cpp.h>
 
 #include "dds.hh"
 
@@ -349,6 +350,14 @@ public:
 };
 
 
+struct hdf5_dataset : output_file
+{
+	H5::DataSet* dset;
+
+	virtual void output_prolog(output_table&);
+	virtual void output_row(output_table&);
+	virtual void output_epilog(output_table&);
+};
 
 
 

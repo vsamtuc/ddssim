@@ -8,14 +8,14 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=0
+DEBUG=1
 endif
 
+INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
+CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
-CXXFLAGS= -Wall -fPIC -I/usr/include/python3.5m -std=gnu++17
-
-DEBUGFLAGS=  -g3 
-OPTFLAGS= -g3 -finline -march=native -O3 -DNDEBUG
+DEBUGFLAGS=  -g3 -Og
+OPTFLAGS= -g3 -Ofast #-DNDEBUG
 
 ifeq ($(DEBUG),1)
 CXXFLAGS+=  $(DEBUGFLAGS)
@@ -28,12 +28,14 @@ endif
 ###################################
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc dsarch.cc results.cc safezone.cc \
-	tods.cc geometric.cc 
+	accurate.cc dds.cc dsarch.cc results.cc\
+	tods.cc  safezone.cc 
+	#geometric.cc 
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh exec_tests.hh output_tests.hh \
-	tods_tests.hh gm_tests.hh szone_tests.hh
+	tods_tests.hh szone_tests.hh 
+	#gm_tests.hh 
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
@@ -48,7 +50,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 
 .PHONY: all ddslib test clean distclean doc pyapi
 
-all: ddslib pyapi dssim $(TEST_SOURCES:.cc=) test
+all: ddslib dssim $(TEST_SOURCES:.cc=) test
 
 ddslib: libdds.a 
 
@@ -80,6 +82,7 @@ unit_tests.cc:
 
 unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ 
+	./unit_tests
 
 data_tests.cc: data_tests.hh
 	cxxtestgen --error-printer -o $@ $<	
@@ -91,7 +94,6 @@ data_tests: data_tests.o libdds.a
 	cxxtestgen --part --error-printer -o $@ $<
 
 test: unit_tests
-	./unit_tests
 
 data_test: data_tests
 	./data_tests
