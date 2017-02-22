@@ -56,7 +56,7 @@ void execute()
 	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 	// 	}
 	// }
-	projection proj(7 , 5000);
+	projection proj(7 , 10000);
 	tods::network* tmeth = new tods::network(proj, proj.epsilon());
 	components.push_back(tmeth);
 	components.push_back(new gm2::network(0, proj, tmeth->maximum_error() ));

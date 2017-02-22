@@ -327,9 +327,8 @@ struct network : star_network<network, coordinator, node>, reactive
 };
 
 
-/*
-	!!!!!! Note: Move to dsarch.hh eventually !!!!!!
-
+/**
+	
  */
 template <typename ProxyType, typename ProxiedType = typename ProxyType::proxied_type>
 class proxy_map

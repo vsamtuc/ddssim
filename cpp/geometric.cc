@@ -168,9 +168,11 @@ void coordinator::finish_round()
 
 	double zeta_total=0.0;
 	double minzeta_total=0.0;
+	double minzeta_min = INFINITY;
 	for(auto ni : node_ptr) {
 		zeta_total += ni->zeta;
 		minzeta_total += ni->minzeta;
+		minzeta_min = min(minzeta_min, ni->minzeta);
 	}
 
 	if(zeta_Enext < zeta_total/k) {    // check that we didn't screw up!
@@ -212,17 +214,19 @@ void coordinator::finish_round()
 
 		double zeta_total=0.0;
 		double minzeta_total=0.0;
+		double minzeta_min = INFINITY;
 		for(auto ni : node_ptr) {
 			zeta_total += ni->zeta;
 			minzeta_total += ni->minzeta;
+			minzeta_min = min(minzeta_min, ni->minzeta);
 		}
 #endif
 
 		print("Finish round: round updates=",round_updates," naive=",in_naive_mode, 
 			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E, 
 			"zeta_total=", zeta_total/k, zeta_total/(k*query.zeta_E), 
-			"minzeta_total=", minzeta_total, minzeta_total/(k*query.zeta_E),
-
+			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
+			"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
 			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
 		emit(RESULTS);
 	}
