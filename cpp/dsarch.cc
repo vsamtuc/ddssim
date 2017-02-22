@@ -74,7 +74,7 @@ void network::comm_results_fill_in()
 	comm_results.total_msg = total_msg;
 	comm_results.total_bytes = total_bytes;
 
-	double stream_bytes = sizeof(dds_record)* CTX.metadata().size();
+	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
 	comm_results.traffic_pct = total_bytes/stream_bytes;
 }
 

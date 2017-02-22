@@ -143,7 +143,7 @@ public:
 	agms::projection proj;
 
 	/// Initialize to a null sketch
-	inline sketch() {}
+	inline sketch() { }
 
 	/// Initialize by a given projection
 	inline sketch(const projection& _proj)

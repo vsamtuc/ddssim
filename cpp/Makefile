@@ -23,6 +23,11 @@ else
 CXXFLAGS+=  $(OPTFLAGS)
 endif
 
+ifdef GPROF
+CXXFLAGS += -pg
+endif
+
+
 ###################################
 # File lists
 ###################################

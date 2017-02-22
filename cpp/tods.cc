@@ -39,7 +39,7 @@ tods::network::~network()
 void tods::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
-	nodes[rec.hid]->update(rec.sid, rec.key, rec.sop);
+	sites[rec.hid]->update(rec.sid, rec.key, rec.sop);
 }
 
 double tods::network::maximum_error() const
@@ -174,10 +174,9 @@ void node_stream_state::flush()
 	delta_updates = 0;
 }
 
-size_t node_stream_state::byte_size() const 
+size_t node_stream_state::byte_size() const
 {
-	size_t E_size = dds::byte_size(dE);
-	size_t Raw_size = sizeof(dds_record)*delta_updates;
-	return std::min(E_size, Raw_size);
+	compressed_sketch sk { dE, delta_updates };
+	return sk.byte_size();
 }
 

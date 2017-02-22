@@ -6,7 +6,9 @@
 #include <memory>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include "dds.hh"
 #include "dsarch.hh"
 #include "agms.hh"
 #include "safezone.hh"
@@ -209,53 +211,222 @@ inline node::node(network* _net, source_id _sid, const projection& _proj)
 
 namespace dds { namespace gm2 {
 
-struct network;
-struct coordinator;
 
+
+
+/**
+	This class wraps safezone functions. It serves as part of the protocol.
+
+	Semantics: if `valid()` returns false, the system is in "promiscuous mode"
+	i.e., every update is forwarded to the coordinator immediately.
+
+	Else, there are two options: if a valid safezone function is given, then
+	it is used. Else, the naive function is used:
+	\f[  \zeta(X) = \zeta_{E} - \| U \|  \f]
+	where \f$ u \f$ is the current drift vector.
+  */
+struct safezone
+{
+	selfjoin_agms_safezone* szone; // the safezone function, if any
+	selfjoin_agms_safezone::incremental_state incstate; // cached here for convenience
+	double incstate_naive;
+
+	sketch* Eglobal;		// implementation detail, also used to compute the byte size
+	size_t updates;			// number of updates, determines the size of the global sketch
+	double zeta_E;			// This is acquired by calling the safezone 
+
+	// invalid
+	safezone() : szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(-1) {};
+
+	// valid safezone
+	safezone(selfjoin_agms_safezone* sz, sketch* E, size_t upd, double zE)
+	: szone(sz), Eglobal(E), updates(upd), zeta_E(zE)
+	{
+		assert(sz && sz->isvalid);
+		assert(zE>0);
+	}
+
+	// must be valid, i.e. zE>0
+	safezone(double zE) 
+	:  szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(zE)
+	{
+		assert(zE>0);
+	}
+
+	// We take these to be non-movable!
+	safezone(safezone&&)=delete;
+	safezone& operator=(safezone&&)=delete;
+
+	// Copyable
+	safezone& operator=(const safezone&) = default;
+
+	inline bool naive() const { return szone==nullptr && zeta_E>0; }
+	inline bool full() const { return szone!=nullptr; }
+	inline bool valid() const { return full() || naive(); }
+
+	double prepare_inc(const isketch& U)
+	{
+		if(full()) {
+			sketch X = (*Eglobal)+U;
+			return szone->with_inc(incstate, X);
+		} else if(naive()) {
+			return zeta_E - norm_L2_with_inc(incstate_naive, U);
+		} else {
+			assert(!valid());
+			return NAN;
+		}
+	}
+
+	double operator()(const isketch& U)
+	{
+		if(full()) {
+			delta_vector DX = U.delta;
+			DX += *Eglobal;
+			return szone->inc(incstate, DX);
+		}
+		else if(naive()) {
+			return zeta_E - norm_L2_inc(incstate_naive, U.delta);
+		} else {
+			assert(! valid());
+			return NAN;			
+		}
+	}
+
+	size_t byte_size() const {
+		if(!valid()) 
+			return 1;
+		else if(szone==nullptr)
+			return sizeof(zeta_E);
+		else
+			return compressed_sketch{*Eglobal, updates}.byte_size();
+	}
+};
+
+
+
+struct coordinator;
+struct node;
+
+struct network : star_network<network, coordinator, node>, reactive
+{
+	stream_id sid;
+	projection proj;
+	double beta;
+
+	network(stream_id, const projection& _proj, double _beta);
+
+	network(stream_id _sid, depth_type D, index_type L, double _beta) 
+	: network(_sid, projection(D,L), _beta) 
+	{
+		
+	}
+
+	void process_record();
+	void process_init();
+	void output_results();
+};
+
+
+/**
+	
+ */
+template <typename ProxyType, typename ProxiedType = typename ProxyType::proxied_type>
+class proxy_map
+{
+public:
+	typedef  ProxiedType  proxied_type;
+	typedef ProxyType  proxy_type;
+
+	process* owner;
+
+	proxy_map() {}
+
+	proxy_map(process* _owner) : owner(_owner) {  }
+
+	proxy_type& operator[](proxied_type* proc) {
+		return * pmap[proc];
+	}
+
+	void add(proxied_type* proc) {
+		if(pmap.find(proc)!=pmap.end()) return;
+		pmap[proc] = new proxy_type(owner);
+		pmap[proc]->connect(proc);
+	}
+
+	template <typename StarNet>
+	void add_sites(const StarNet* net) {
+		for(auto&& i : net->sites) add(i.second);
+	}
+
+	auto begin() const { return pmap.begin(); }
+	auto end() const { return pmap.end(); }
+
+	size_t size() const { return pmap.size(); }
+
+private:
+	std::map<proxied_type*, proxy_type*> pmap;
+
+};
+
+
+struct node_proxy;
+
+using std::vector;
 
 
 struct coordinator : process
 {
-	sketch Eglobal;
+	proxy_map<node_proxy, node> proxy;
 
-	coordinator(network* nw, const projection& proj) 
-	: process(nw), Eglobal(proj)
-	{ }
+	//
+	// protocol stuff
+	//
+	selfjoin_query query;	// current query state
+	size_t total_updates;	// number of stream updates received
 
-	oneway threshold_crossed(int bits);
+	bool in_naive_mode;		// when true, use the naive safezone
 
+	size_t k;				// number of sites
+
+	// index the nodes
+	map<node*, size_t> node_index;
+	vector<node*> node_ptr;
+
+	// protocol related
+	vector<bool> has_naive;
+	vector<int> bitweight;
+	vector<size_t> updates;
+	vector<size_t> msgs;
+
+	const double P = 0.5;
+	int bit_budget;
+	int bit_level;
+	size_t round_updates;
+
+
+	coordinator(network* nw, const projection& proj, double beta); 
+
+	inline network* net() { return dynamic_cast<network*>(host::net()); }
+
+	void setup_connections() override;
+
+	// initialize a new round
+	void start_round();
+	void finish_round();
+
+	// remote call on host violation
+	oneway threshold_crossed(node* n, int delta_bitw);
 };
 
 
-struct coord_proxy
+
+
+struct coord_proxy : remote_proxy<coordinator>
 {
 	REMOTE_METHOD(coordinator, threshold_crossed);
-	coord_proxy(coordinator* c) : remote_proxy<coordinator>(c) { }
+	coord_proxy(process* c) : remote_proxy<coordinator>(c) { }
 };
 
-
-
-// Wrapper for safe zone classes
-struct safezone
-{
-	selfjoin_agms_safezone* szone;
-	sketch* Eglobal;
-	selfjoin_agms_safezone::incremental_state incstate;
-
-	double zeta_E;			// This is acquired by calling the safezone 
-
-	void reset(selfjoin_agms_safezone* sz, sketch* E) 
-	{
-		szone = sz;
-		Eglobal = E;
-		zeta_E = (*szone)(incstate, *Eglobal);
-	}
-
-	double operator(const isketch& U)
-	{
-		return (*szone)(incstate, U.delta);
-	}
-};
 
 
 
@@ -263,83 +434,78 @@ struct node : local_site
 {
 	safezone szone;	// pointer to the safezone (shared among objects)
 
-	int bitno;
-	double zeta;
-	double min_zeta;
+	double minzeta; 		// minimum value of zeta so far
+	double zeta;			// current zeta
+
+	double zeta_0;			// start value for discretization, equal to zeta at last reset_bitweight()
+	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
+	int bitweight;			// equal to number of bits sent since last reset_bitweight()
+
 
 	isketch U;				// drift vector
 	size_t update_count;	// number of updates in drift vector
 
 	coord_proxy coord;
 
-	node(network* net, source_id hid, const projection& proj)
-	: local_site(net, hid), szone(nullptr), zeta_E(0.0),
+	node(network* net, source_id hid, const projection& proj, double beta)
+	: local_site(net, hid), 
 		U(proj), update_count(0),
-		coord( net->hub() )
-	{ }
-
-
-	void update_stream() {
-		assert(CTX.stream_record().hid == site_id());
-
-		U.update(CTX.stream_record().key, CTX.stream_record().sop==INSERT?1.0:-1.0 );
-		update_count++;
-
-		zeta = szone();
-		if(zeta < min_zeta) {
-			min_zeta = zeta;
-
-			int nbit = std::floor( min_zeta / ((szone->zeta_E)/2) );
-			if(nbit < bitno) {
-				coord_proxy.threshold_crossed(bitno - nbit);
-				nbit = bitno;
-			}
-		}
+		coord( this )
+	{ 
+		coord.connect(net->hub);
 	}
 
+
+	void update_stream();
+
 	// Remote methods
-	oneway reset_safezone(selfjoin_agms_safezone* sz, sketch* Eg) { 
+	oneway reset(const safezone& newsz) { 
 		// reset the safezone object
-		szone.reset(sz, Eg);
-		bitno = 1;
-		min_zeta = szone.zeta_E;
+		(sketch&)U = 0.0;
+		update_count = 0;
+
+		szone = newsz;
+		szone.prepare_inc(U);
+		zeta = minzeta = szone.zeta_E;
+		reset_bitweight(szone.zeta_E/2);
+
 		return oneway();
 	}
 
-	isketch* get_drift() {
-		return &U;
+	double get_zeta() {
+		return zeta;
 	}
-};
 
-
-struct node_proxy
-{
-	REMOTE_METHOD(node, reset_safezone);
-	node_proxy(node* n) : remote_proxy<node>(n) {}
-};
-
-
-
-
-struct network : star_network<network, coordinator, node>
-{
-	projection proj;
-	double beta;
-
-	network(const projection& _proj, double _beta)
-	: proj(_proj), beta(_beta) 
+	oneway reset_bitweight(double Z)
 	{
-		setup(proj);
+		zeta_0 = zeta;
+		zeta_quantum = Z;
+		bitweight = 0;
+		return oneway();
 	}
 
+	compressed_sketch get_drift() {
+		return compressed_sketch { U, update_count };
+	}
 };
 
+struct node_proxy : remote_proxy<node>
+{
+	REMOTE_METHOD(node, reset);
+	REMOTE_METHOD(node, reset_bitweight);
+	REMOTE_METHOD(node, get_drift);
+	REMOTE_METHOD(node, get_zeta);
+	node_proxy(process* p) : remote_proxy<node>(p) {}
+};
+
+} // end namespace dds::gm
 
 
+template <>
+inline size_t byte_size<gm2::node*>(gm2::node  * const & ) { return 4; }
 
 
-
-} }  // end namespace dds::gm
+}  // end namespace dds
 
 
 

@@ -2,7 +2,7 @@
 #define __BINC_HH__
 
 #include <iostream>
-#include <ostream>
+#include <sstream>
 
 /*
 	In the global namespace

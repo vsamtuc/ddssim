@@ -172,6 +172,7 @@ protected:
 	State state = Start;
 
 	size_t _step;
+	size_t _recno;
 public:
 	inline State get_state() const { return state; }
 
@@ -180,6 +181,8 @@ public:
 	inline size_t step() const { return _step; }
 
 	inline const dds_record& stream_record() const { return ds->get(); }
+
+	inline size_t stream_count() const { return _recno; }
 
 	inline const ds_metadata& metadata() const {
 		return ds->metadata();
