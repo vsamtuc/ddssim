@@ -34,13 +34,11 @@ endif
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc 
-	#geometric.cc 
+	tods.cc  safezone.cc geometric.cc 
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh exec_tests.hh output_tests.hh \
-	tods_tests.hh szone_tests.hh 
-	#gm_tests.hh 
+	tods_tests.hh szone_tests.hh gm_tests.hh 
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
@@ -107,10 +105,10 @@ doc:
 	doxygen dds.cfg
 
 clean:
-	-rm $(CXX_OBJ) 
-	-rm libdds.a dssim dds.so dds_module.o
-	-rm $(UNIT_TESTS:.hh=.cc) $(UNIT_TESTS:.hh=.o)
-	-rm $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=) 
+	-rm -f $(CXX_OBJ) 
+	-rm -f libdds.a dssim dds.so dds_module.o
+	-rm -f $(UNIT_TESTS:.hh=.cc) $(UNIT_TESTS:.hh=.o)
+	-rm -f $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=) 
 
 depend: $(CXX_SOURCES) $(TEST_SOURCES) $(UNIT_TESTS:.hh=.cc)
 	$(CXX) $(CXXFLAGS) -MM $^ > .depend
