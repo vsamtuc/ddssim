@@ -17,12 +17,16 @@ namespace dds {
 	Output file to an HDF5 dataset.
 
   */
+
 class hdf5_dataset : public output_file
 {
 public:
 	H5::Group loc;
 	open_mode mode;
 
+	struct table_handler;
+	std::map<output_table*, table_handler*> _handler;
+	table_handler* handler(output_table&);
 
 	/**
 		Use the file or group for the dataset.
@@ -50,8 +54,115 @@ public:
 using namespace dds;
 
 
+std::map<type_index, H5::DataType> __pred_type_map = 
+{
+	{typeid(bool), H5::PredType::NATIVE_UCHAR},
+
+	{typeid(char), H5::PredType::NATIVE_CHAR},
+	{typeid(signed char), H5::PredType::NATIVE_SCHAR},	
+	{typeid(short), H5::PredType::NATIVE_SHORT},
+	{typeid(int), H5::PredType::NATIVE_INT},
+	{typeid(long), H5::PredType::NATIVE_LONG},
+	{typeid(long long), H5::PredType::NATIVE_LLONG},
+
+	{typeid(unsigned char), H5::PredType::NATIVE_UCHAR},
+	{typeid(unsigned short), H5::PredType::NATIVE_USHORT},
+	{typeid(unsigned int), H5::PredType::NATIVE_UINT},
+	{typeid(unsigned long), H5::PredType::NATIVE_ULONG},
+	{typeid(unsigned long long), H5::PredType::NATIVE_ULLONG},
+
+	{typeid(float), H5::PredType::NATIVE_FLOAT},
+	{typeid(double), H5::PredType::NATIVE_DOUBLE},
+	{typeid(long double), H5::PredType::NATIVE_LDOUBLE}
+};
+
+
+H5::DataType hdf_mapped_type(basic_column* col)
+{
+	// make it simple-minded for now
+	using namespace std::string_literals;
+	auto predit = __pred_type_map.find(col->type());
+	if(predit!=__pred_type_map.end()) 
+		return predit->second;
+	else if(col->type() == typeid(string)) {
+		return H5::StrType(0, col->size());
+	} else {
+		throw std::logic_error("HDF5 mapping for type '"s+
+			col->type().name()+"' not known"s);
+	}
+}
+
+
+struct hdf5_dataset::table_handler
+{
+	output_table& table;
+	size_t size;
+	size_t align;
+	H5::CompType type;
+	H5::DataSet dataset;
+
+	inline static size_t __aligned(size_t pos, size_t al) {
+		assert( (al&(al-1)) == 0); // al is a power of 2
+		return al*((pos+al-1)/al);
+	}
+
+	void make_row(char* buffer) {
+		size_t pos=0;
+		for(size_t i=0; i<table.size();i++) {
+			if(i>0) {
+				// advance pos to subsume the size of 
+				// column i-1 and the alignment of column i
+				size_t al = table[i]->align();
+				pos = __aligned(pos,al);
+			}
+			table[i]->copy(buffer+pos);
+			pos += table[i]->size();
+		}
+		assert(size == __aligned(pos, table[0]->align()));
+	}
+
+	table_handler(output_table& _table) 
+	: table(_table), size(0), align(1)
+	{
+		// first compute the size of the whole
+		// thing
+		for(size_t i=0;i<table.size();i++) {
+			align = std::max(align, table[i]->align());
+			if(i>0) size = __aligned(size, table[i]->align());
+			size += table[i]->size();
+		}
+		if(table.size()>0) size = __aligned(size, table[0]->align());
+		// now, compute the type
+		size_t pos = 0;
+		type = H5::CompType(size);
+		for(size_t i=0;i<table.size();i++) {
+			basic_column* c = table[i];
+			if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+			type.insertMember(c->name(), pos, hdf_mapped_type(c));
+		}
+	}
+
+	void create_dataset(const H5::Group& loc)
+	{
+		using namespace H5;
+		// it does not! create it
+		hsize_t zdim[] = { 0 };
+		hsize_t cdim[] = { 16 };
+		hsize_t mdim[] = { H5S_UNLIMITED };
+		DataSpace dspace(1, zdim, mdim);
+		DSetCreatPropList props;
+		props.setChunk(1, cdim);
+
+		dataset = loc.createDataSet(table.name(), 
+				type, dspace, props);		
+	}
+
+};
+
+
 hdf5_dataset::~hdf5_dataset()
 {
+	loc.close();
 }
 
 hdf5_dataset::hdf5_dataset(const H5::H5File& _file, open_mode _mode)
@@ -69,8 +180,46 @@ hdf5_dataset::hdf5_dataset (const H5::CommonFG& base,
 { }
 
 
+hdf5_dataset::table_handler* hdf5_dataset::handler(output_table& table)
+{
+	auto it = _handler.find(&table);
+	if(it==_handler.end()) {
+		table_handler* sc = new table_handler(table);
+		_handler[&table] = sc;
+		return sc;
+	} else
+		return it->second;
+}
+
+
 void hdf5_dataset::output_prolog(output_table& table)
 {
+	using namespace H5;
+
+	// construct the table or timeseries
+	table_handler* th = handler(table);
+	
+	// check the open mode and work accordingly
+	if(mode == open_mode::append) {
+		// check if an object by the given name exists in the loc
+		try {
+			DataSet dset = loc.openDataSet(table.name());
+			// ok, it exists, just check compatibility
+			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
+				throw std::runtime_error("On appending to HDF table,"\
+					" types are not compatible");
+
+			th->dataset = dset;
+		} catch(Exception& e) {
+			th->create_dataset(loc);
+		}
+	} else {
+		assert(mode==open_mode::truncate);
+		// maybe it exists, erase it
+		// TODO
+		th->create_dataset(loc);
+	}
+
 
 }
 
@@ -81,9 +230,14 @@ void hdf5_dataset::output_row(output_table&)
 }
 
 
-void hdf5_dataset::output_epilog(output_table&)
+void hdf5_dataset::output_epilog(output_table& table)
 {
-
+	// just delete the handler
+	auto it = _handler.find(&table);
+	if(it != _handler.end()) {
+		delete it->second;
+		_handler.erase(it);		
+	}
 }
 
 
@@ -280,31 +434,37 @@ public:
 		h5_mytype.insertMember("x", offsetof(mytype,x), PredType::NATIVE_DOUBLE);
 		h5_mytype.insertMember("foo_3", offsetof(mytype,foo), StrType(PredType::C_S1,19));
 
-		hsize_t dim[] = { 4 };
-		DataSpace dspace(1,dim);
-		
-		DataSet dset = ds.loc.createDataSet("testdata", h5_mytype, dspace);
-		dset.write(data, h5_mytype);
+		hsize_t zdim[] = { 0 };
+		hsize_t cdim[] = { 16 };
+		hsize_t mdim[] = { H5S_UNLIMITED };
+		DataSpace dspace(1, zdim, mdim);
+		DSetCreatPropList props;
+		props.setChunk(1, cdim);
 
-		{
-			FL_PacketTable pckt(ds.loc.getId(), "packet_table", 
-				h5_mytype.getId(), 16384);
-			TS_ASSERT( pckt.IsValid() );
-		}
+		DataSet dset = ds.loc.createDataSet("testdata", h5_mytype, dspace, props);
+		print("Created");
 
-		//pckt.close();
-		FL_PacketTable pt(ds.loc.getId(), "packet_table");
-		pt.AppendPackets(2, data);
+		hsize_t ddim[] = { 2 };
 
+		dset.extend(ddim);
+		DataSpace dsp = dset.getSpace();
+		dset.write(data, h5_mytype, dsp, dsp);
+
+		hsize_t ddim2[] = { 4 };
+		dset.extend(ddim2);
+		dsp = dset.getSpace();
+		dsp.selectHyperslab(H5S_SELECT_SET, ddim, ddim);
+		dset.write(data, h5_mytype, dsp, dsp);
+
+		dsp = dset.getSpace();
 		mytype indata[4];
+		dset.read(indata, h5_mytype, dsp, dsp);
 
-		dset.read(indata, h5_mytype);
 		for(size_t i=0;i<4;i++) {
 			TS_ASSERT_EQUALS(data[i].n, indata[i].n);
 			TS_ASSERT_EQUALS(data[i].x, indata[i].x);
 			TS_ASSERT_EQUALS(data[i].foo, indata[i].foo);
 		}
-
 
 	}
 

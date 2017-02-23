@@ -7,6 +7,8 @@
 #include <cstring>
 #include <list>
 #include <algorithm>
+#include <typeinfo>
+#include <typeindex>
 #include <H5Cpp.h>
 
 #include "dds.hh"
@@ -15,7 +17,8 @@ namespace dds
 {
 
 using std::string;
-
+using std::type_index;
+using std::type_info;
 
 /*-----------------------------
 	Generic classes
@@ -29,13 +32,15 @@ protected:
 	output_table* _table;
 	size_t _index;
 	string _format;
+	type_index _type;
 	size_t _size;
 	size_t _align;
 	friend class output_table;
 public:
 	basic_column(const string& _name, const string& f, 
-		size_t _s, size_t _a)
-	: named(_name), _table(0), _format(f), _size(_s), _align(_a)
+		const type_info& _t, size_t _s, size_t _a)
+	: named(_name), _table(0), _format(f), 
+		_type(_t), _size(_s), _align(_a)
 	 { }
 
 	basic_column(const basic_column&)=delete;
@@ -46,6 +51,7 @@ public:
 	virtual void emit(FILE*) = 0;
 	virtual void copy(void*) = 0;
 
+	inline type_index type() const { return _type; }
 	inline size_t size() const { return _size; }
 	inline size_t align() const { return _align; }
 
@@ -61,10 +67,10 @@ protected:
 	T val;
 public:
 	column(const string& _n, const string& fmt) 
-	: basic_column(_n, fmt, sizeof(T), alignof(T)) { }
+	: basic_column(_n, fmt, typeid(T), sizeof(T), alignof(T)) { }
 
 	column(const string& _n, const string& fmt, const T& _v) 
-	: basic_column(_n, fmt, sizeof(T), alignof(T)), val(_v) { }
+	: basic_column(_n, fmt, typeid(T), sizeof(T), alignof(T)), val(_v) { }
 
 	inline T value() const { return val; }
 	inline T& value() { return val; }
@@ -84,12 +90,14 @@ protected:
 	string val;
 public:
 	column(const string& _n, size_t _maxlen, const string& fmt) 
-	: basic_column(_n, fmt, sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+	: basic_column(_n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
 		maxlen(_maxlen) 
 		{ }
 
 	column(const string& _n,  size_t _maxlen, const string& fmt, const string& _v) 
-	: basic_column(_n, fmt, sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+	: basic_column(_n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
 			maxlen(_maxlen), val(_v) 
 		{ }
 

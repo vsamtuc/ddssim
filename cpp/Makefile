@@ -52,6 +52,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 # Rules
 ###################################
 
+.PRECIOUS: unit_tests
 .PHONY: all ddslib test clean distclean doc pyapi
 
 all: ddslib dssim $(TEST_SOURCES:.cc=) test
