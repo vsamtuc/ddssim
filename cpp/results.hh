@@ -24,7 +24,7 @@ extern local_stream_stats_t lsstats;
   */
 struct comm_results_t : result_table
 {
-	column<string> netname   	{ "netname", "%s" };
+	column<string> netname   	{ "netname", 24, "%s" };
 	column<double> max_error 	{ "max_error", "%.8g" };
 	column<size_t> sites     	{ "sites", "%zu" };
 	column<size_t> streams   	{ "streams", "%zu" };

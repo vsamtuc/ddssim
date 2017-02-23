@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <cstring>
 #include <list>
 #include <algorithm>
 #include <H5Cpp.h>
@@ -28,10 +29,14 @@ protected:
 	output_table* _table;
 	size_t _index;
 	string _format;
+	size_t _size;
+	size_t _align;
 	friend class output_table;
 public:
-	basic_column(const string& _name, const string& f)
-	: named(_name), _table(0), _format(f) { }
+	basic_column(const string& _name, const string& f, 
+		size_t _s, size_t _a)
+	: named(_name), _table(0), _format(f), _size(_s), _align(_a)
+	 { }
 
 	basic_column(const basic_column&)=delete;
 	basic_column(const basic_column&&)=delete;
@@ -39,20 +44,27 @@ public:
 
 	inline const char* format() const { return _format.c_str(); }
 	virtual void emit(FILE*) = 0;
+	virtual void copy(void*) = 0;
+
+	inline size_t size() const { return _size; }
+	inline size_t align() const { return _align; }
+
 };
 
 
 template <typename T>
 class column : public basic_column
 {
+	static_assert(std::is_arithmetic<T>::value, 
+		"Column on non-arithmentic type");
 protected:
 	T val;
 public:
 	column(const string& _n, const string& fmt) 
-	: basic_column(_n, fmt) { }
+	: basic_column(_n, fmt, sizeof(T), alignof(T)) { }
 
 	column(const string& _n, const string& fmt, const T& _v) 
-	: basic_column(_n, fmt), val(_v) { }
+	: basic_column(_n, fmt, sizeof(T), alignof(T)), val(_v) { }
 
 	inline T value() const { return val; }
 	inline T& value() { return val; }
@@ -60,25 +72,39 @@ public:
 	void emit(FILE* s) override {
 		fprintf(s, format(), value());
 	}
+	void copy(void* ptr) { memcpy(ptr, &val, _size); }
+
 };
 
 template <>
 class column<string> : public basic_column
 {
 protected:
+	const size_t maxlen;
 	string val;
 public:
-	column(const string& _n, const string& fmt) 
-	: basic_column(_n, fmt) { }
+	column(const string& _n, size_t _maxlen, const string& fmt) 
+	: basic_column(_n, fmt, sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+		maxlen(_maxlen) 
+		{ }
 
-	column(const string& _n, const string& fmt, const string& _v) 
-	: basic_column(_n, fmt), val(_v) { }
+	column(const string& _n,  size_t _maxlen, const string& fmt, const string& _v) 
+	: basic_column(_n, fmt, sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+			maxlen(_maxlen), val(_v) 
+		{ }
 
 	inline const string& value() const { return this->val; }
 	inline string& value() { return val; }
-	inline string& operator=(const string& v) { val=v; return val; }
+	inline string& operator=(const string& v) { 
+		val=v.substr(0,maxlen); 
+		return val; 
+	}
 	void emit(FILE* s) override {
 		fprintf(s, format(), value().c_str());
+	}
+	void copy(void* ptr) { 
+		strncpy((char*)ptr,val.c_str(), maxlen+1); 
+		((char*)ptr)[maxlen] = '\0';
 	}
 };
 
@@ -200,7 +226,7 @@ public:
 };
 
 
-enum open_mode { truncate, append };
+enum class open_mode { truncate, append };
 const open_mode default_open_mode = open_mode::truncate;
 
 class output_file 
@@ -349,15 +375,6 @@ public:
     void finish();
 };
 
-
-struct hdf5_dataset : output_file
-{
-	H5::DataSet* dset;
-
-	virtual void output_prolog(output_table&);
-	virtual void output_row(output_table&);
-	virtual void output_epilog(output_table&);
-};
 
 
 

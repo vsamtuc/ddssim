@@ -137,7 +137,7 @@ void output_c_file::open(const string& fpath, open_mode mode)
 {
 	if(stream) 
 		throw std::runtime_error("output file already open");
-	stream = fopen(fpath.c_str(), (mode==append?"a":"w"));
+	stream = fopen(fpath.c_str(), (mode==open_mode::append?"a":"w"));
 	if(!stream) 
 		throw std::runtime_error("I/O error opening file");
 	filepath = fpath;
@@ -282,6 +282,5 @@ void progress_bar::finish()
 // HDF5 files
 //
 //-------------------------------------
-
 
 

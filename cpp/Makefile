@@ -12,6 +12,7 @@ DEBUG=1
 endif
 
 INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
+LIB= -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_serial -lm
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 -Og
@@ -64,13 +65,13 @@ libdds.a: $(DDS_OBJ)
 	ranlib $@
 
 dssim: dssim.o libdds.a
-	$(CXX) -o $@ $< -L. -ldds -lconfig++
+	$(CXX) -o $@ $< -L. -ldds -lconfig++ $(LIB)
 
 dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
 
 _dds.so: dds_module.o libdds.a
-	$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl  -lutil -lm
+	$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
 
 #unit_tests.cc: $(UNIT_TESTS) 
 #	cxxtestgen --error-printer -o $@ $^
@@ -84,14 +85,14 @@ unit_tests.cc:
 	cxxtestgen --root --error-printer -o $@ $<	
 
 unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
-	$(CXX) $(CXXFLAGS) -o $@ $^ 
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
 	./unit_tests
 
 data_tests.cc: data_tests.hh
 	cxxtestgen --error-printer -o $@ $<	
 
 data_tests: data_tests.o libdds.a
-	$(CXX) $(CXXFLAGS) -o $@ $^ 
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
 
 %_tests.cc : %_tests.hh
 	cxxtestgen --part --error-printer -o $@ $<
