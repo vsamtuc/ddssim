@@ -7,6 +7,8 @@
 
 
 #include <cstddef>
+#include <functional>
+
 #include <H5PacketTable.h>
 
 using binc::print;
@@ -96,6 +98,7 @@ H5::DataType hdf_mapped_type(basic_column* col)
 struct hdf5_dataset::table_handler
 {
 	output_table& table;
+	std::vector<size_t> colpos;
 	size_t size;
 	size_t align;
 	H5::CompType type;
@@ -122,7 +125,7 @@ struct hdf5_dataset::table_handler
 	}
 
 	table_handler(output_table& _table) 
-	: table(_table), size(0), align(1)
+	: table(_table), colpos(table.size(),0), size(0), align(1)
 	{
 		// first compute the size of the whole
 		// thing
@@ -138,6 +141,7 @@ struct hdf5_dataset::table_handler
 		for(size_t i=0;i<table.size();i++) {
 			basic_column* c = table[i];
 			if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+			colpos[i] = pos;
 			type.insertMember(c->name(), pos, hdf_mapped_type(c));
 		}
 	}
@@ -157,6 +161,36 @@ struct hdf5_dataset::table_handler
 				type, dspace, props);		
 	}
 
+	void append_row()
+	{
+		using namespace H5;
+		// Make the image of an object.
+		// This need not be aligned as far as I can tell!!!!!
+		char buffer[size];
+		size_t pos = 0;
+		for(size_t i=0; i< table.size(); i++) {
+			if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+			assert(pos == colpos[i]);
+			table[i]->copy(buffer + pos);
+		}
+
+		// extend the dataset by one row
+
+		DataSpace tabspc = dataset.getSpace();
+		assert(tabspc.getSimpleExtentNdims()==1);
+		hsize_t oldext[1];
+		tabspc.getSimpleExtentDims(oldext);
+		hsize_t newext[] = { oldext[0]+1 };
+		dataset.extend(newext);
+
+		// create table space
+		tabspc = dataset.getSpace();
+		hsize_t dext[] = { 1 };
+		tabspc.selectHyperslab(H5S_SELECT_SET, dext, oldext);
+		DataSpace memspc(1, dext);
+
+		dataset.write(buffer, type, memspc, tabspc);
+	}
 };
 
 
@@ -202,7 +236,9 @@ void hdf5_dataset::output_prolog(output_table& table)
 	// check the open mode and work accordingly
 	if(mode == open_mode::append) {
 		// check if an object by the given name exists in the loc
+		print("APPENDING");
 		try {
+
 			DataSet dset = loc.openDataSet(table.name());
 			// ok, it exists, just check compatibility
 			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
@@ -211,9 +247,11 @@ void hdf5_dataset::output_prolog(output_table& table)
 
 			th->dataset = dset;
 		} catch(Exception& e) {
+			print("CREATING FROM SCRATCH");
 			th->create_dataset(loc);
 		}
 	} else {
+		print("TRUNCATING");
 		assert(mode==open_mode::truncate);
 		// maybe it exists, erase it
 		// TODO
@@ -224,8 +262,11 @@ void hdf5_dataset::output_prolog(output_table& table)
 }
 
 
-void hdf5_dataset::output_row(output_table&)
-{
+void hdf5_dataset::output_row(output_table& table)
+{	
+	using namespace H5;
+	table_handler* th = handler(table);
+	th->append_row();
 
 }
 
@@ -239,8 +280,6 @@ void hdf5_dataset::output_epilog(output_table& table)
 		_handler.erase(it);		
 	}
 }
-
-
 
 
 
@@ -408,66 +447,238 @@ public:
 	}
 
 
-	void test_hdf5()
+	struct dummy_table : result_table
+	{
+		column<bool> bool_attr { "bool_attr", "%d"};
+		column<stream_id> sid { "sid", "%hd" };
+		column<source_id> hid { "hid", "%hd" };
+		column<double> zeta { "zeta", "%.10g" };
+		column<size_t> nsize { "nsize", "%zu" };
+		column<string> mname { "mname", 31, "%s" };
+
+		dummy_table(const string& name) : result_table(name)
+		{
+			add({
+				& bool_attr,
+				& sid,
+				& hid,
+				& zeta,
+				& nsize,
+				& mname
+			});
+		}
+
+		void fill_columns(size_t i)
+		{
+			using binc::sprint;
+			bool_attr = (i%3)==1;
+			sid = i;
+			hid = i;
+			zeta = i/2.;
+			nsize = i*2;
+			mname = sprint("this is record",i);
+		}
+	};
+
+	/* Expected layout: same as c struct */
+	struct __dummy_rec {
+		bool 		bool_attr;
+		stream_id  	sid;
+		source_id	hid;
+		double 		zeta;
+		size_t 		nsize;
+		char 		mname[32]; // note: maxlen+1
+	};
+
+
+	void test_hdf5_dataset_table_handler_schema()
 	{
 		using namespace H5;
-		using namespace std::string_literals;
 
-		H5File f("test.h5", H5F_ACC_TRUNC);
-		hdf5_dataset ds(f,"run1");
+		dummy_table dummy("dummy_table");
+		hdf5_dataset::table_handler* handler = 
+			new hdf5_dataset::table_handler(dummy);
 
-		// make a compound datatype with an int, a double and
-		// a string
-		struct mytype {
-			short int n;
-			double x;
-			char foo[20];
-		} data[4] = {
-			{1, 2.1, "line1"},
-			{2, 2.2, "line2"},
-			{3, 2.3, "line3"},
-			{4, 2.4, "line4"}
-		};
+		TS_ASSERT_EQUALS(& handler->table, &dummy);
 
-		CompType h5_mytype(sizeof(mytype));
-		h5_mytype.insertMember("n", offsetof(mytype,n), PredType::STD_I16LE);
-		h5_mytype.insertMember("x", offsetof(mytype,x), PredType::NATIVE_DOUBLE);
-		h5_mytype.insertMember("foo_3", offsetof(mytype,foo), StrType(PredType::C_S1,19));
+		TS_ASSERT_EQUALS(handler->size, sizeof(__dummy_rec));
+		TS_ASSERT_EQUALS(handler->align, alignof(__dummy_rec));
+		TS_ASSERT_EQUALS(handler->colpos[0], offsetof(__dummy_rec,bool_attr));
+		TS_ASSERT_EQUALS(handler->colpos[1], offsetof(__dummy_rec,sid));
+		TS_ASSERT_EQUALS(handler->colpos[2], offsetof(__dummy_rec,hid));
+		TS_ASSERT_EQUALS(handler->colpos[3], offsetof(__dummy_rec,zeta));
+		TS_ASSERT_EQUALS(handler->colpos[4], offsetof(__dummy_rec,nsize));
+		TS_ASSERT_EQUALS(handler->colpos[5], offsetof(__dummy_rec,mname));
+	}
 
-		hsize_t zdim[] = { 0 };
-		hsize_t cdim[] = { 16 };
-		hsize_t mdim[] = { H5S_UNLIMITED };
-		DataSpace dspace(1, zdim, mdim);
-		DSetCreatPropList props;
-		props.setChunk(1, cdim);
 
-		DataSet dset = ds.loc.createDataSet("testdata", h5_mytype, dspace, props);
-		print("Created");
+	void check_dummy_dataset(H5::DataSet dataset, size_t Nrec)
+	{
+		using namespace H5;
+		// this is just to use fill_columns
+		dummy_table dummy("dummy_table");
 
-		hsize_t ddim[] = { 2 };
+		DataSpace dspc = dataset.getSpace();
+		TS_ASSERT_EQUALS(dspc.getSimpleExtentNdims(), 1);
+		hsize_t dims[1];
+		dspc.getSimpleExtentDims(dims);
+		TS_ASSERT_EQUALS((size_t) dims[0], Nrec);
 
-		dset.extend(ddim);
-		DataSpace dsp = dset.getSpace();
-		dset.write(data, h5_mytype, dsp, dsp);
+		__dummy_rec data[Nrec];
+		//handler->dataset.read(data, handler->type, dspc, dspc);
+		CompType type(sizeof(__dummy_rec));
+		type.insertMember("bool_attr", offsetof(__dummy_rec,bool_attr), 
+			PredType::NATIVE_UCHAR);
+		type.insertMember("sid", offsetof(__dummy_rec,sid), 
+			PredType::NATIVE_SHORT);
+		type.insertMember("hid", offsetof(__dummy_rec,hid), 
+			PredType::NATIVE_SHORT);
+		type.insertMember("zeta", offsetof(__dummy_rec,zeta), 
+			PredType::NATIVE_DOUBLE);
+		type.insertMember("nsize", offsetof(__dummy_rec,nsize),
+			PredType::NATIVE_HSIZE);
+		type.insertMember("mname", offsetof(__dummy_rec,mname), 
+			StrType(0,32));
 
-		hsize_t ddim2[] = { 4 };
-		dset.extend(ddim2);
-		dsp = dset.getSpace();
-		dsp.selectHyperslab(H5S_SELECT_SET, ddim, ddim);
-		dset.write(data, h5_mytype, dsp, dsp);
-
-		dsp = dset.getSpace();
-		mytype indata[4];
-		dset.read(indata, h5_mytype, dsp, dsp);
-
-		for(size_t i=0;i<4;i++) {
-			TS_ASSERT_EQUALS(data[i].n, indata[i].n);
-			TS_ASSERT_EQUALS(data[i].x, indata[i].x);
-			TS_ASSERT_EQUALS(data[i].foo, indata[i].foo);
+		dataset.read(data, type);
+		for(size_t i=0; i<Nrec; i++) {
+			dummy.fill_columns(i);
+			TS_ASSERT_EQUALS(data[i].bool_attr, dummy.bool_attr.value());
+			TS_ASSERT_EQUALS(data[i].sid, dummy.sid.value());
+			TS_ASSERT_EQUALS(data[i].hid, dummy.hid.value());
+			TS_ASSERT_EQUALS(data[i].zeta, dummy.zeta.value());
+			TS_ASSERT_EQUALS(data[i].nsize, dummy.nsize.value());
+			TS_ASSERT_EQUALS(string(data[i].mname), dummy.mname.value());
 		}
 
 	}
 
+	void test_hdf5_dataset_table_handler_data()
+	{
+		using namespace H5;
+
+		dummy_table dummy("dummy_table");
+		hdf5_dataset::table_handler* handler = 
+			new hdf5_dataset::table_handler(dummy);
+	
+		auto file = H5File("dummy_file.h5", H5F_ACC_TRUNC);
+		Group loc = file.openGroup("/");
+		handler->create_dataset(loc);
+
+		using binc::sprint;
+		size_t Nrec = 100;
+		for(size_t i=0; i<Nrec; i++) {
+			dummy.fill_columns(i);
+			handler->append_row();
+		}
+
+		check_dummy_dataset(handler->dataset, Nrec);		
+		delete handler;
+	}
+
+
+	void test_hdf5_dataset_basic()
+	{
+		using namespace std::string_literals;
+		using namespace H5;
+		using std::reference_wrapper;
+		using std::ref;
+
+		dummy_table dummy1("dummy1");
+		dummy_table dummy2("dummy2");
+		dummy_table dummy3("dummy3");
+
+		std::vector<reference_wrapper<dummy_table>> tables {
+			dummy1, dummy2, dummy3 
+		};
+
+		auto file = H5File("dummy_file2.h5", H5F_ACC_TRUNC);
+		hdf5_dataset dset(file);
+
+		for(output_table& t : tables) {
+			dset.bind(t);
+			t.prolog();
+		}
+
+		for(size_t i=0; i<10; i++) {
+			for(dummy_table& t : tables) {
+				t.fill_columns(i);
+				t.emit_row();
+			}	
+		}
+
+		for(output_table& t : tables) {
+			t.epilog();
+		}
+
+		check_dummy_dataset(file.openDataSet("dummy1"), 10);
+		check_dummy_dataset(file.openDataSet("dummy2"), 10);
+		check_dummy_dataset(file.openDataSet("dummy3"), 10);		
+	}
+
+	void test_hdf5_dataset_truncate()
+	{
+		using namespace std::string_literals;
+		using namespace H5;
+
+		dummy_table dummy("dummy");
+		auto file = H5File("dummy_file3.h5", H5F_ACC_TRUNC);
+		auto dset= new hdf5_dataset(file, open_mode::truncate);
+
+		dset->bind(dummy);
+		dummy.prolog();
+		for(size_t i=0; i<10; i++) {
+			dummy.fill_columns(i);
+			dummy.emit_row();
+		}
+		dummy.epilog();
+		delete dset;
+
+		check_dummy_dataset(file.openDataSet("dummy"), 10);
+
+		dset = new hdf5_dataset(file, open_mode::truncate);
+		dummy.prolog();
+		for(size_t i=0; i<5; i++) {
+			dummy.fill_columns(i);
+			dummy.emit_row();
+		}
+		dummy.epilog();
+		delete dset;
+
+		check_dummy_dataset(file.openDataSet("dummy"), 5);
+	}
+
+	void test_hdf5_dataset_append()
+	{
+		using namespace std::string_literals;
+		using namespace H5;
+
+		dummy_table dummy("dummy");
+		auto file = H5File("dummy_file4.h5", H5F_ACC_TRUNC);
+		auto dset= new hdf5_dataset(file, open_mode::truncate);
+
+		dset->bind(dummy);
+		dummy.prolog();
+		for(size_t i=0; i<10; i++) {
+			dummy.fill_columns(i);
+			dummy.emit_row();
+		}
+		dummy.epilog();
+		delete dset;
+
+		check_dummy_dataset(file.openDataSet("dummy"), 10);
+
+		dset = new hdf5_dataset(file, open_mode::append);
+		dummy.prolog();
+		for(size_t i=10; i<25; i++) {
+			dummy.fill_columns(i);
+			dummy.emit_row();
+		}
+		dummy.epilog();
+		delete dset;
+
+		//check_dummy_dataset(file.openDataSet("dummy"), 25);
+	}
 
 
 };
