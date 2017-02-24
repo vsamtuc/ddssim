@@ -129,8 +129,11 @@ time_series::time_series()
 
 output_file::output_file()
 { }
+
 output_file::~output_file()
-{ }
+{
+	__binding::unbind_all(tables);
+}
 
 
 void output_c_file::open(const string& fpath, open_mode mode)
@@ -180,7 +183,6 @@ output_c_file::output_c_file(const string& _fpath, open_mode mode)
 
 output_c_file::~output_c_file()
 {
-	__binding::unbind_all(tables);
 	close();
 }
 
