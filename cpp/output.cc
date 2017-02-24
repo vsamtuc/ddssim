@@ -1,8 +1,11 @@
 
 #include <cstdio>
+#include <cstddef>
 #include <algorithm>
+
 #include "method.hh"
 #include "output.hh"
+#include "hdf5_util.hh"
 
 using namespace dds;
 
@@ -285,4 +288,235 @@ void progress_bar::finish()
 //
 //-------------------------------------
 
+
+
+
+std::map<type_index, H5::DataType> __pred_type_map = 
+{
+	{typeid(bool), H5::PredType::NATIVE_UCHAR},
+
+	{typeid(char), H5::PredType::NATIVE_CHAR},
+	{typeid(signed char), H5::PredType::NATIVE_SCHAR},	
+	{typeid(short), H5::PredType::NATIVE_SHORT},
+	{typeid(int), H5::PredType::NATIVE_INT},
+	{typeid(long), H5::PredType::NATIVE_LONG},
+	{typeid(long long), H5::PredType::NATIVE_LLONG},
+
+	{typeid(unsigned char), H5::PredType::NATIVE_UCHAR},
+	{typeid(unsigned short), H5::PredType::NATIVE_USHORT},
+	{typeid(unsigned int), H5::PredType::NATIVE_UINT},
+	{typeid(unsigned long), H5::PredType::NATIVE_ULONG},
+	{typeid(unsigned long long), H5::PredType::NATIVE_ULLONG},
+
+	{typeid(float), H5::PredType::NATIVE_FLOAT},
+	{typeid(double), H5::PredType::NATIVE_DOUBLE},
+	{typeid(long double), H5::PredType::NATIVE_LDOUBLE}
+};
+
+
+H5::DataType hdf_mapped_type(basic_column* col)
+{
+	// make it simple-minded for now
+	using namespace std::string_literals;
+	auto predit = __pred_type_map.find(col->type());
+	if(predit!=__pred_type_map.end()) 
+		return predit->second;
+	else if(col->type() == typeid(string)) {
+		return H5::StrType(0, col->size());
+	} else {
+		throw std::logic_error("HDF5 mapping for type '"s+
+			col->type().name()+"' not known"s);
+	}
+}
+
+
+inline static size_t __aligned(size_t pos, size_t al) {
+	assert( (al&(al-1)) == 0); // al is a power of 2
+	return al*((pos+al-1)/al);
+}
+
+void output_hdf5::table_handler::make_row(char* buffer) 
+{
+	size_t pos=0;
+	for(size_t i=0; i<table.size();i++) {
+		if(i>0) {
+			// advance pos to subsume the size of 
+			// column i-1 and the alignment of column i
+			size_t al = table[i]->align();
+			pos = __aligned(pos,al);
+		}
+		table[i]->copy(buffer+pos);
+		pos += table[i]->size();
+	}
+	assert(size == __aligned(pos, table[0]->align()));
+}
+
+output_hdf5::table_handler::table_handler(output_table& _table) 
+: table(_table), colpos(table.size(),0), size(0), align(1)
+{
+	// first compute the size of the whole
+	// thing
+	for(size_t i=0;i<table.size();i++) {
+		align = std::max(align, table[i]->align());
+		if(i>0) size = __aligned(size, table[i]->align());
+		size += table[i]->size();
+	}
+	if(table.size()>0) size = __aligned(size, table[0]->align());
+	// now, compute the type
+	size_t pos = 0;
+	type = H5::CompType(size);
+	for(size_t i=0;i<table.size();i++) {
+		basic_column* c = table[i];
+		if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+		colpos[i] = pos;
+		type.insertMember(c->name(), pos, hdf_mapped_type(c));
+	}
+}
+
+void output_hdf5::table_handler::create_dataset(const H5::Group& loc)
+{
+	using namespace H5;
+	// it does not! create it
+	hsize_t zdim[] = { 0 };
+	hsize_t cdim[] = { 16 };
+	hsize_t mdim[] = { H5S_UNLIMITED };
+	DataSpace dspace(1, zdim, mdim);
+	DSetCreatPropList props;
+	props.setChunk(1, cdim);
+
+	dataset = loc.createDataSet(table.name(), 
+			type, dspace, props);		
+}
+
+void output_hdf5::table_handler::append_row()
+{
+	using namespace H5;
+	// Make the image of an object.
+	// This need not be aligned as far as I can tell!!!!!
+	char buffer[size];
+	size_t pos = 0;
+	for(size_t i=0; i< table.size(); i++) {
+		if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+		assert(pos == colpos[i]);
+		table[i]->copy(buffer + pos);
+	}
+
+	// extend the dataset by one row
+
+	DataSpace tabspc = dataset.getSpace();
+	assert(tabspc.getSimpleExtentNdims()==1);
+	hsize_t oldext[1];
+	tabspc.getSimpleExtentDims(oldext);
+	hsize_t newext[] = { oldext[0]+1 };
+	dataset.extend(newext);
+
+	// create table space
+	tabspc = dataset.getSpace();
+	hsize_t dext[] = { 1 };
+	tabspc.selectHyperslab(H5S_SELECT_SET, dext, oldext);
+	DataSpace memspc;//(1, dext);
+
+	dataset.write(buffer, type, memspc, tabspc);
+}
+
+output_hdf5::table_handler::~table_handler() 
+{
+	dataset.close();
+}
+
+
+output_hdf5::~output_hdf5()
+{
+	H5Idec_ref(locid);
+}
+
+
+output_hdf5::output_hdf5(int _locid, open_mode _mode)
+: locid(_locid), mode(_mode)
+{
+	H5Iinc_ref(locid);	
+}
+
+output_hdf5::output_hdf5(const H5::Group& _group, open_mode _mode)
+: output_hdf5(_group.getId(), _mode)
+{  }
+
+
+output_hdf5::output_hdf5(const H5::H5File& _file, open_mode _mode)
+: output_hdf5(_file.openGroup("/"), _mode)
+{  }
+
+
+output_hdf5::output_hdf5(const string& h5file)
+: output_hdf5(H5::H5File(h5file, H5F_ACC_TRUNC), open_mode::truncate)
+{ }
+
+
+output_hdf5::table_handler* output_hdf5::handler(output_table& table)
+{
+	auto it = _handler.find(&table);
+	if(it==_handler.end()) {
+		table_handler* sc = new table_handler(table);
+		_handler[&table] = sc;
+		return sc;
+	} else
+		return it->second;
+}
+
+
+
+void output_hdf5::output_prolog(output_table& table)
+{
+	using namespace H5;
+
+	// construct the table or timeseries
+	Group loc(locid);
+	table_handler* th = handler(table);
+	
+	// check the open mode and work accordingly
+	if(this->mode == open_mode::append) {
+		// check if an object by the given name exists in the loc
+		if(hdf5_exists(locid, table.name())) {
+			DataSet dset = loc.openDataSet(table.name());
+			// ok, it exists, just check compatibility
+			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
+				throw std::runtime_error("On appending to HDF table,"\
+					" types are not compatible");
+
+			th->dataset = dset;
+
+		} else {
+			th->create_dataset(loc);
+		}
+	} else {
+		assert(mode==open_mode::truncate);
+		// maybe it exists, erase it
+		if(hdf5_exists(locid, table.name())) {
+			loc.unlink(table.name());
+		}
+		th->create_dataset(loc);
+	}
+
+
+}
+
+
+void output_hdf5::output_row(output_table& table)
+{	
+	using namespace H5;
+	table_handler* th = handler(table);
+	th->append_row();
+
+}
+
+
+void output_hdf5::output_epilog(output_table& table)
+{
+	// just delete the handler
+	auto it = _handler.find(&table);
+	if(it != _handler.end()) {
+		delete it->second;
+		_handler.erase(it);		
+	}
+}
 

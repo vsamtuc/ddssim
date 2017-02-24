@@ -6,12 +6,18 @@
 #include <cstdio>
 #include <cstring>
 #include <list>
+#include <map>
 #include <algorithm>
 #include <typeinfo>
 #include <typeindex>
-#include <H5Cpp.h>
 
 #include "dds.hh"
+
+namespace H5
+{
+	struct Group;
+	struct H5File;
+}
 
 namespace dds
 {
@@ -248,6 +254,7 @@ public:
 	output_file& operator=(const output_file&)=delete;
 
 	output_file(output_file&&) = default;
+	output_file& operator=(output_file&&) = default;
 
 	virtual ~output_file();
 
@@ -381,6 +388,52 @@ public:
      * Finish the bar now, possibly early.
      */
     void finish();
+};
+
+
+
+/**
+	Output to an HDF5 file.
+
+	All tables bound to this, will be created as HDF5 datasets into
+	one HDF5 group.
+  */
+class output_hdf5 : public output_file
+{
+public:
+	int locid;
+	open_mode mode;
+
+	struct table_handler;
+	std::map<output_table*, table_handler*> _handler;
+	table_handler* handler(output_table&);
+
+	/**
+		Use the location specified by the HDF5 id for the output
+	  */
+	output_hdf5(int _locid, open_mode mode=default_open_mode);
+
+	/**
+		Use the file root for the output.
+	  */
+	output_hdf5(const H5::H5File& _fg, open_mode mode=default_open_mode);
+
+	/**
+		Use the group for the output.
+	  */
+	output_hdf5(const H5::Group& _fg, open_mode mode=default_open_mode);
+
+	/**
+		Create a new HDF5 file (truncating it if needed) 
+		and place the output in the root group.
+	  */
+	output_hdf5(const string& h5file);
+
+	virtual void output_prolog(output_table&);
+	virtual void output_row(output_table&);
+	virtual void output_epilog(output_table&);
+
+	~output_hdf5();
 };
 
 

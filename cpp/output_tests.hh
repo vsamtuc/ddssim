@@ -1,286 +1,19 @@
 #ifndef __OUTPUT_TESTS_HH__
 #define __OUTPUT_TESTS_HH__
 
-#include "output.hh"
-#include "binc.hh"
-#include <cxxtest/TestSuite.h>
-
-
-#include <cstddef>
 #include <functional>
 
-#include <H5PacketTable.h>
+#include "output.hh"
+#include "binc.hh"
+
+#include <cxxtest/TestSuite.h>
+#include "hdf5_util.hh"
+
 
 using binc::print;
 
-namespace dds {
-
-/**
-	Output file to an HDF5 dataset.
-
-  */
-
-class hdf5_dataset : public output_file
-{
-public:
-	H5::Group loc;
-	open_mode mode;
-
-	struct table_handler;
-	std::map<output_table*, table_handler*> _handler;
-	table_handler* handler(output_table&);
-
-	/**
-		Use the file or group for the dataset.
-	  */
-	hdf5_dataset(const H5::H5File& _fg, open_mode mode=default_open_mode);
-	hdf5_dataset(const H5::Group& _fg, open_mode mode=default_open_mode);
-
-	/**
-		Create a new group in base, by the given name and place the
-		dataset there.
-	  */
-	hdf5_dataset(const H5::CommonFG& base, const string& name, 
-		open_mode m=default_open_mode);
-
-	virtual void output_prolog(output_table&);
-	virtual void output_row(output_table&);
-	virtual void output_epilog(output_table&);
-
-	~hdf5_dataset();
-};
-
-} // end namespace dds
-
 
 using namespace dds;
-
-
-std::map<type_index, H5::DataType> __pred_type_map = 
-{
-	{typeid(bool), H5::PredType::NATIVE_UCHAR},
-
-	{typeid(char), H5::PredType::NATIVE_CHAR},
-	{typeid(signed char), H5::PredType::NATIVE_SCHAR},	
-	{typeid(short), H5::PredType::NATIVE_SHORT},
-	{typeid(int), H5::PredType::NATIVE_INT},
-	{typeid(long), H5::PredType::NATIVE_LONG},
-	{typeid(long long), H5::PredType::NATIVE_LLONG},
-
-	{typeid(unsigned char), H5::PredType::NATIVE_UCHAR},
-	{typeid(unsigned short), H5::PredType::NATIVE_USHORT},
-	{typeid(unsigned int), H5::PredType::NATIVE_UINT},
-	{typeid(unsigned long), H5::PredType::NATIVE_ULONG},
-	{typeid(unsigned long long), H5::PredType::NATIVE_ULLONG},
-
-	{typeid(float), H5::PredType::NATIVE_FLOAT},
-	{typeid(double), H5::PredType::NATIVE_DOUBLE},
-	{typeid(long double), H5::PredType::NATIVE_LDOUBLE}
-};
-
-
-H5::DataType hdf_mapped_type(basic_column* col)
-{
-	// make it simple-minded for now
-	using namespace std::string_literals;
-	auto predit = __pred_type_map.find(col->type());
-	if(predit!=__pred_type_map.end()) 
-		return predit->second;
-	else if(col->type() == typeid(string)) {
-		return H5::StrType(0, col->size());
-	} else {
-		throw std::logic_error("HDF5 mapping for type '"s+
-			col->type().name()+"' not known"s);
-	}
-}
-
-
-struct hdf5_dataset::table_handler
-{
-	output_table& table;
-	std::vector<size_t> colpos;
-	size_t size;
-	size_t align;
-	H5::CompType type;
-	H5::DataSet dataset;
-
-	inline static size_t __aligned(size_t pos, size_t al) {
-		assert( (al&(al-1)) == 0); // al is a power of 2
-		return al*((pos+al-1)/al);
-	}
-
-	void make_row(char* buffer) {
-		size_t pos=0;
-		for(size_t i=0; i<table.size();i++) {
-			if(i>0) {
-				// advance pos to subsume the size of 
-				// column i-1 and the alignment of column i
-				size_t al = table[i]->align();
-				pos = __aligned(pos,al);
-			}
-			table[i]->copy(buffer+pos);
-			pos += table[i]->size();
-		}
-		assert(size == __aligned(pos, table[0]->align()));
-	}
-
-	table_handler(output_table& _table) 
-	: table(_table), colpos(table.size(),0), size(0), align(1)
-	{
-		// first compute the size of the whole
-		// thing
-		for(size_t i=0;i<table.size();i++) {
-			align = std::max(align, table[i]->align());
-			if(i>0) size = __aligned(size, table[i]->align());
-			size += table[i]->size();
-		}
-		if(table.size()>0) size = __aligned(size, table[0]->align());
-		// now, compute the type
-		size_t pos = 0;
-		type = H5::CompType(size);
-		for(size_t i=0;i<table.size();i++) {
-			basic_column* c = table[i];
-			if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
-			colpos[i] = pos;
-			type.insertMember(c->name(), pos, hdf_mapped_type(c));
-		}
-	}
-
-	void create_dataset(const H5::Group& loc)
-	{
-		using namespace H5;
-		// it does not! create it
-		hsize_t zdim[] = { 0 };
-		hsize_t cdim[] = { 16 };
-		hsize_t mdim[] = { H5S_UNLIMITED };
-		DataSpace dspace(1, zdim, mdim);
-		DSetCreatPropList props;
-		props.setChunk(1, cdim);
-
-		dataset = loc.createDataSet(table.name(), 
-				type, dspace, props);		
-	}
-
-	void append_row()
-	{
-		using namespace H5;
-		// Make the image of an object.
-		// This need not be aligned as far as I can tell!!!!!
-		char buffer[size];
-		size_t pos = 0;
-		for(size_t i=0; i< table.size(); i++) {
-			if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
-			assert(pos == colpos[i]);
-			table[i]->copy(buffer + pos);
-		}
-
-		// extend the dataset by one row
-
-		DataSpace tabspc = dataset.getSpace();
-		assert(tabspc.getSimpleExtentNdims()==1);
-		hsize_t oldext[1];
-		tabspc.getSimpleExtentDims(oldext);
-		hsize_t newext[] = { oldext[0]+1 };
-		dataset.extend(newext);
-
-		// create table space
-		tabspc = dataset.getSpace();
-		hsize_t dext[] = { 1 };
-		tabspc.selectHyperslab(H5S_SELECT_SET, dext, oldext);
-		DataSpace memspc(1, dext);
-
-		dataset.write(buffer, type, memspc, tabspc);
-	}
-};
-
-
-hdf5_dataset::~hdf5_dataset()
-{
-	loc.close();
-}
-
-hdf5_dataset::hdf5_dataset(const H5::H5File& _file, open_mode _mode)
-: loc(_file.openGroup("/")), mode(_mode)
-{ }
-
-hdf5_dataset::hdf5_dataset(const H5::Group& _group, open_mode _mode)
-: loc(_group), mode(_mode)
-{ }
-
-
-hdf5_dataset::hdf5_dataset (const H5::CommonFG& base, 
-										const string& name, open_mode _mode)
-: loc(base.createGroup(name)), mode(_mode)
-{ }
-
-
-hdf5_dataset::table_handler* hdf5_dataset::handler(output_table& table)
-{
-	auto it = _handler.find(&table);
-	if(it==_handler.end()) {
-		table_handler* sc = new table_handler(table);
-		_handler[&table] = sc;
-		return sc;
-	} else
-		return it->second;
-}
-
-
-void hdf5_dataset::output_prolog(output_table& table)
-{
-	using namespace H5;
-
-	// construct the table or timeseries
-	table_handler* th = handler(table);
-	
-	// check the open mode and work accordingly
-	if(mode == open_mode::append) {
-		// check if an object by the given name exists in the loc
-		print("APPENDING");
-		try {
-
-			DataSet dset = loc.openDataSet(table.name());
-			// ok, it exists, just check compatibility
-			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
-				throw std::runtime_error("On appending to HDF table,"\
-					" types are not compatible");
-
-			th->dataset = dset;
-		} catch(Exception& e) {
-			print("CREATING FROM SCRATCH");
-			th->create_dataset(loc);
-		}
-	} else {
-		print("TRUNCATING");
-		assert(mode==open_mode::truncate);
-		// maybe it exists, erase it
-		// TODO
-		th->create_dataset(loc);
-	}
-
-
-}
-
-
-void hdf5_dataset::output_row(output_table& table)
-{	
-	using namespace H5;
-	table_handler* th = handler(table);
-	th->append_row();
-
-}
-
-
-void hdf5_dataset::output_epilog(output_table& table)
-{
-	// just delete the handler
-	auto it = _handler.find(&table);
-	if(it != _handler.end()) {
-		delete it->second;
-		_handler.erase(it);		
-	}
-}
-
 
 
 
@@ -491,13 +224,13 @@ public:
 	};
 
 
-	void test_hdf5_dataset_table_handler_schema()
+	void test_output_hdf5_table_handler_schema()
 	{
 		using namespace H5;
 
 		dummy_table dummy("dummy_table");
-		hdf5_dataset::table_handler* handler = 
-			new hdf5_dataset::table_handler(dummy);
+		output_hdf5::table_handler* handler = 
+			new output_hdf5::table_handler(dummy);
 
 		TS_ASSERT_EQUALS(& handler->table, &dummy);
 
@@ -553,13 +286,13 @@ public:
 
 	}
 
-	void test_hdf5_dataset_table_handler_data()
+	void test_output_hdf5_table_handler_data()
 	{
 		using namespace H5;
 
 		dummy_table dummy("dummy_table");
-		hdf5_dataset::table_handler* handler = 
-			new hdf5_dataset::table_handler(dummy);
+		output_hdf5::table_handler* handler = 
+			new output_hdf5::table_handler(dummy);
 	
 		auto file = H5File("dummy_file.h5", H5F_ACC_TRUNC);
 		Group loc = file.openGroup("/");
@@ -577,7 +310,7 @@ public:
 	}
 
 
-	void test_hdf5_dataset_basic()
+	void test_output_hdf5_basic()
 	{
 		using namespace std::string_literals;
 		using namespace H5;
@@ -593,7 +326,7 @@ public:
 		};
 
 		auto file = H5File("dummy_file2.h5", H5F_ACC_TRUNC);
-		hdf5_dataset dset(file);
+		output_hdf5 dset(file);
 
 		for(output_table& t : tables) {
 			dset.bind(t);
@@ -616,14 +349,14 @@ public:
 		check_dummy_dataset(file.openDataSet("dummy3"), 10);		
 	}
 
-	void test_hdf5_dataset_truncate()
+	void test_output_hdf5_truncate()
 	{
 		using namespace std::string_literals;
 		using namespace H5;
 
 		dummy_table dummy("dummy");
 		auto file = H5File("dummy_file3.h5", H5F_ACC_TRUNC);
-		auto dset= new hdf5_dataset(file, open_mode::truncate);
+		auto dset= new output_hdf5(file, open_mode::truncate);
 
 		dset->bind(dummy);
 		dummy.prolog();
@@ -636,7 +369,8 @@ public:
 
 		check_dummy_dataset(file.openDataSet("dummy"), 10);
 
-		dset = new hdf5_dataset(file, open_mode::truncate);
+		dset = new output_hdf5(file, open_mode::truncate);
+		dset->bind(dummy);
 		dummy.prolog();
 		for(size_t i=0; i<5; i++) {
 			dummy.fill_columns(i);
@@ -648,15 +382,15 @@ public:
 		check_dummy_dataset(file.openDataSet("dummy"), 5);
 	}
 
-	void test_hdf5_dataset_append()
+	void test_output_hdf5_append()
 	{
 		using namespace std::string_literals;
 		using namespace H5;
 
 		dummy_table dummy("dummy");
 		auto file = H5File("dummy_file4.h5", H5F_ACC_TRUNC);
-		auto dset= new hdf5_dataset(file, open_mode::truncate);
 
+		auto dset= new output_hdf5(file, open_mode::append);
 		dset->bind(dummy);
 		dummy.prolog();
 		for(size_t i=0; i<10; i++) {
@@ -668,7 +402,10 @@ public:
 
 		check_dummy_dataset(file.openDataSet("dummy"), 10);
 
-		dset = new hdf5_dataset(file, open_mode::append);
+		dset = new output_hdf5(file, open_mode::append);
+
+		TS_ASSERT_EQUALS(dset->mode, open_mode::append);
+		dset->bind(dummy);
 		dummy.prolog();
 		for(size_t i=10; i<25; i++) {
 			dummy.fill_columns(i);
@@ -677,7 +414,7 @@ public:
 		dummy.epilog();
 		delete dset;
 
-		//check_dummy_dataset(file.openDataSet("dummy"), 25);
+		check_dummy_dataset(file.openDataSet("dummy"), 25);
 	}
 
 
