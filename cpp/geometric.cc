@@ -221,9 +221,11 @@ void coordinator::finish_round()
 			minzeta_min = min(minzeta_min, ni->minzeta);
 		}
 #endif
+		double norm_dE = norm_L2(newE);
 
 		print("Finish round: round updates=",round_updates," naive=",in_naive_mode, 
-			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E, 
+			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
+			"||dE||=", norm_dE, norm_dE/query.zeta_E, 
 			"zeta_total=", zeta_total/k, zeta_total/(k*query.zeta_E), 
 			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
 			"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,

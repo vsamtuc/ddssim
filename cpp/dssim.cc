@@ -31,9 +31,9 @@ void execute()
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(1000);
-	//D.hash_sources(4);
+	D.hash_sources(4);
 	D.hash_streams(1);
-	D.set_time_window(4*3600);
+	//D.set_time_window(4*3600);
 	D.create();
 
 	/* Create components */
@@ -56,8 +56,8 @@ void execute()
 	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 	// 	}
 	// }
-	projection proj(7 , 10000);
-	tods::network* tmeth = new tods::network(proj, proj.epsilon());
+	projection proj(7 , 1000);
+	tods::network* tmeth = new tods::network(proj, proj.epsilon() );
 	components.push_back(tmeth);
 	components.push_back(new gm2::network(0, proj, tmeth->maximum_error() ));
 
@@ -75,7 +75,9 @@ void execute()
 	lsstats.prolog();
 #endif
 
+	output_hdf5 h5f("wc_results.h5");
 	comm_results.bind(sto);
+	comm_results.bind(&h5f);
 	comm_results.prolog();
 
 
@@ -84,6 +86,7 @@ void execute()
 		CTX.open("wc_tseries.dat",open_mode::truncate);
 	//CTX.timeseries.bind(sto);
 	CTX.timeseries.bind(wcout);
+	CTX.timeseries.bind(&h5f);
 	reporter repter(CTX.metadata().size()/1000);
 
 	/* Print a progress bar */

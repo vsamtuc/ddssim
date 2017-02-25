@@ -3,6 +3,7 @@
 
 #include <string>
 #include <H5Cpp.h>
+#include <H5LTpublic.h>
 #include "output.hh"
 
 using std::string;
@@ -11,7 +12,8 @@ using namespace dds;
 
 inline bool hdf5_exists(hid_t locid, const string& name)
 {
-	return H5Lexists(locid, name.c_str(), H5P_DEFAULT);
+	//return H5Lexists(locid, name.c_str(), H5P_DEFAULT);
+	return H5LTfind_dataset(locid, name.c_str());
 }
 
 

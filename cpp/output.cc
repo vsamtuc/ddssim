@@ -10,6 +10,14 @@
 using namespace dds;
 
 
+//-------------------------------------
+//
+// bindings
+//
+//-------------------------------------
+
+
+
 basic_column::~basic_column()
 {
 	if(_table) {
@@ -61,6 +69,13 @@ __binding* __binding::find(list& L, output_table* t)
 	else
 		return *found;
 }
+
+
+//-------------------------------------
+//
+// Tables (result_table + timeseries)
+//
+//-------------------------------------
 
 output_table::output_table(const string& _name, table_flavor _f)
 : named(_name), en(true), _flavor(_f)
@@ -137,6 +152,13 @@ output_file::~output_file()
 {
 	__binding::unbind_all(tables);
 }
+
+//-------------------------------------
+//
+// C (STDIO) files
+//
+//-------------------------------------
+
 
 
 void output_c_file::open(const string& fpath, open_mode mode)
@@ -242,6 +264,14 @@ output_c_file dds::output_stdout(stdout, false);
 output_c_file dds::output_stderr(stderr, false);
 
 
+//-------------------------------------
+//
+// Progress bar
+//
+//-------------------------------------
+
+
+
 progress_bar::progress_bar(FILE* s, size_t b, const string& msg)
         : stream(s), message(msg), 
         N(0), i(0), ni(0), B(b), l(0), finished(false)
@@ -288,6 +318,13 @@ void progress_bar::finish()
 //
 //-------------------------------------
 
+
+
+/*
+ *
+ * This is the code for the table_handler
+ *
+ */
 
 
 
@@ -337,18 +374,12 @@ inline static size_t __aligned(size_t pos, size_t al) {
 
 void output_hdf5::table_handler::make_row(char* buffer) 
 {
-	size_t pos=0;
-	for(size_t i=0; i<table.size();i++) {
-		if(i>0) {
-			// advance pos to subsume the size of 
-			// column i-1 and the alignment of column i
-			size_t al = table[i]->align();
-			pos = __aligned(pos,al);
-		}
-		table[i]->copy(buffer+pos);
-		pos += table[i]->size();
+	size_t pos = 0;
+	for(size_t i=0; i< table.size(); i++) {
+		if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
+		assert(pos == colpos[i]);
+		table[i]->copy(buffer + pos);
 	}
-	assert(size == __aligned(pos, table[0]->align()));
 }
 
 output_hdf5::table_handler::table_handler(output_table& _table) 
@@ -394,27 +425,31 @@ void output_hdf5::table_handler::append_row()
 	// Make the image of an object.
 	// This need not be aligned as far as I can tell!!!!!
 	char buffer[size];
-	size_t pos = 0;
-	for(size_t i=0; i< table.size(); i++) {
-		if(i>0) pos = __aligned(pos+table[i-1]->size(), table[i]->align());
-		assert(pos == colpos[i]);
-		table[i]->copy(buffer + pos);
-	}
+	make_row(buffer);
+
+	/*
+	Note: the following function is not yet supported in the 
+	hdf5 version of Ubuntu :-(
+
+	H5DOappend(dataset.getId(), H5P_DEFAULT, 0, 1, type, buffer);
+
+	So, we must do the append "manually"
+	*/
 
 	// extend the dataset by one row
-
 	DataSpace tabspc = dataset.getSpace();
 	assert(tabspc.getSimpleExtentNdims()==1);
-	hsize_t oldext[1];
-	tabspc.getSimpleExtentDims(oldext);
-	hsize_t newext[] = { oldext[0]+1 };
-	dataset.extend(newext);
+	hsize_t ext[1];
+	tabspc.getSimpleExtentDims(ext);
+	ext[0]++;
+	dataset.extend(ext);
 
 	// create table space
 	tabspc = dataset.getSpace();
 	hsize_t dext[] = { 1 };
-	tabspc.selectHyperslab(H5S_SELECT_SET, dext, oldext);
-	DataSpace memspc;//(1, dext);
+	ext[0]--;  // use the old extent
+	tabspc.selectHyperslab(H5S_SELECT_SET, dext, ext);
+	DataSpace memspc;  // scalar dataspace
 
 	dataset.write(buffer, type, memspc, tabspc);
 }
@@ -423,6 +458,13 @@ output_hdf5::table_handler::~table_handler()
 {
 	dataset.close();
 }
+
+
+/*
+ *
+ * This is the code for the main object  
+ *
+ */
 
 
 output_hdf5::~output_hdf5()
