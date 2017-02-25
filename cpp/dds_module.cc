@@ -3,25 +3,32 @@
 #include "data_source.hh"
 #include "method.hh"
 #include "accurate.hh"
+#include "tods.hh"
+#include "geometric.hh"
+#include "results.hh"
+#include "binc.hh"
 
 #include <boost/python.hpp>
+
+using binc::print;
 
 namespace { // Avoid cluttering the global namespace.
 
 
-	inline void __wrap_dataset_load(dds::dataset& D, 
-		std::auto_ptr<dds::data_source> p)
-	{
-		D.load(p.get());
-		p.release();
-	}
+	// template <typename DS>
+	// void __wrap_dataset_load(dds::dataset& D, 
+	// 	std::auto_ptr<DS> p)
+	// {
+	// 	D.load(p.get());
+	// 	p.release();
+	// }
 
-	inline dds::data_source* __wrap_time_window(std::auto_ptr<dds::data_source> ds, dds::timestamp ts)
-	{
-		dds::data_source* ret = dds::time_window(ds.get(), ts);
-		ds.release();
-		return ret;
-	}
+	// inline dds::data_source* __wrap_time_window(std::auto_ptr<dds::data_source> ds, dds::timestamp ts)
+	// {
+	// 	dds::data_source* ret = dds::time_window(ds.get(), ts);
+	// 	ds.release();
+	// 	return ret;
+	// }
 
 	using namespace boost::python;
 
@@ -110,7 +117,7 @@ namespace { // Avoid cluttering the global namespace.
 			s.insert(e);
 		}
 
-		static void union_(Set& s, list l) {
+		static void union_(Set& s, boost::python::list l) {
 			l[0];
 		}
 	};
@@ -167,6 +174,10 @@ namespace { // Avoid cluttering the global namespace.
  
 	};
 
+	BOOST_PYTHON_MEMBER_FUNCTION_OVERLOADS(_sketch_update_overloads, update, 1, 2)
+
+	using numeric::array;
+
 
 } // namespace anonymous
 
@@ -175,6 +186,7 @@ namespace { // Avoid cluttering the global namespace.
 BOOST_PYTHON_MODULE(_dds)
 {
     using namespace boost::python;
+    namespace py = boost::python;
 
     to_python_converter< std::pair<short, short>, 
     	PairToTupleConverter<short, short> > __dummy();
@@ -234,10 +246,10 @@ BOOST_PYTHON_MODULE(_dds)
     	//.def_readonly("param", &dds::twoway_join::param )
     	.add_property("param", make_function(
     		[](dds::twoway_join& q) {
-    			return make_tuple(q.param.first, q.param.second);
+    			return py::make_tuple(q.param.first, q.param.second);
     		},
     		return_value_policy<return_by_value>(),
-    		boost::mpl::vector<tuple, dds::twoway_join>()
+    		boost::mpl::vector<py::tuple, dds::twoway_join>()
     		)
     	)
     	;
@@ -245,7 +257,7 @@ BOOST_PYTHON_MODULE(_dds)
     // Also good for std::set<source_id> !!!!
     class_< std::set<dds::stream_id> >("id_set")
     	.def("__len__", & std::set<dds::stream_id>::size )
-    	.def("__iter__", iterator<std::set<dds::stream_id>>())
+    	.def("__iter__", py::iterator<std::set<dds::stream_id>>())
     	.add_property("empty", &std::set<dds::stream_id>::empty)
     	.def("clear", &std::set<dds::stream_id>::clear )
     	.def("__bool__", &set_ops<dds::stream_id>::not_empty )
@@ -282,17 +294,19 @@ BOOST_PYTHON_MODULE(_dds)
     		return_value_policy<copy_const_reference>())
     	.def("advance", &dds::data_source::advance)
     	.def("valid", &dds::data_source::valid)
-		.def("__iter__", iterator<dds::data_source>())    	
+		.def("__iter__", py::iterator<dds::data_source>())    	
     	;
 
+    py::register_ptr_to_python< dds::datasrc > ();
+
     class_<dds::time_window_source, bases<dds::data_source>, boost::noncopyable>(
-    	"time_window_source", init<dds::data_source*, dds::timestamp>())
+    	"time_window_source", init<dds::datasrc, dds::timestamp>())
     	.add_property("delay", & dds::time_window_source::delay)
     	;
 
-    def("wcup_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
-    def("crawdad_ds", dds::wcup_ds, return_value_policy<manage_new_object>());
-    def("time_window", __wrap_time_window, return_value_policy<manage_new_object>());
+    def("wcup_ds", dds::wcup_ds);
+    def("crawdad_ds", dds::wcup_ds);
+    def("time_window", dds::time_window);
 
     class_< dds::analyzed_data_source, bases<dds::data_source>, 
     	boost::noncopyable>(
@@ -309,7 +323,7 @@ BOOST_PYTHON_MODULE(_dds)
     	;
 
 	class_< dds::buffered_dataset >("buffered_dataset")
-		.def("__iter__", iterator< dds::buffered_dataset >())
+		.def("__iter__", py::iterator< dds::buffered_dataset >())
     	.def("__len__", & dds::buffered_dataset::size )
     	.def("size", & dds::buffered_dataset::size )
     	.def("load", &dds::buffered_dataset::load)
@@ -398,6 +412,12 @@ BOOST_PYTHON_MODULE(_dds)
 		;
 
 
+	class_< dds::output_hdf5, bases<dds::output_file>, boost::noncopyable>
+		("output_hdf5", init<int, dds::open_mode>())
+		.def(init<const std::string&>())
+		;
+
+
     /**********************************************
      *
      *  eca.hh
@@ -475,7 +495,8 @@ BOOST_PYTHON_MODULE(_dds)
 	//
 
 	class_< dds::dataset, boost::noncopyable>("dataset")
-		.def("load", __wrap_dataset_load)
+		// we must overload manually with all subclasses of data_source :-(
+		.def("load", &dds::dataset::load)
 		.def("set_max_length", &dds::dataset::set_max_length)
 		.def("hash_streams", &dds::dataset::hash_streams)
 		.def("hash_sources", &dds::dataset::hash_sources)
@@ -559,7 +580,102 @@ BOOST_PYTHON_MODULE(_dds)
 		.add_property("current_estimate", 
 			&dds::twoway_join_agms_method::current_estimate)
 		;
-		
+
+
+    /**********************************************
+     *
+     *  agms.hh
+     *
+     **********************************************/
+
+	class_< agms::hash_family, boost::noncopyable>
+		("agms_hash_family", init<agms::depth_type>())
+		.def("hash", &agms::hash_family::hash)
+		.def("fourwise", &agms::hash_family::fourwise)
+		.add_property("depth", &agms::hash_family::depth)
+		;
+
+	def("agms_hash_family_get_cached", &agms::hash_family::get_cached,
+		return_internal_reference<>());
+
+	class_< agms::projection >("agms_projection", 
+		init<agms::hash_family*, agms::index_type>(args("hf","width"))[
+			with_custodian_and_ward<1,2>()
+			])
+		.def(init<agms::depth_type, agms::index_type>())
+		.def("hashf", &agms::projection::hashf, return_internal_reference<>())
+		.add_property("depth", &agms::projection::depth)
+		.add_property("width", &agms::projection::width)
+		.add_property("size", &agms::projection::size)
+		.def(self == other<agms::projection>())
+		.def(self != other<agms::projection>())
+		.def("epsilon", &agms::projection::epsilon)
+		.def("prob_failure", &agms::projection::prob_failure)
+		;
+
+	object numpy = import("numpy");
+	//numeric::array::set_module_and_type("numpy","ndarray");
+
+	class_< agms::sketch >("agms_sketch",
+			init<agms::projection>())
+		.def(init<agms::depth_type, agms::index_type>())
+		.def("hashf", &agms::sketch::hashf, return_internal_reference<>())
+		.add_property("width", &agms::sketch::width)
+		.add_property("depth", &agms::sketch::depth)
+		.def_readonly("proj", &agms::sketch::proj)
+		.def("update", &agms::sketch::update, _sketch_update_overloads())
+		.def("insert", &agms::sketch::insert)
+		.def("erase", &agms::sketch::erase)
+		.def("compatible", &agms::sketch::compatible)
+		.def("norm2_squared", &agms::sketch::norm2_squared)
+		.def("byte_size", &agms::sketch::byte_size)
+		.def(self + other<agms::sketch>())
+		.def(self - other<agms::sketch>())
+		.def(self * other<double>())
+		.def(other<double>() * self)
+		;
+
+
+    /**********************************************
+     *
+     *  results.hh
+     *
+     **********************************************/
+
+	class_< dds::comm_results_t, bases<dds::result_table>, boost::noncopyable>
+		("comm_results_t")
+		;
+
+	try {
+		scope().attr("lsstats") = ptr(&dds::lsstats);
+		scope().attr("comm_results") = py::ptr(&dds::comm_results);
+	} catch(std::exception e) {
+		print("Error in binding result tables",e.what());
+	}
+
+
+    /**********************************************
+     *
+     *  tods.hh
+     *
+     **********************************************/
+
+	class_< dds::tods::network, bases<dds::reactive>, boost::noncopyable>
+		("tods_network", init<const projection&, double>())
+		.def(init<agms::depth_type, agms::index_type, double>())
+		.def("maximum_error", &dds::tods::network::maximum_error)
+		;		
+
+    /**********************************************
+     *
+     *  geometric.hh
+     *
+     **********************************************/
+
+	class_< dds::gm2::network, bases<dds::reactive>, boost::noncopyable >
+		("gm2_network", init<dds::stream_id, const agms::projection&, double>())
+		.def(init<dds::stream_id, agms::depth_type, agms::index_type, double>())
+		;
 
 }
 

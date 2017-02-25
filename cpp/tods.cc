@@ -17,9 +17,15 @@ using namespace dds::tods;
  *
  ************************************/
 
+tods::network::network(const projection& _proj, double _theta, 
+	const set<stream_id>& _streams)
+: streams(_streams), proj(_proj), theta(_theta)
+{
+
+}
 
 tods::network::network(const projection& _proj, double _theta)
-: proj(_proj), theta(_theta)
+: network(_proj, _theta, CTX.metadata().stream_ids())
 {
 	k = CTX.metadata().source_ids().size();
 
@@ -68,7 +74,7 @@ void tods::network::output_results()
 coordinator::coordinator(network* m)
 : process(m)
 {
-	for(stream_id sid : CTX.metadata().stream_ids())
+	for(stream_id sid : m->streams)
 		stream_state[sid] = new coord_stream_state(m->proj);
 }
 
@@ -97,7 +103,7 @@ oneway coordinator::update(source_id hid, stream_id sid,
 node::node(network* m, source_id hid)
 : local_site(m, hid), coord(this, m->hub)
 {
-	for(stream_id sid : CTX.metadata().stream_ids())
+	for(stream_id sid : m->streams)
 		stream_state[sid] = new node_stream_state(m->proj, m->theta, m->k);
 }
 
@@ -115,6 +121,10 @@ node::~node()
 
 void node::update(stream_id sid, key_type key, stream_op op)
 {
+	// skip the record!
+	if(net()->streams.find(sid)==net()->streams.end()) return;
+
+	// get the state
 	auto nss = stream_state[sid];
 	// add update
 	nss->update(key, (op==stream_op::INSERT)? 1.0 : -1.0);

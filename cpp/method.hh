@@ -135,7 +135,7 @@ struct reactive
   */
 class dataset : reactive
 {
-	data_source* src;
+	datasrc src;
 
 	boost::optional<size_t> _max_length;
 	boost::optional<stream_id> _streams;
@@ -148,7 +148,7 @@ public:
 	~dataset();
 
 	void clear();
-	void load(data_source* _src);
+	void load(datasrc _src);
 	
 	void set_max_length(size_t n);
 	void hash_streams(stream_id h);

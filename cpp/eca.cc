@@ -173,33 +173,38 @@ void basic_control::run()
 
 }
 
+// used for an invalid data source
+namespace {
+	struct __invalid_data_source : analyzed_data_source {
+		__invalid_data_source() { isvalid = false; }
+	};
+}
 
-basic_control::__invalid_data_source basic_control::__invds;
-
-void basic_control::data_feed(data_source* src)
+void basic_control::data_feed(datasrc src)
 {
 	// delete current ds
-	if(src==nullptr) {
-		if(ds!=&__invds) delete ds;
-		ds = &__invds;
+	if(!src) {
+		ds = shared_ptr<analyzed_data_source>(new __invalid_data_source());
 		return;
 	}
 
-	// invalidate current ds
-	data_feed(nullptr);
-
 	// set current ds
-	ds = dynamic_cast<analyzed_data_source*>(src);
+	auto ads = dynamic_pointer_cast<analyzed_data_source>(src);
 
 	// analyze if needed
-	if(!ds) {
+	if(!ads) {
 		// not an analyzed data source, analyze
-		ds = new materialized_data_source(src);
+		ds = shared_ptr<analyzed_data_source>(new materialized_data_source(src));
+	} else {
+		ds = ads;
 	}
+}
+
+basic_control::basic_control()
+{
+	data_feed(nullptr);
 }
 
 
 basic_control::~basic_control()
-{
-	data_feed(nullptr);
-}
+{ }

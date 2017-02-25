@@ -15,7 +15,7 @@ using namespace dds;
 
 // Time Window
 
-time_window_source::time_window_source(data_source* _sub, dds::timestamp _w)
+time_window_source::time_window_source(datasrc _sub, dds::timestamp _w)
 	: sub(_sub), Tw(_w) 
 	{
 		advance();
@@ -254,14 +254,14 @@ public:
 };
 
 
-data_source* dds::crawdad_ds(const string& fpath) 
+datasrc dds::crawdad_ds(const string& fpath) 
 {
-	return new file_data_source<crawdad_record>(fpath, "r");
+	return datasrc(new file_data_source<crawdad_record>(fpath, "r"));
 }
 
-data_source* dds::wcup_ds(const string& fpath) 
+datasrc dds::wcup_ds(const string& fpath) 
 {
-	return new file_data_source<wcup_record>(fpath, "r");
+	return datasrc(new file_data_source<wcup_record>(fpath, "r"));
 }
 
 
@@ -281,7 +281,7 @@ void buffered_dataset::analyze(ds_metadata& meta) const
 	}
 }
 
-void buffered_dataset::load(data_source* src) 
+void buffered_dataset::load(datasrc src) 
 {
 	for(;src->valid();src->advance())
 		this->push_back(src->get());
@@ -328,9 +328,9 @@ void buffered_data_source::advance()
 }
 
 
-materialized_data_source::materialized_data_source(data_source* src)
+materialized_data_source::materialized_data_source(datasrc src)
 {
-	dataset.consume(src);
+	dataset.load(src);
 	set_buffer(&dataset);
 }
 

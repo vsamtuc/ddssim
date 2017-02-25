@@ -2,12 +2,12 @@
 #define _DATA_SOURCE_HH_
 
 #include <string>
-#include <memory>
 #include <queue>
 #include <vector>
 #include <type_traits>
 #include <random>
 
+#include <boost/shared_ptr.hpp>
 #include <boost/iterator/counting_iterator.hpp>
 
 #include "dds.hh"
@@ -15,15 +15,21 @@
 
 namespace dds {
 
+using boost::shared_ptr;
+using boost::dynamic_pointer_cast;
+using boost::static_pointer_cast;
 
 class data_source;
-
+typedef shared_ptr<data_source> datasrc;
 
 /**
 	A data source is an object providing the data of a stream.
-	The API is very similar to an iterator.
+	The API is very similar to an iterator. 
+	
+	Data sources should only be held by `std::shared_ptr` 
+	inside other objects or in functions.
   */
-class data_source
+class data_source : public std::enable_shared_from_this<data_source>
 {
 protected:
 	bool isvalid;
@@ -105,17 +111,17 @@ template <typename Func>
 class filtered_data_source : public data_source
 {
 protected:
-	std::unique_ptr<data_source> sub;
+	datasrc sub;
 	Func func;
 public:
-	filtered_data_source(data_source* _sub, const Func& _func) 
+	filtered_data_source(datasrc _sub, const Func& _func) 
 	: sub(_sub), func(_func)
 	{
 		advance();
 	}
 
 	filtered_data_source(const dds::dds_record& initrec, const Func& _func) 
-	: data_source(initrec), sub(), func(_func)
+	: data_source(initrec), sub(nullptr), func(_func)
 	{
 		advance();
 	}
@@ -124,12 +130,14 @@ public:
 
 	void advance() { 
 		if(isvalid){
-			if(sub && sub->valid()) {
-				rec = sub->get();
-				isvalid = func(rec);
-				sub->advance();
-			} else if(sub) {
-				isvalid = false;
+			if(sub) {
+			 	if(sub->valid()) {
+					rec = sub->get();
+					isvalid = func(rec);
+					sub->advance();
+				} else  {
+					isvalid = false;
+				} 
 			} else {
 				isvalid = func(rec);
 			}
@@ -139,16 +147,16 @@ public:
 
 /// Construct a generated data source
 template <typename Func>
-inline auto filtered_ds(data_source* ds, const Func& func)
+inline auto filtered_ds(datasrc ds, const Func& func)
 {
-	return new filtered_data_source<Func>(ds, func);
+	return datasrc(new filtered_data_source<Func>(ds, func));
 }
 
 /// Construct a generated data source
 template <typename Func>
 inline auto generated_ds(const dds_record& rec, const Func& func)
 {
-	return new filtered_data_source<Func>(rec, func);
+	return datasrc(new filtered_data_source<Func>(rec, func));
 }
 
 
@@ -296,21 +304,21 @@ class time_window_source : public data_source
 protected:
 	typedef std::queue<dds::dds_record> Window;
 
-	std::unique_ptr<data_source> sub;
+	datasrc sub;
 	dds::timestamp Tw;
 	Window window;
 
 public:	
 
-	time_window_source(data_source* _sub, timestamp _w);
+	time_window_source(datasrc _sub, timestamp _w);
 	inline auto delay() const { return Tw; }
 	void advance();
 };
 
 
-inline data_source* time_window(data_source* ds, timestamp Tw)
+inline datasrc time_window(datasrc ds, timestamp Tw)
 {
-	return new time_window_source(ds, Tw);
+	return datasrc(new time_window_source(ds, Tw));
 }
 
 
@@ -326,8 +334,8 @@ inline data_source* time_window(data_source* ds, timestamp Tw)
 	Data source factory functions for file formats
   */
 
-data_source* crawdad_ds(const std::string& fpath);
-data_source* wcup_ds(const std::string& fpath);
+datasrc crawdad_ds(const std::string& fpath);
+datasrc wcup_ds(const std::string& fpath);
 
 
 //------------------------------------
@@ -427,6 +435,11 @@ struct uniform_data_source : analyzed_data_source
 };
 
 
+inline datasrc uniform_datasrc(stream_id maxsid, source_id maxhid,
+		 key_type maxkey, timestamp maxt)
+{
+	return datasrc(new uniform_data_source(maxsid, maxhid, maxkey, maxt));
+}
 
 
 //------------------------------------
@@ -451,14 +464,8 @@ public:
 	void analyze(ds_metadata &) const;
 
 	/// Load all data from a data source
-	void load(data_source* src);
+	void load(datasrc src);
 
-	/// Load all data from a data source and dispose of it
-	inline void consume(data_source* src) 
-	{
-		load(src);
-		delete src;
-	}
 };
 
 
@@ -470,10 +477,10 @@ inline buffered_dataset
 make_uniform_dataset(stream_id maxsid, source_id maxhid,
  key_type maxkey, timestamp maxts, const F& _func)
 {
-	auto ds= new uniform_data_source(maxsid, maxhid, maxkey, maxts);
-	auto fds = filtered_ds(ds, _func);
+	datasrc ds = new uniform_data_source(maxsid, maxhid, maxkey, maxts);
+	datasrc fds = filtered_ds(ds, _func);
 	buffered_dataset dset;
-	dset.consume(fds);
+	dset.load(fds);
 	return dset;
 }
 
@@ -485,9 +492,9 @@ inline buffered_dataset
 make_uniform_dataset(stream_id maxsid, source_id maxhid,
  key_type maxkey, timestamp maxts)
 {
-	auto ds= new uniform_data_source(maxsid, maxhid, maxkey, maxts);
+	auto ds = datasrc(new uniform_data_source(maxsid, maxhid, maxkey, maxts));
 	buffered_dataset dset;
-	dset.consume(ds);
+	dset.load(ds);
 	return dset;
 }
 
@@ -533,7 +540,7 @@ class materialized_data_source : public buffered_data_source
 protected:
 	buffered_dataset dataset;
 public:
-	materialized_data_source(data_source* src);
+	materialized_data_source(datasrc src);
 
 };
 

@@ -49,19 +49,14 @@ dataset::dataset()
 }
 
 dataset::~dataset()
-{
-	if(src) delete src;
-}
+{ }
 
 void dataset::clear() 
 { 
-	if(src) { 
-		delete src; 
-		src=0; 
-	} 
+	src.reset();
 }
 
-void dataset::load(data_source* _src) 
+void dataset::load(datasrc _src) 
 { 
 	clear(); 
 	src = _src; 
@@ -80,21 +75,31 @@ void dataset::create() {
 	}
 
 	// apply filters
-	if(_max_length != none)
-		src = filtered_ds(src, max_length(_max_length.value()));
-	if(_streams != none)
-		src = filtered_ds(src, 
+	if(_max_length != none) {
+		auto ds = filtered_ds(src, max_length(_max_length.value()));
+		assert(src.use_count()>1);
+		src = ds;
+	}
+	if(_streams != none) {
+		auto ds = filtered_ds(src, 
 			modulo_attr(&dds_record::sid, _streams.value()));
-	if(_sources != none)
-		src = filtered_ds(src, 
+		assert(src.use_count()>1);
+		src = ds;
+	}
+
+	if(_sources != none) {
+		auto ds = filtered_ds(src, 
 			modulo_attr(&dds_record::hid, _sources.value()));
+		assert(src.use_count()>1);
+		src = ds;
+	}
 
 	// apply window
 	if(_time_window != none)
 		src = time_window(src, _time_window.value());
 
 	CTX.data_feed(src);
-	src=0;
+	src.reset();
 }
 
 

@@ -36,7 +36,7 @@ from _dds import data_source, time_window_source, \
 
 from _dds import output_table, result_table, time_series,\
 	output_file, open_mode, output_c_file, output_stdout,\
-	output_stderr, output_pyfile
+	output_stderr, output_pyfile, output_hdf5
 
 # eca.hh
 
@@ -54,4 +54,12 @@ from _dds import context, reactive, dataset, reporter,\
 from _dds import data_source_statistics, selfjoin_exact_method,\
 	twoway_join_exact_method, selfjoin_agms_method, \
 	twoway_join_agms_method
+
+# results.hh
+
+from _dds import comm_results
+
+import dds.agms
+import dds.tods
+import dds.gm2
 

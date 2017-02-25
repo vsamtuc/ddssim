@@ -56,6 +56,41 @@ def execute(sids=None):
 	CTX.close_result_files()
 
 
+def execute_exp():
+
+	wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
+
+	D = dataset()
+	D.load(wcup)
+	D.hash_streams(1)
+	D.set_max_length(10000)
+	D.set_time_window(4*3600)
+	D.create()
+
+	proj = agms.projection(7, 500)
+	tods1 = tods.network(proj, 0.1)
+	gm21 = gm2.network(0, proj, tods1.maximum_error())
+
+	# prepare output
+	wcout = CTX.open("wc_tseries.dat",open_mode.truncate)
+	CTX.timeseries.bind(wcout)
+	print("timeseries=", CTX.timeseries.size())
+	h5out = output_hdf5('testfile.h5')
+	comm_results.bind(output_stdout)
+	comm_results.bind(h5out)
+	comm_results.prolog()
+
+	repter = reporter(CTX.metadata().size//1000)
+
+	# run
+	CTX.run()
+
+	# cleanup
+	CTX.close_result_files()
+	print("Done")
+
+
+
 def execute_generated():
 	CTX.data_feed(uniform_data_source(5, 25, 1000, 1000))
 	components = prepare_components()
@@ -100,7 +135,8 @@ def relerr(xacc,xest):
 
 
 if __name__=='__main__':
-	execute()
+	#execute()
 	#execute_generated()
+	execute_exp()
 	pass
 

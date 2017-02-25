@@ -1,5 +1,5 @@
 #include "results.hh"
-
+#include "binc.hh"
 
 namespace dds {
 
@@ -29,6 +29,12 @@ comm_results_t::comm_results_t()
 		&total_bytes,
 		&traffic_pct
 	});
+
+	using binc::print;
+	for(size_t i=0;i<size();i++) 
+		print(columns[i]->name(), columns[i]->type().name(), 
+			columns[i]->size(), columns[i]->align(),columns[i]->format());
+
 }
 
 

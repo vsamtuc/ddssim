@@ -23,7 +23,7 @@ public:
 		// prepare the context
 		const stream_id Nstream = 3;
 		const source_id k = 8;
-		CTX.data_feed(new uniform_data_source(Nstream,k,1000,1000));
+		CTX.data_feed(uniform_datasrc(Nstream,k,1000,1000));
 
 		projection proj(5, 100);
 		gm::network *nw = new gm::network(proj);
@@ -49,7 +49,7 @@ public:
 		using namespace dds::gm2;
 
 		// load a dataset to the coord
-		CTX.data_feed(new uniform_data_source(1, 10, 1000, 1000));
+		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
 		gm2::network net(0, projection(5, 400), 0.5);
 
@@ -76,7 +76,7 @@ public:
 	{
 		projection proj(5,400);
 
-		CTX.data_feed(new uniform_data_source(1, 10, 1000, 1000));
+		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 		gm2::network net(0, proj, 0.5);
 
 		net.hub->start_round();

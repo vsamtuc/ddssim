@@ -2,7 +2,6 @@
 #define __ECA_HH__
 
 
-#include <vector> 
 #include <map>
 #include <unordered_map>
 #include <deque>
@@ -139,17 +138,12 @@ protected:
 
 	void purge_action(action* a);
 
-	// used for an invalid data source
-	struct __invalid_data_source : analyzed_data_source {
-		__invalid_data_source() { isvalid = false; }
-	};
-	static __invalid_data_source __invds;
 
 	// current time
 	timestamp _now;
 
 	// data source
-	analyzed_data_source* ds;
+	shared_ptr<analyzed_data_source> ds;
 
 	// internal methods
 	void run_action(action*);
@@ -191,7 +185,7 @@ public:
 	/**
 		Add data source to the controller
 	  */
-	void data_feed(data_source* src);
+	void data_feed(datasrc src);
 
 	/**
 		Run the controller
@@ -236,8 +230,7 @@ public:
 		event_queue.push_back(evt);
 	}
 
-	basic_control() : ds(&__invds)
-	{ }
+	basic_control();
 
 	~basic_control();
 };

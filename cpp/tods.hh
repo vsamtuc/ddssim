@@ -68,6 +68,8 @@ struct coordinator : process
 {
 	map<stream_id, coord_stream_state*> stream_state;
 
+	inline network* net() const { return (network*) host::net(); }
+
 	coordinator(network*);
 	~coordinator();
 
@@ -97,6 +99,8 @@ struct node : local_site
 
 	coordinator_proxy coord;
 
+	inline network* net() const { return (network*) host::net(); }
+
 	node(network*, source_id);
 	~node();
 
@@ -112,9 +116,15 @@ struct node : local_site
 struct network 
 	: star_network<network, coordinator, node>, reactive
 {
+	set<stream_id> streams;
 	projection proj;
 	double theta;
 	size_t k;
+
+	network(const projection& proj, double theta, const set<stream_id>& streams);
+	network(depth_type D, index_type L, double theta, const set<stream_id>& streams)
+	: network(projection(D,L), theta, streams)
+	{ }	
 
 	network(const projection& proj, double theta);
 	network(depth_type D, index_type L, double theta)

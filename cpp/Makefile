@@ -15,7 +15,7 @@ INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
 LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5_serial -lm
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
-DEBUGFLAGS=  -g3 -Og
+DEBUGFLAGS=  -g3 #-Og
 OPTFLAGS= -g3 -Ofast #-DNDEBUG
 
 ifeq ($(DEBUG),1)
@@ -55,7 +55,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 .PRECIOUS: unit_tests
 .PHONY: all ddslib test clean distclean doc pyapi
 
-all: ddslib dssim $(TEST_SOURCES:.cc=) test
+all: ddslib dssim $(TEST_SOURCES:.cc=) test #pyapi
 
 ddslib: libdds.a 
 

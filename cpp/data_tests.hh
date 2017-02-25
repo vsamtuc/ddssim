@@ -147,7 +147,7 @@ public:
 
 	void test_crawdad()
 	{
-		data_source* cdad = crawdad_ds("/home/vsam/src/datasets/wifi_crawdad_sorted");
+		datasrc cdad = crawdad_ds("/home/vsam/src/datasets/wifi_crawdad_sorted");
 		size_t count = 0;
 		dds::timestamp oldts = -1;
 
@@ -187,15 +187,14 @@ public:
 		TS_ASSERT_EQUALS(hids.size(), 27);
 		TS_ASSERT_EQUALS(*min_element(hids.begin(), hids.end()), 0);
 		TS_ASSERT_EQUALS(*max_element(hids.begin(), hids.end()), 26);
-		delete cdad;
 	}
 
 
 	void test_wcup()
 	{
-		data_source* wcup_orig = wcup_ds("/home/vsam/src/datasets/wc_day44");
+		datasrc wcup_orig = wcup_ds("/home/vsam/src/datasets/wc_day44");
 		buffered_dataset wcup_dset;
-		wcup_dset.consume(wcup_orig);
+		wcup_dset.load(wcup_orig);
 		buffered_data_source* wcup = new buffered_data_source(wcup_dset);
 
 		size_t count = 0;
@@ -246,7 +245,6 @@ public:
 		TS_ASSERT( std::equal(hids.begin(), hids.end(), 
 			md.source_ids().begin()) );
 
-		delete wcup;
 	}
 
 

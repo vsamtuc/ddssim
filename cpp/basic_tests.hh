@@ -26,10 +26,10 @@ using namespace dds;
 using namespace binc;
 using namespace Simple;
 
+
 class MiscTestSuite : public CxxTest::TestSuite
 {
 public:
-
 
 
 	void test_print()
@@ -45,7 +45,6 @@ public:
 
 		int A[3] = { 100, 200, 300 };
 		TS_ASSERT_EQUALS(sprint("[",elements_of(A,", "),"]"), string("[ 100, 200, 300 ]"));
-
 	}
 
 
@@ -204,7 +203,6 @@ public:
 		TS_ASSERT_EQUALS(d1.size(), 0);
 
 	}
-
 
 };
 

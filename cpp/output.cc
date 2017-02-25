@@ -113,13 +113,21 @@ void output_table::epilog()
 
 result_table::result_table(const string& _name)
 	: output_table(_name, table_flavor::RESULTS)
-{}
+{
+	using std::cerr;
+	using std::endl;
+	cerr << "result table " << name() << " created"<< endl;
+}
 
 result_table::result_table(const string& _name,
 		column_list col)
 	: output_table(_name, table_flavor::RESULTS)
 {
 	add(col);
+
+	using std::cerr;
+	using std::endl;
+	cerr << "result table " << name() << " created"<< endl;
 }
 
 void result_table::add(column_list col)
@@ -129,6 +137,9 @@ void result_table::add(column_list col)
 
 result_table::~result_table()
 {
+	using std::cerr;
+	using std::endl;
+	cerr << "result table " << name() << " destroyed"<< endl;
 }
 
 

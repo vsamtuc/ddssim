@@ -22,7 +22,7 @@ public:
 	void test_generated()
 	{
 		dds::dds_record initrec { 0, 0u, dds::INSERT, 0, 0 };
-		data_source* ds = generated_ds(initrec, [](dds::dds_record rec)->bool{
+		datasrc ds = generated_ds(initrec, [](dds::dds_record rec)->bool{
 			rec.sid=0;
 			rec.hid=0;
 			rec.sop=dds::INSERT;
@@ -36,11 +36,10 @@ public:
 			TS_ASSERT(ds->get().sop == dds::INSERT);
 			ds->advance();
 		}
-		delete ds;
 	}
 
 
-	size_t ds_length(data_source* ds) {
+	size_t ds_length(datasrc ds) {
 		size_t count = 0;
 		while(ds->valid()) {
 			count++;
@@ -55,23 +54,20 @@ public:
 		{
 			auto ds = generated_ds(dds_record::zero, max_length(10));
 			TS_ASSERT_EQUALS(ds_length(ds) , 10);
-			delete ds;
 		}
 		{
 			auto ds = generated_ds(dds_record::zero, max_length(20));
 			TS_ASSERT_EQUALS(ds_length(ds) , 20);			
-			delete ds;
 		}
 		{
 			auto F = FSEQ | max_length(10) | max_length(20);
 			auto ds = generated_ds(dds_record::zero, F);
 			TS_ASSERT_EQUALS(ds_length(ds) , 10);
-			delete ds;
 		}
 	}
 
 	template <typename KGen, typename TSGen>
-	static data_source* make_data_source(mt19937& rng, 
+	static datasrc make_data_source(mt19937& rng, 
 		KGen& key_gen, TSGen& ts_gen) 
 	{
 		auto F = FSEQ | max_length(10) 
@@ -106,7 +102,6 @@ public:
 			s << ds->get();
 			TS_TRACE(s.str());
 		}
-		delete ds;
 	}
 
 	void test_buffered()
@@ -115,9 +110,9 @@ public:
 		std::uniform_int_distribution<dds::key_type> key_gen(50,100);
 		std::uniform_int_distribution<dds::timestamp> ts_gen(2,10);
 
-		data_source* mds = make_data_source(rng, key_gen, ts_gen);
+		shared_ptr<data_source> mds { make_data_source(rng, key_gen, ts_gen) };
 		buffered_dataset dset;
-		dset.consume(mds);
+		dset.load(mds);
 
 		auto ds = new buffered_data_source(dset);
 		for(; ds->valid(); ds->advance()) {
@@ -140,7 +135,7 @@ public:
 		const key_type maxkey = 1000000;
 		const timestamp maxtime = 10000;
 
-		auto ds = new uniform_data_source(maxstream, maxsource, maxkey, maxtime);
+		datasrc ds { new uniform_data_source(maxstream, maxsource, maxkey, maxtime) };
 
 		buffered_dataset dset;
 		dset.load(ds);
@@ -166,7 +161,8 @@ public:
 		}
 
 		// check stream metadata against dataset metadata
-		ds_metadata dsm = ds->metadata();
+		ds_metadata dsm = static_pointer_cast<uniform_data_source>(ds)
+							->metadata();
 		TS_ASSERT_EQUALS(dsm.size(), m.size());
 		TS_ASSERT_EQUALS(dsm.mintime(), m.mintime());
 		TS_ASSERT_EQUALS(dsm.maxtime(), m.maxtime());

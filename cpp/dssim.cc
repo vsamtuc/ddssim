@@ -20,13 +20,12 @@ using namespace dds;
 void execute()
 {
 	/* Set up data stream */
-
 	string HOME(getenv("HOME"));
 
 	//data_source* wcup = crawdad_ds(HOME+"/src/datasets/wifi_crawdad_sorted");
-	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
+	datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
 	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44_1");
-	data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
+	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
 
 	dataset D;
 	D.load(wcup);
@@ -113,7 +112,7 @@ void execute_generated()
 {
 	/* Set up data stream */
 
-	auto ds = new uniform_data_source(5, 25, 10000, 1000);
+	auto ds = uniform_datasrc(5, 25, 10000, 1000);
 	CTX.data_feed(ds);
 
 
