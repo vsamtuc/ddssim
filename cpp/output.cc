@@ -116,7 +116,7 @@ result_table::result_table(const string& _name)
 {
 	using std::cerr;
 	using std::endl;
-	cerr << "result table " << name() << " created"<< endl;
+	//cerr << "result table " << name() << " created"<< endl;
 }
 
 result_table::result_table(const string& _name,
@@ -127,7 +127,7 @@ result_table::result_table(const string& _name,
 
 	using std::cerr;
 	using std::endl;
-	cerr << "result table " << name() << " created"<< endl;
+	//cerr << "result table " << name() << " created"<< endl;
 }
 
 void result_table::add(column_list col)
@@ -139,7 +139,7 @@ result_table::~result_table()
 {
 	using std::cerr;
 	using std::endl;
-	cerr << "result table " << name() << " destroyed"<< endl;
+	//cerr << "result table " << name() << " destroyed"<< endl;
 }
 
 

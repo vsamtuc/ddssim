@@ -60,14 +60,14 @@ public:
 		for(auto p : net.hub->proxy) {
 			node_proxy *np = p.second;
 			TS_ASSERT_EQUALS(np->proc(), p.first)
-			TS_ASSERT_EQUALS(np->owner(), net.hub);
+			TS_ASSERT_EQUALS(np->_r_owner, net.hub);
 			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p.first]] , p.first);
 		}
 
 		for(auto _n : net.sites) {
 			gm2::node* n = _n.second;
 
-			TS_ASSERT_EQUALS(n->coord.owner(), n);
+			TS_ASSERT_EQUALS(n->coord._r_owner, n);
 			TS_ASSERT_EQUALS(n->coord.proc(), net.hub);
 		}
 	}

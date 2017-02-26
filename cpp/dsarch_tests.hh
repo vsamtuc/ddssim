@@ -2,16 +2,19 @@
 
 #include <string>
 #include "dsarch.hh"
+#include "binc.hh"
+
+
 
 using namespace dds;
 using std::string;
-
+using binc::print;
 
 struct Echo : process
 {
 	int value;
 
-	Echo(network* nw) : process(nw), value(0) {}
+	Echo(basic_network* nw) : process(nw), value(0) {}
 
 	// remote methods
 
@@ -50,7 +53,7 @@ struct Echo_cli : process
 {
 	Echo_proxy proxy;
 
-	Echo_cli(network* nw) 
+	Echo_cli(basic_network* nw) 
 	: process(nw), proxy(this)
 	{
 		//proxy = new Echo_proxy(this, srv);
@@ -74,57 +77,41 @@ public:
 
 	void test_network()
 	{
-		network nw;
+		basic_network nw;
 
 		host* h1 = new host(&nw);
 		host* h2 = new host(&nw);
-		channel* c12  = nw.connect(h1, h2);
 
 		TS_ASSERT_EQUALS(nw.hosts().size(), 2);
 		TS_ASSERT_EQUALS(nw.size(), 2);
 
-		TS_ASSERT_EQUALS(c12, h1->channel_to(h2));
-		TS_ASSERT_EQUALS(nullptr, h2->channel_to(h1));
-		TS_ASSERT_EQUALS( nw.connect(h1,h2), c12 );
 	}	
 
 
 	void test_rpc()
 	{
-		network nw;
+		basic_network nw;
 
 		Echo* srv = new Echo(&nw);
 		Echo_cli* cli = new Echo_cli(&nw);
-		cli->proxy.connect(srv);
-		auto c12 = cli->proxy.request_channel();
-		auto c21 = cli->proxy.response_channel();
+		cli->proxy <<= srv;
 
-		TS_ASSERT( cli->proxy.response_channel() );
+		TS_ASSERT_EQUALS(cli->proxy._r_proc, srv);
+		TS_ASSERT_EQUALS(cli->proxy._r_calls.size(), 7);
 
 		TS_ASSERT_EQUALS( cli->send_echo("Hi"), "Echoing Hi" );
-		TS_ASSERT_EQUALS(c12->messages(), 3);
-		TS_ASSERT_EQUALS(c12->bytes(), 2+sizeof(int));
-		TS_ASSERT_EQUALS(c21->messages(), 3);
-		TS_ASSERT_EQUALS(c21->bytes(), 10);
+		TS_ASSERT_EQUALS( cli->proxy.echo.request_channel()->messages(), 1);
+		TS_ASSERT_EQUALS( cli->proxy.send_int.request_channel()->messages(), 1);
+		TS_ASSERT_EQUALS( cli->proxy.init.request_channel()->messages(), 1);
 
 		TS_ASSERT_EQUALS( cli->get_int(), 10);
 
-		TS_ASSERT_EQUALS(c12->messages(), 4);
-		TS_ASSERT_EQUALS(c12->bytes(), 2+sizeof(int));
-		TS_ASSERT_EQUALS(c21->messages(), 4);
-		TS_ASSERT_EQUALS(c21->bytes(), 14);
 
 		cli->proxy.say_bye("bye");
-		TS_ASSERT_EQUALS(c12->messages(), 5);
-		TS_ASSERT_EQUALS(c12->bytes(), 2+sizeof(int)+3);
-		TS_ASSERT_EQUALS(c21->messages(), 4);
-		TS_ASSERT_EQUALS(c21->bytes(), 14);
 
 		cli->proxy.finish();
-		TS_ASSERT_EQUALS(c12->messages(), 6);
-		TS_ASSERT_EQUALS(c12->bytes(), 2+sizeof(int)+3);
-		TS_ASSERT_EQUALS(c21->messages(), 4);
-		TS_ASSERT_EQUALS(c21->bytes(), 14);
+
+		print(nw.get_rpcc_name(cli->proxy.finish.endpoint()));
 
 	}
 

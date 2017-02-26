@@ -349,12 +349,13 @@ public:
 	void add(proxied_type* proc) {
 		if(pmap.find(proc)!=pmap.end()) return;
 		pmap[proc] = new proxy_type(owner);
-		pmap[proc]->connect(proc);
+		* pmap[proc] <<= (proc);
 	}
 
 	template <typename StarNet>
 	void add_sites(const StarNet* net) {
-		for(auto&& i : net->sites) add(i.second);
+		for(auto&& i : net->sites) 
+			add(i.second);
 	}
 
 	auto begin() const { return pmap.begin(); }
@@ -451,7 +452,7 @@ struct node : local_site
 		U(proj), update_count(0),
 		coord( this )
 	{ 
-		coord.connect(net->hub);
+		coord <<= net->hub;
 	}
 
 

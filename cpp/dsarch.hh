@@ -3,14 +3,22 @@
 
 /**
 	\file Distributed stream system architecture simulation classes.
+
+	The purpose of these classes is to collect detailed statistics
+	that are independent of the particular algorithm, and report
+	them in a standardized (and therefore auto-processable) manner.
   */
 
 #include <unordered_set>
 #include <unordered_map>
+#include <vector>
 #include <string>
 #include <cstring>
 #include <iostream>
 #include <cassert>
+#include <typeinfo>
+#include <typeindex>
+#include <utility>
 #include <type_traits>
 
 #include "dds.hh"
@@ -21,79 +29,208 @@
 namespace dds {
 
 
-class network;
+class basic_network;
 class host;
+class host_group;
 class process;
 class channel;
 
-/**
-	Point-to-point unidirectional channel.
 
-	Channels are mainly used to collect network statistics
+enum class chan_dir { REQ, RSP, BCAST };
+
+/**
+	Point-to-point or broadcast unidirectional channel.
+
+	Channels are used to collect network statistics. Each 
+	channel counts the number of messages and the total message
+	size. A channel is defined by
+	- the source host
+	- the destination host
+	- the type of message
+
+	Message types are defined by an RPC (message) code. Each rpc endpoint
+	(method) is associated with a request channel, and---if it is
+	not oneway---with a response channel.
+
+	Therefore, assuming that we have \f$ m\f$ host types and for each host
+	type \f$ i \f$ there are \f$ n_i \f$ hosts in the network, and further
+	that the in-degree (number of nodes that call it) of each host of type
+	\f$i\f$ is \f$d_i\f$, and finally that a host of type \f$i\f$ has 
+	\f$ q_i \f$ methods in its interface, there is a total of 
+	\f[  \prod_{i=1}^m n_i d_i q_i  \f] 
+	request channels in the network, and up to that many response channels.
+
+	Finally, a channel can be a broadcast channel. This is always associated
+	with a request for come rpc method and a special destination host,
+	which is marked as a broadcast host.
+
+	Note that the source host cannot be a broadcast host.
   */
 class channel
 {
 protected:
 	host *src, *dst;
+	size_t rpcc;
+	chan_dir dir;
+
 	size_t msgs, byts;
 
-	channel(host *s, host* d);
+	channel(host *s, host* d, size_t rpcc, chan_dir dir);
 public:
 
 	inline host* source() const { return src; }
 	inline host* destination() const { return dst; }
+	inline size_t rpc_code() const { return rpcc; }
+	inline chan_dir direction() const { return dir; }
 	inline auto messages() const { return msgs; }
 	inline auto bytes() const { return byts; }
 
 	void transmit(size_t msg_size);
-	friend class network;
+	friend class basic_network;
 };
 
 
+
 typedef std::unordered_map<host*, channel*> channel_map;
+typedef std::unordered_set<channel*> channel_set;
 typedef std::unordered_set<host*> host_set;
 
 
 /**
-	Hosts are used as nodes in the netork graph
+	Hosts are used as addresses in the basic_network.
+
+	Hosts can be named, for more friendly output. A host
+	can represent a single network destination (site), or a set
+	of network destinations.
+
+	Any subclass of host is a single site. For broadcast sites,
+	one has to use `host_group`.
+
+	@see host_group
   */
 class host : public named
 {
+	host(basic_network* n, bool _bcast);
+	friend class host_group;
+	friend class basic_network;
 protected:
-	network* _net;
-	channel_map rtab_to, rtab_from;
+	basic_network* _net;
+	bool _bcast;
+	channel_set _incoming;
 	virtual ~host();
 public:
-	host(network* n);
+	host(basic_network* n);
 	
-	inline network* net() const { return _net; }
-
-	inline channel* channel_to(host* dest) const { 
-		try{
-			return rtab_to.at(dest);
-		} 
-		catch(std::out_of_range) {
-			return nullptr;
-		}
-	}
-
-	channel* connect(host*);
+	inline basic_network* net() const { return _net; }
+	inline bool is_bcast() const { return _bcast; }
 
 	friend class channel;
-	friend class network;
+	friend class basic_network;
 };
 
 
 /**
-	A (directed) graph of hosts and channels.
+	A host group represents a broadcast address.
+
+	To build the membership of a group, one has to
+	add (non-group) hosts via method `join`.
   */
-class network : public named
+class host_group : public host
 {
 protected:
-	host_set _hosts;
+	host_set grp;
+	friend class basic_network;
+public:
+	host_group(basic_network* nw);
+
+	/**
+		Add a simple host to this group.
+	  */
+	void join(host* h);
+};
+
+
+
+
+using std::type_index;
+
+
+
+
+struct rpc_call;
+
+/**
+	An rpc proxy represents a proxy object for some host.
+
+	We do not want to pollute the class namespace, in order
+	to avoid collisions with method names.
+  */
+struct rpc_proxy
+{
+	size_t _r_ifc;
+	std::vector<rpc_call*> _r_calls;
+	host* _r_owner;
+	host* _r_proc = nullptr;
+
+	rpc_proxy(const string& name, host* _own);
+	size_t _r_register(rpc_call* call);
+	void _r_connect(host* dst);
+private:
+	template <typename Dest>
+	friend class remote_proxy;
+	rpc_proxy(size_t ifc, host* _own);
+};
+
+
+/**
+	An rcp method belongs to some specific rpc proxy.
+  */
+struct rpc_call
+{
+protected:
+	rpc_proxy* _proxy;
+	size_t _endpoint;
+	channel* _req_chan = nullptr;
+	channel* _resp_chan = nullptr;
+	bool one_way;
+public:
+	rpc_call(rpc_proxy* _prx, bool _oneway, const string& _name);
+
+	void connect(host* dst);
+
+	inline size_t endpoint() const { return _endpoint; }
+	inline channel* request_channel() const { return _req_chan; }
+	inline channel* response_channel() const { return _resp_chan; }
+};
+
+
+/**
+	A collection of hosts and channels.
+
+	This class manages the network elements: hosts, groups,
+	channels, rpc endpoints.
+  */
+class basic_network : public named
+{
+protected:
+	host_set _hosts;		// all the simple hosts
+	host_set _groups;		// all the host groups
+	channel_set _channels;	// all the channels
+
+	//std::unordered_map<type_index, string>  rpc_type_label; // rpc interface
+	size_t rpc_ifc_uuid;    // used to generate unique ifc codes
+	std::unordered_map<string, size_t> rpc_ifc;
+	std::unordered_map<size_t, string> ifc_rpc;
+
+	std::unordered_map<size_t, size_t> rpcc_uuid;
+	std::map< std::pair<size_t, string>, size_t> rmi_rpcc;
+	std::unordered_map< size_t, std::pair<size_t, string>> rpcc_rmi;
+
+	bool is_legal_ifc(size_t);
+	bool is_legal_rpcc(size_t);
 public:
 
-	network() { }
+	basic_network();
 
 	inline const host_set& hosts() const { 
 		return _hosts; 
@@ -101,13 +238,17 @@ public:
 
 	inline size_t size() const { return _hosts.size(); }
 
-	channel* connect(host* src, host* dest);
+	size_t get_ifc(const std::type_info& ti);
+	size_t get_ifc(const std::type_index& tix);
+	size_t get_ifc(const string&);
 
-	inline const channel_map& routes_from(host* h) const {
-		return h->rtab_to;
-	}
+	size_t get_rpcc(size_t ifc, const string&);
 
-	virtual ~network();
+	string get_rpcc_name(size_t rpcc);
+
+	channel* connect(host* src, host* dest, size_t rpcc, chan_dir dir);
+
+	virtual ~basic_network();
 	friend class host;
 
 	// fill the traffic entries in comm_results
@@ -116,9 +257,8 @@ public:
 };
 
 
-
 /**
-	A process runs on a host and can have remote methods.
+	A process extends a host with remote methods.
   */
 class process : public host
 {
@@ -138,7 +278,7 @@ protected:
 	source_id sid=-1;
 
 public:
-	local_site(network* nw, source_id _sid) 
+	local_site(basic_network* nw, source_id _sid) 
 	: process(nw), sid(_sid) 
 	{}
 
@@ -146,8 +286,6 @@ public:
 
 	void handle(const dds_record& rec) {}
 };
-
-
 
 
 /**
@@ -161,7 +299,7 @@ public:
 	This class is a mixin
   */
 template <typename Net, typename Hub, typename Site>
-struct star_network : public network
+struct star_network : public basic_network
 {
 	Hub* hub;
 	std::unordered_map<source_id, Site*> sites;
@@ -193,7 +331,7 @@ struct star_network : public network
 
 /*	----------------------------------------
 
-	RPC for protocols
+	Typed RPC for protocols
 
 	--------------------------------------- */
 
@@ -257,57 +395,38 @@ template <typename Dest, typename Response, typename...Args>
 struct remote_method;
 
 template <typename Process>
-class remote_proxy 
+class remote_proxy : public rpc_proxy
 {
-protected:
-	process* _owner;
-	Process* _proc = nullptr;
-	channel* _req_chan = nullptr;
-	channel* _resp_chan = nullptr;
-
-	bool _oneway = true;
-	template <typename Dest, typename Response, typename...Args>
-	friend struct remote_method;
 public:
-
 	typedef Process proxied_type;
 
-	inline remote_proxy(process* o) 
-	: _owner(o)
+	inline remote_proxy(process* owner) 
+	: rpc_proxy(owner->net()->get_ifc(typeid(Process)), owner)
 	{ }
 
-	inline bool is_connected() const { return _proc; }
-
-	inline void connect(Process* p) {
-		_proc = p;
-		_req_chan = _owner->connect(p);
-		if(! _oneway)
-			_resp_chan = p->connect(_owner);
-		else
-			_resp_chan = nullptr;
+	inline void operator<<=(Process* dest) {
+		_r_connect(dest);
 	}
 
-	inline channel* request_channel() const { return _req_chan; }
-	inline channel* response_channel() const { return _resp_chan; }
-	inline Process* proc() const { return _proc; }
-	inline process* owner() const { return _owner; }
+	inline Process* proc() const { return (Process*) _r_proc; }
 };
 
 
 template <typename Dest>
-struct proxy_method
+struct proxy_method  : rpc_call
 {
 	typedef remote_proxy<Dest> proxy_type;
 	proxy_type* proxy;
 
-	inline proxy_method(proxy_type* _proxy) : proxy(_proxy) {}
+	inline proxy_method(proxy_type* _proxy, bool one_way, const string& _name) 
+	: rpc_call(_proxy, one_way, _name), proxy(_proxy) {}
 
 	inline void transmit_request(size_t msg_size) const {
-		proxy->request_channel()->transmit(msg_size);		
+		this->request_channel()->transmit(msg_size);		
 	}
 
 	inline void transmit_response(size_t msg_size) const {
-		proxy->response_channel()->transmit(msg_size);		
+		this->response_channel()->transmit(msg_size);		
 	}	
 };
 
@@ -339,12 +458,10 @@ struct remote_method : proxy_method<Dest>
 	typedef	Response (Dest::* method_type)(Args...);
 	method_type method;
 
-	remote_method(remote_proxy<Dest>* _proxy, method_type _meth)
-	: proxy_method<Dest>(_proxy), method(_meth) 
-	{
-		this->proxy->_oneway = this->proxy->_oneway &&
-			std::is_same<Response, oneway>::value;
-	}
+	remote_method(remote_proxy<Dest>* _proxy, method_type _meth, const string& _name)
+	: proxy_method<Dest>(_proxy, std::is_same<Response, oneway>::value, _name), 
+		method(_meth) 
+	{ }
 
 	inline Response operator()(Args...args) const
 	{
@@ -366,7 +483,7 @@ make_remote_method(remote_proxy<T>* owner, Response (T::*method)(Args...))
 
 #define REMOTE_METHOD(RClass, RMethod)\
  decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
- 	&RClass::RMethod)) RMethod { this, &RClass::RMethod }
+ 	&RClass::RMethod)) RMethod { this, &RClass::RMethod, #RMethod }
 
 
 
