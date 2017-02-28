@@ -12,19 +12,11 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <cassert>
 #include <typeinfo>
 #include <typeindex>
-#include <utility>
-#include <type_traits>
+#include <stdexcept>
 
 #include "dds.hh"
-#include "agms.hh"
-#include "output.hh"
-#include "method.hh"
 
 namespace dds {
 
@@ -35,8 +27,19 @@ class host_group;
 class process;
 class channel;
 
+/**
+	RPC code type.
+  */
+typedef uint32_t rpcc_t;
 
-enum class chan_dir { REQ, RSP, BCAST };
+
+constexpr int RPCC_BITS_PER_IFC = 8;
+constexpr rpcc_t RPCC_ENDP_MASK = (1<<RPCC_BITS_PER_IFC)-1;
+constexpr rpcc_t RPCC_IFC_MASK = ~RPCC_ENDP_MASK;
+constexpr rpcc_t RPCC_METH_MASK = RPCC_ENDP_MASK -1;
+constexpr rpcc_t RPCC_RESP_MASK = 1;
+
+using std::string;
 
 /**
 	Point-to-point or broadcast unidirectional channel.
@@ -70,18 +73,17 @@ class channel
 {
 protected:
 	host *src, *dst;
-	size_t rpcc;
-	chan_dir dir;
+	rpcc_t rpcc;
 
 	size_t msgs, byts;
 
-	channel(host *s, host* d, size_t rpcc, chan_dir dir);
+	channel(host *s, host* d, rpcc_t rpcc);
 public:
 
 	inline host* source() const { return src; }
 	inline host* destination() const { return dst; }
-	inline size_t rpc_code() const { return rpcc; }
-	inline chan_dir direction() const { return dir; }
+	inline rpcc_t rpc_code() const { return rpcc; }
+
 	inline auto messages() const { return msgs; }
 	inline auto bytes() const { return byts; }
 
@@ -150,24 +152,92 @@ public:
 };
 
 
+using std::vector;
+using std::unordered_map;
+
+/**
+	An rpc descriptor object.
+
+	This is a base class for interfaces and methods.
+  */
+struct rpc_obj
+{
+	rpcc_t rpcc;
+	rpc_obj() : rpcc(0) {}
+	rpc_obj(rpcc_t _c) : rpcc(_c) {}
+};
+
+/**
+	Represents a method in an rpc protocol
+  */
+struct rpc_method : rpc_obj, named
+{
+	bool one_way;
+	rpc_method() {}
+	rpc_method(rpcc_t _c, const string& _n, bool _o)
+	: rpc_obj(_c), named(_n), one_way(_o) {}
+};
+
+/**
+	Represents an interface in an rpc protocol
+  */
+struct rpc_interface : rpc_obj, named
+{
+	vector<rpc_method> methods;
+	unordered_map<string, size_t> name_map;
+
+
+	rpc_interface();
+	rpc_interface(rpcc_t _c, const string& _n); 
+
+	/**
+		Declare a method in the interface.
+	  */
+	rpcc_t declare(const string& mname, bool onew);
+	const rpc_method& get_method(rpcc_t rpcc) const;
+};
+
+/**
+	A collection of rpc interfaces.
+  */
+struct rpc_protocol
+{
+	vector<rpc_interface> ifaces;
+	unordered_map<string, size_t> name_map;
+
+	/**
+		Declare an interface.
+	  */
+	rpcc_t declare(const string& name);
+
+	/**
+		Declare a method in some interface.
+
+		This is just a shortcut for 
+		```
+		get_intercafe(ifc).declare(mname, onew)
+		```
+	  */
+	rpcc_t declare(rpcc_t ifc, const string& mname, bool onew);
+	const rpc_interface& get_interface(rpcc_t rpcc) const;
+	const rpc_method& get_method(rpcc_t rpcc) const;
+};
+
 
 
 using std::type_index;
-
-
-
-
 struct rpc_call;
 
 /**
 	An rpc proxy represents a proxy object for some host.
 
 	We do not want to pollute the class namespace, in order
-	to avoid collisions with method names.
+	to avoid collisions with method names. Therefore, all
+	member names start with `_r_`.
   */
 struct rpc_proxy
 {
-	size_t _r_ifc;
+	rpcc_t _r_ifc;
 	std::vector<rpc_call*> _r_calls;
 	host* _r_owner;
 	host* _r_proc = nullptr;
@@ -189,7 +259,7 @@ struct rpc_call
 {
 protected:
 	rpc_proxy* _proxy;
-	size_t _endpoint;
+	rpcc_t _endpoint;
 	channel* _req_chan = nullptr;
 	channel* _resp_chan = nullptr;
 	bool one_way;
@@ -198,7 +268,7 @@ public:
 
 	void connect(host* dst);
 
-	inline size_t endpoint() const { return _endpoint; }
+	inline rpcc_t endpoint() const { return _endpoint; }
 	inline channel* request_channel() const { return _req_chan; }
 	inline channel* response_channel() const { return _resp_chan; }
 };
@@ -209,6 +279,26 @@ public:
 
 	This class manages the network elements: hosts, groups,
 	channels, rpc endpoints.
+
+	Rpc endpoints correspond to the concept of "message type".
+	They are 32-bit entities, with the following form
+	struct {
+		unsigned ifc:   32-(n+1);
+		unsigned rmeth:        n;
+		unsigned resp:         1;
+	}
+	Roughly ifc is an "rmi interface code". Each host can 
+	serve one or more of these.
+	Each rmi interface has methods, and each method has a request
+	and (if not `oneway`) a response.
+
+	Currently, n is set to 7, that is, an interface can have up to
+	127 methods (0 is not a legal rmeth value).
+
+	Each interface and each method also have a string name, managed
+	by this class. If the templated RPC facilities of this file are
+	used, these strings are generated from the C++ classes without
+	any user-code overhead.
   */
 class basic_network : public named
 {
@@ -217,41 +307,77 @@ protected:
 	host_set _groups;		// all the host groups
 	channel_set _channels;	// all the channels
 
-	//std::unordered_map<type_index, string>  rpc_type_label; // rpc interface
-	size_t rpc_ifc_uuid;    // used to generate unique ifc codes
-	std::unordered_map<string, size_t> rpc_ifc;
-	std::unordered_map<size_t, string> ifc_rpc;
-
-	std::unordered_map<size_t, size_t> rpcc_uuid;
-	std::map< std::pair<size_t, string>, size_t> rmi_rpcc;
-	std::unordered_map< size_t, std::pair<size_t, string>> rpcc_rmi;
-
-	bool is_legal_ifc(size_t);
-	bool is_legal_rpcc(size_t);
+	rpc_protocol rpctab;
 public:
 
 	basic_network();
 
-	inline const host_set& hosts() const { 
-		return _hosts; 
-	}
+	inline const host_set& hosts() const { return _hosts; }
+	inline const host_set& groups() const { return _groups; }
+	inline const channel_set& channels() const { return _channels; }
 
 	inline size_t size() const { return _hosts.size(); }
 
-	size_t get_ifc(const std::type_info& ti);
-	size_t get_ifc(const std::type_index& tix);
-	size_t get_ifc(const string&);
+	/**
+		Declare an interface by name.
 
-	size_t get_rpcc(size_t ifc, const string&);
+		If the name has not been declared before, a new interface 
+		is created for this name. Else, the old code is returned.
+	 */
+	rpcc_t decl_interface(const string& name);
 
-	string get_rpcc_name(size_t rpcc);
+	/**
+		Declare an interface for a type_info object.
 
-	channel* connect(host* src, host* dest, size_t rpcc, chan_dir dir);
+		The interface is registered to the type name for the
+		type_info object, demangled into a human readable form.
+
+		If the name has not been declared before, a new interface 
+		is created for this name. Else, the old code is returned.
+	  */
+	rpcc_t decl_interface(const std::type_info& ti);
+
+	/**
+		Declare an interface for a type_index object.
+
+		The interface is registered to the type name for the
+		type_index object, demangled into a human readable form.
+
+		If the name has not been declared before, a new interface 
+		is created for this name. Else, the old code is returned.
+	  */
+	rpcc_t decl_interface(const std::type_index& tix);
+
+	/**
+		Declare an interface method by name.
+
+		If a method by this name was not registered before
+		name, a new one is registered and returned.
+	 */ 
+	rpcc_t decl_method(rpcc_t ifc, const string&, bool onew);
+
+
+	/**
+		Returns the RPC table
+	  */
+	const rpc_protocol& rpc() const { return rpctab; }
+
+	/**
+		Create a new RPC channel.
+
+		@param src the source host
+		@param dst the destination host
+		@param rpcc the endpoint code
+		@param dir the direction
+	 */
+	channel* connect(host* src, host* dest, rpcc_t rpcc);
 
 	virtual ~basic_network();
 	friend class host;
 
-	// fill the traffic entries in comm_results
+	/**
+		Fill the traffic entries in result table `comm_results`
+	  */
 	void comm_results_fill_in();
 
 };
@@ -301,10 +427,12 @@ public:
 template <typename Net, typename Hub, typename Site>
 struct star_network : public basic_network
 {
+	set<source_id> hids;
 	Hub* hub;
 	std::unordered_map<source_id, Site*> sites;
 
-	star_network() : hub(nullptr) { }
+	star_network(const set<source_id>& _hids) 
+	: hids(_hids), hub(nullptr) { }
 
 	template <typename ... Args>
 	Net* setup(Args...args)
@@ -312,7 +440,7 @@ struct star_network : public basic_network
 		// create the nodes
 		hub = new Hub((Net*)this, args...);
 
-		for(auto hid : CTX.metadata().source_ids()) 
+		for(auto hid : hids) 
 		{
 			Site* n = new Site((Net*)this, hid, args...);
 			sites[hid] = n;
@@ -337,38 +465,98 @@ struct star_network : public basic_network
 
 
 /**
-	Marker type for remote methods
+	Marker name for remote methods.
+
+	Writing 
+	```
+	oneway my_remote();
+	```
+	is preferable, from a documentation point of view, to 
+	```
+	void my_remote();
+	```
   */
-struct oneway {};
+typedef void oneway;
 
-template <>
-inline size_t byte_size<oneway>(const oneway& s) { return 0; }
 
+struct _NAK {};
+constexpr _NAK NAK;
 
 /**
-	Marker type for remote methods that 
-	'return void' (N.B.: remote methods cannot 
-	return void)
+	Return type for remote methods that may optionally return a message.
+
+	A remote function may return an ACK message (possibly with
+	some payload), or just return NAK, in which case the middleware
+	will not charge a response message at all.
+
+	The payload must be default constructible and copyable/movable.
+	For example:
+	```
+	Acknowledge<int> my_remote_method() {
+		if(...)
+			return 100;  // return a response
+		else
+			return NAK;  // do not acknowledge
+	}
+	```
+
+	On the calling side:
+	```
+	auto ackint = proxy.my_remote_method();
+	if(ackint)
+		// use ackint.payload ...
+	else
+		// Call not acknowledged
+	```
   */
-struct ACK {};
-
-template <>
-inline size_t byte_size<ACK>(const ACK& s) { return 0; }
-
-
-template <typename T>
-struct msgwrapper
+template <typename Payload>
+struct Acknowledge
 {
-	T* payload;
-	msgwrapper(T* _p) : payload(_p){}
-	inline size_t byte_size() const { return byte_size((const T&) *payload); }
+	bool is_ack;
+	Payload payload;
+
+	Acknowledge(Payload&& p) : is_ack(true), payload(p) {}
+	Acknowledge(const Payload& p) : is_ack(true), payload(p) {}
+	Acknowledge(_NAK _nak) : is_ack(false), payload() {}
+
+	inline operator bool() const { return is_ack; }
+
+	inline size_t byte_size() const { 
+		return is_ack ? dds::byte_size(payload) : 0;
+	}
 };
-template <typename T>
-msgwrapper<T> wrap(T* p) { return msgwrapper<T>(p); }
-template <typename T>
-msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
+
+/**
+	Acknowledgement response without payload
+  */
+template <>
+struct Acknowledge<void>
+{
+	bool is_ack;
+	constexpr Acknowledge(bool _is_ack) : is_ack(_is_ack) {}
+	constexpr Acknowledge(_NAK _nak) : is_ack(false) {}
+
+	inline operator bool() const { return is_ack; }
+};
+
+/// A handy short name 
+typedef Acknowledge<void> Ack;
+
+/// A convenience constant
+constexpr Ack ACK(true);
+
+// An ACK message has a 0-byte payload */
+template <>
+inline size_t byte_size< Ack >(const Ack& s) { return 0; }
 
 
+template <typename T>
+inline bool __omit_response(const T& val) { return true; }
+
+template <typename T>
+inline bool __omit_response(const Acknowledge<T>& ackval) {
+	return ackval;
+}
 
 
 /**
@@ -401,7 +589,7 @@ public:
 	typedef Process proxied_type;
 
 	inline remote_proxy(process* owner) 
-	: rpc_proxy(owner->net()->get_ifc(typeid(Process)), owner)
+	: rpc_proxy(owner->net()->decl_interface(typeid(Process)), owner)
 	{ }
 
 	inline void operator<<=(Process* dest) {
@@ -431,25 +619,10 @@ struct proxy_method  : rpc_call
 };
 
 
-/*
-	Typed wrapper for remote sites
- */
 
-template <typename T>
-struct context_wrapper {
-	T const arg;
-	explicit context_wrapper(T _arg) : arg(_arg) { }
-	size_t byte_size() const { return 0; }
-};
+template <typename Dest, typename Response, typename ... Args>
+struct remote_method;
 
-template <typename U>
-U context_unwrap(U&& x) { return x; }
-
-template <typename U>
-U context_unwrap(context_wrapper<U>&& wrapper) { return wrapper.arg; }
-
-template <typename U>
-context_wrapper<U> by_context(U x) { return context_wrapper<U>(x); }
 
 
 template <typename Dest, typename Response, typename ... Args>
@@ -459,7 +632,7 @@ struct remote_method : proxy_method<Dest>
 	method_type method;
 
 	remote_method(remote_proxy<Dest>* _proxy, method_type _meth, const string& _name)
-	: proxy_method<Dest>(_proxy, std::is_same<Response, oneway>::value, _name), 
+	: proxy_method<Dest>(_proxy, false, _name), 
 		method(_meth) 
 	{ }
 
@@ -467,45 +640,119 @@ struct remote_method : proxy_method<Dest>
 	{
 		this->transmit_request(message_size(args...));
 		Response r = (this->proxy->proc()->* (this->method))(
-			std::forward<Args>(context_unwrap(args))...);
-		if(! std::is_same<Response, oneway>::value )
+			std::forward<Args>(args)...
+			);
+		if(! __omit_response(r) )
 			this->transmit_response(message_size(r));
 		return r;
 	}
 };
 
+
+template <typename Dest, typename ... Args>
+struct remote_method<Dest, void, Args...> : proxy_method<Dest>
+{
+	typedef	void (Dest::* method_type)(Args...);
+	method_type method;
+
+	remote_method(remote_proxy<Dest>* _proxy, method_type _meth, const string& _name)
+	: proxy_method<Dest>(_proxy, true, _name), method(_meth) 
+	{ }
+
+	inline void operator()(Args...args) const
+	{
+		this->transmit_request(message_size(args...));
+		(this->proxy->proc()->* (this->method))
+			(
+			std::forward<Args>(args)...
+			);
+	}
+};
+
+
 template <typename T, typename Response, typename...Args>
 inline remote_method<T, Response, Args...> 
-make_remote_method(remote_proxy<T>* owner, Response (T::*method)(Args...))
+make_remote_method(
+	remote_proxy<T>* owner, 
+	Response (T::*method)(Args...), 
+	const string& _name
+	)
 {
-	return remote_method<T, Response, Args...>(owner, method);
+	return remote_method<T, Response, Args...>(owner, method, _name);
 }
 
 #define REMOTE_METHOD(RClass, RMethod)\
  decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
- 	&RClass::RMethod)) RMethod { this, &RClass::RMethod, #RMethod }
+ 	&RClass::RMethod, #RMethod )) RMethod  \
+ { this, &RClass::RMethod, #RMethod }
 
 
 
 /*	----------------------------------------
 
-	Messages for common types
+	Message utilities
 
 	--------------------------------------- */
 
 
-struct compressed_sketch
-{
-	const agms::sketch& sk;
-	size_t updates;
+/**
+	Subclasses of context can pass arguments free of 
+	cost.
 
-	size_t byte_size() const {
-		size_t E_size = dds::byte_size(sk);
-		size_t Raw_size = sizeof(dds_record)*updates;
-		return std::min(E_size, Raw_size);
-	}
+	Theoretically, the arguments passed in this way are included
+	in the middleware. Examples include: 
+	- the sender host
+	- a Lamport timestamp
+ */
+struct call_context {
+	size_t byte_size() const { return 0; }
 };
 
+
+/**
+	Passing a pointer to the sender of a message as context.
+
+	To use this, declare a remote method as
+	```
+	ret_type  my_remote(sender<sender_host> ctx, ...);
+	```
+  */
+template <typename T>
+struct sender : public call_context
+{
+	T* const value;
+	sender(T* _h) : value(_h) {}
+};
+
+
+
+/**
+	Wraps a pointer to the message.
+
+	When a message object of type `T` is too big to pass by copy, declrare
+	the remote method to accept `msgwrapper<T>`. Call the remote method
+	using `wrap(&msg)`. The message size will be computed as
+	`byte_size((const T&) *(&msg))`.
+  */
+template <typename T>
+struct msgwrapper
+{
+	T* payload;
+	msgwrapper(T* _p) : payload(_p){}
+	inline size_t byte_size() const { return byte_size((const T&) *payload); }
+};
+
+/**
+	Return a msgwrapper on the argument.
+  */
+template <typename T>
+msgwrapper<T> wrap(T* p) { return msgwrapper<T>(p); }
+
+/**
+	Return a msgwrapper on the argument.
+  */
+template <typename T>
+msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
 
 
 

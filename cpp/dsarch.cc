@@ -1,13 +1,23 @@
 
 #include <iostream>
 #include <vector>
+#include <boost/core/demangle.hpp>
+
 #include "dsarch.hh"
 #include "results.hh"
-
+#include "method.hh"
 
 namespace dds{
 
 using namespace std;
+
+//-------------------
+//
+//  host
+//
+//-------------------
+
+
 
 host::host(basic_network* n, bool _b) 
 : _net(n), _bcast(_b)
@@ -30,6 +40,14 @@ host_group::host_group(basic_network* n)
 { }
 
 
+//-------------------
+//
+//  host group
+//
+//-------------------
+
+
+
 void host_group::join(host* h)
 {
 	if(h->is_bcast())
@@ -38,8 +56,16 @@ void host_group::join(host* h)
 }
 
 
-channel::channel(host* _src, host* _dst, size_t _rpcc, chan_dir _dir) 
-	: src(_src), dst(_dst), rpcc(_rpcc), dir(_dir), msgs(0), byts(0) 
+//-------------------
+//
+//  channel
+//
+//-------------------
+
+
+
+channel::channel(host* _src, host* _dst, rpcc_t _rpcc) 
+	: src(_src), dst(_dst), rpcc(_rpcc), msgs(0), byts(0) 
 {  }
 
 
@@ -50,97 +76,60 @@ void channel::transmit(size_t msg_size)
 }
 
 
-channel* basic_network::connect(host* src, host* dst, size_t endp, chan_dir dir)
+//-------------------
+//
+//  basic network
+//
+//-------------------
+
+
+
+
+channel* basic_network::connect(host* src, host* dst, rpcc_t endp)
 {
 	// check for existing channel
 	for(auto chan : dst->_incoming) {
 		assert(chan->dst == dst);
-		if(chan->src == src && chan->rpcc==endp && chan->dir==dir)
+		if(chan->src == src && chan->rpcc==endp)
 			return chan;
 	}
 
 	// create new channel
-	channel* chan = new channel(src, dst, endp, dir);
+	channel* chan = new channel(src, dst, endp);
 
 	// add it to places
 	_channels.insert(chan);
 	dst->_incoming.insert(chan);
 
-
 	return chan;
 }
 
 
-size_t basic_network::get_ifc(const std::type_info& ti)
+rpcc_t basic_network::decl_interface(const std::type_info& ti)
 {
-	return get_ifc(type_index(ti));
+	return decl_interface(type_index(ti));
 }
 
-size_t basic_network::get_ifc(const type_index& tix)
+rpcc_t basic_network::decl_interface(const type_index& tix)
 {
-	return get_ifc(string(tix.name()));
+	return decl_interface(boost::core::demangle(tix.name()));
 }
 
-size_t basic_network::get_ifc(const string& name)
+rpcc_t basic_network::decl_interface(const string& name)
 {
-	if(rpc_ifc.find(name)!=rpc_ifc.end()) {
-		return rpc_ifc[name];
-	}
-
-	// new ifc, create index entry
-	rpc_ifc_uuid += 1000;
-	size_t ifcode = rpc_ifc_uuid;
-	rpc_ifc[name] = ifcode;
-	ifc_rpc[ifcode] = name;
-	rpcc_uuid[ifcode] = 0;
-	return ifcode;
+	return rpctab.declare(name);
 }
 
 
-bool basic_network::is_legal_ifc(size_t ifc)
+
+rpcc_t basic_network::decl_method(rpcc_t ifc, const string& name, bool onew)
 {
-	return ifc_rpc.find(ifc)!=ifc_rpc.end();
-}
-
-bool basic_network::is_legal_rpcc(size_t rpcc)
-{
-	return rpcc_rmi.find(rpcc)!=rpcc_rmi.end();
-}
-
-string basic_network::get_rpcc_name(size_t rpcc)
-{
-	if(! is_legal_rpcc(rpcc))
-		throw std::invalid_argument("invalid rpcc");
-	auto rmi = rpcc_rmi[rpcc];
-	return ifc_rpc[rmi.first]+"::"+rmi.second;
-}
-
-
-size_t basic_network::get_rpcc(size_t ifc, const string& name)
-{
-	std::pair<size_t, string> rmi = std::make_pair(ifc, (string)name);
-
-	if(! is_legal_ifc(ifc)) 
-		throw std::invalid_argument("illegal interface code");
-
-	if(rmi_rpcc.find(rmi)!=rmi_rpcc.end()) {
-		return rmi_rpcc[rmi];
-	}
-
-	if(rpcc_uuid[ifc]>=999)
-		throw std::length_error("too many methods in interface");
-
-	// make new entry
-	size_t rpcc = ++ rpcc_uuid[ifc];
-	rmi_rpcc[rmi] = rpcc;
-	rpcc_rmi[rpcc] = rmi;
-	return rpcc;
+	return rpctab.declare(ifc, name, onew);
 }
 
 
 
 basic_network::basic_network()
-: rpc_ifc_uuid(0)
 { }
 
 
@@ -166,6 +155,108 @@ void basic_network::comm_results_fill_in()
 }
 
 
+//-------------------
+//
+//  RPC interface
+//
+//-------------------
+
+
+
+static inline size_t __method_index(rpcc_t rpcc) {
+	if((rpcc & RPCC_METH_MASK)==0)
+		throw std::invalid_argument("invalid method code");
+	return ((rpcc & RPCC_METH_MASK)>>1)-1;
+}
+
+rpc_interface::rpc_interface() 
+{}
+
+rpc_interface::rpc_interface(rpcc_t _c, const string& _n) 
+: rpc_obj(_c), named(_n) 
+{}
+
+rpcc_t rpc_interface::declare(const string& mname, bool onew) 
+{
+	auto it = name_map.find(mname);
+	if(it!=name_map.end()) {
+		rpc_method& method = methods[it->second];
+		assert(method.name()==mname);
+		if(method.one_way != onew)
+			throw std::logic_error("method redeclared with different way");
+		return method.rpcc;
+	}
+
+	if(methods.size()<<1 == RPCC_METH_MASK)
+		throw std::length_error("too many methods in interface");
+
+	if(mname.size()==0)
+		throw std::invalid_argument("empty method name");
+
+	rpcc_t mrpcc = rpcc | ((methods.size()+1)<<1);
+	name_map[mname] = methods.size();
+	methods.emplace_back(mrpcc, mname, onew);
+	return mrpcc;
+}
+
+const rpc_method& rpc_interface::get_method(rpcc_t rpcc) const 
+{
+	return  methods.at( __method_index(rpcc) );
+}
+
+
+//-------------------
+//
+//  RPC protocol
+//
+//-------------------
+
+static inline size_t __ifc_index(rpcc_t rpcc) {
+	if((rpcc & RPCC_IFC_MASK)==0)
+		throw std::invalid_argument("invalid interface code");
+	return (rpcc >> RPCC_BITS_PER_IFC)-1;
+}
+
+rpcc_t rpc_protocol::declare(const string& name) 
+{
+	auto it = name_map.find(name);
+	if(it != name_map.end()) {
+		return ifaces[it->second].rpcc;
+	} 
+	if(name.size()==0)
+		throw std::invalid_argument("empty interface name");
+	// create new
+	rpcc_t irpcc = (ifaces.size()+1) << RPCC_BITS_PER_IFC;
+	name_map[name] = ifaces.size();
+	ifaces.emplace_back(irpcc, name);
+	return irpcc;
+}
+
+rpcc_t rpc_protocol::declare(rpcc_t ifc, const string& mname, bool onew) 
+{
+	return ifaces[__ifc_index(ifc)].declare(mname, onew);
+}
+
+const rpc_interface& rpc_protocol::get_interface(rpcc_t rpcc) const 
+{
+	return ifaces.at(__ifc_index(rpcc));
+}
+
+const rpc_method& rpc_protocol::get_method(rpcc_t rpcc) const 
+{
+	return ifaces.at(__ifc_index(rpcc)).get_method(rpcc);
+}
+
+
+//-------------------
+//
+//  RPC proxy
+//
+//-------------------
+
+
+
+
 rpc_proxy::rpc_proxy(size_t ifc, host* _own)
 : _r_ifc(ifc), _r_owner(_own)
 { 
@@ -174,7 +265,7 @@ rpc_proxy::rpc_proxy(size_t ifc, host* _own)
 
 
 rpc_proxy::rpc_proxy(const string& name, host* _own) 
-: rpc_proxy(_own->net()->get_ifc(name), _own) 
+: rpc_proxy(_own->net()->decl_interface(name), _own) 
 { }
 
 size_t rpc_proxy::_r_register(rpc_call* call) {
@@ -194,9 +285,17 @@ void rpc_proxy::_r_connect(host* dst)
 }
 
 
+//-------------------
+//
+//  RPC call
+//
+//-------------------
+
+
+
 rpc_call::rpc_call(rpc_proxy* _prx, bool _oneway, const string& _name)
 : _proxy(_prx), 
-	_endpoint(_prx->_r_owner->net()->get_rpcc(_prx->_r_ifc,_name)), 
+	_endpoint(_prx->_r_owner->net()->decl_method(_prx->_r_ifc,_name, _oneway)), 
 	one_way(_oneway)
 {
 	_prx->_r_register(this);
@@ -209,9 +308,9 @@ void rpc_call::connect(host* dst)
 	host* owner = _proxy->_r_owner;
 
 	assert(! dst->is_bcast()); // for now...
-	_req_chan = nw->connect(owner, dst, _endpoint, chan_dir::REQ);
+	_req_chan = nw->connect(owner, dst, _endpoint);
 	if(! one_way)
-		_resp_chan = nw->connect(dst, owner, _endpoint, chan_dir::RSP);
+		_resp_chan = nw->connect(dst, owner, _endpoint | RPCC_RESP_MASK);
 }
 
 

@@ -27,7 +27,7 @@ void node::update_stream()
 	int dbw = bwnew - bitweight;
 	if(dbw>0) {
 		bitweight = bwnew;
-		coord.threshold_crossed(this, dbw );
+		coord.threshold_crossed(this, dbw);
 	}
 }
 
@@ -77,9 +77,10 @@ void coordinator::start_round()
 
 
 // remote call on host violation
-oneway coordinator::threshold_crossed(node* n , int delta_bits)
+oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 {
 	const int MAX_LEVEL = 4;
+	node* n = ctx.value;
 
 	assert(delta_bits>0);
 	size_t nid = node_index[n];
@@ -117,7 +118,6 @@ oneway coordinator::threshold_crossed(node* n , int delta_bits)
 		}
 	}
 
-	return oneway();
 }
 
 
@@ -269,7 +269,8 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 
 
 gm2::network::network(stream_id _sid, const projection& _proj, double _beta)
-: sid(_sid), proj(_proj), beta(_beta) 
+: 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
+	sid(_sid), proj(_proj), beta(_beta) 
 {
 	setup(proj, beta);
 	on(START_STREAM, [&]() { 

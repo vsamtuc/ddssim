@@ -1,6 +1,11 @@
-#include <cxxtest/TestSuite.h>
 
+#include <memory>
 #include <string>
+#include <boost/range/adaptors.hpp>
+
+#include <cxxtest/TestSuite.h>
+class ArchTestSuite;
+#define DSARCH_CXXTEST_RUNNING
 #include "dsarch.hh"
 #include "binc.hh"
 
@@ -22,13 +27,17 @@ struct Echo : process
 		return string("Echoing ")+msg;
 	}
 
-	ACK send_int(int i) { value=i; return ACK(); }
+	Acknowledge<int> send_int(int i) { 
+		value=i; 
+		if(value<0) return NAK;
+		return i+1;
+	}
 	int get_int() { return value; }
 
-	ACK init() { return ACK(); }
+	Ack init() { return NAK; }
 
-	oneway say_bye(const string& msg) { value=-1; return oneway(); }
-	oneway finish() { return oneway(); }
+	oneway say_bye(const string& msg) { value=-1; }
+	oneway finish() {  }
 
 	int add(int x, int y) { return x+y; }
 };
@@ -77,15 +86,50 @@ public:
 
 	void test_network()
 	{
+		using std::unique_ptr;
 		basic_network nw;
 
-		host* h1 = new host(&nw);
-		host* h2 = new host(&nw);
+		Echo* srv { new Echo(&nw) };
+		const size_t Ncli = 5;
+		Echo_cli* cli[Ncli];
+		for(size_t i=0;i<Ncli;i++) { 
+			cli[i] = new Echo_cli(&nw);
+			cli[i]->proxy <<= srv;
+		};
 
-		TS_ASSERT_EQUALS(nw.hosts().size(), 2);
-		TS_ASSERT_EQUALS(nw.size(), 2);
+		TS_ASSERT_EQUALS(nw.hosts().size(), Ncli+1);
+		TS_ASSERT_EQUALS(nw.size(), Ncli+1);
+		TS_ASSERT_EQUALS(nw.groups().size(), 0);
+		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli);
 
-	}	
+		size_t Echo_ifc = 1 << RPCC_BITS_PER_IFC;
+		TS_ASSERT_EQUALS(nw.decl_interface(typeid(Echo)), Echo_ifc);
+
+		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).name(), string("Echo"));
+		using namespace std::string_literals;
+		string methods[7] = {
+			"echo"s, "send_int"s, "get_int"s, "init"s,
+			"say_bye"s, "finish"s, "add"s
+		};
+		for(size_t i=0; i<7; i++) {
+			TS_ASSERT_EQUALS(nw.rpc().get_method(Echo_ifc| 2*(i+1)).name(), 
+				methods[i]);
+		}
+
+
+		for(size_t i=0; i<Ncli; i++) {
+			TS_ASSERT_EQUALS(cli[i]->proxy._r_ifc, 
+										nw.decl_interface(typeid(Echo)));
+			TS_ASSERT_EQUALS(cli[i]->proxy._r_owner, cli[i]);
+			TS_ASSERT_EQUALS(cli[i]->proxy._r_proc, srv);
+			TS_ASSERT_EQUALS(cli[i]->proxy._r_calls.size(), 7);
+			for(size_t j=0;j<cli[i]->proxy._r_calls.size();j++) {
+				TS_ASSERT_EQUALS(cli[i]->proxy._r_calls[j]->endpoint(), 
+					Echo_ifc| 2*(j+1));
+			}
+		}
+
+	}
 
 
 	void test_rpc()
@@ -94,7 +138,13 @@ public:
 
 		Echo* srv = new Echo(&nw);
 		Echo_cli* cli = new Echo_cli(&nw);
+
+		TS_ASSERT_EQUALS(nw.channels().size(), 0);
+
 		cli->proxy <<= srv;
+
+
+
 
 		TS_ASSERT_EQUALS(cli->proxy._r_proc, srv);
 		TS_ASSERT_EQUALS(cli->proxy._r_calls.size(), 7);
@@ -110,8 +160,6 @@ public:
 		cli->proxy.say_bye("bye");
 
 		cli->proxy.finish();
-
-		print(nw.get_rpcc_name(cli->proxy.finish.endpoint()));
 
 	}
 

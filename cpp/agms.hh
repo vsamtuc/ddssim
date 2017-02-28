@@ -414,6 +414,30 @@ public:
 
 
 
+/**
+	Wrapper for a sketch and number of updates.
+
+	This class wraps a reference to a sketch together with 
+	a count of the updates it contains. The byte size of this 
+	object is computed to be the minimum of the size of the
+	sketch and the size of all the updates.
+
+	TODO: currently the size of the updates is overestimated.
+  */
+struct compressed_sketch
+{
+	const agms::sketch& sk;
+	size_t updates;
+
+	size_t byte_size() const {
+		size_t E_size = dds::byte_size(sk);
+		size_t Raw_size = sizeof(dds::dds_record)*updates;
+		return std::min(E_size, Raw_size);
+	}
+};
+
+
+
 
 
 }  // end namespace agms

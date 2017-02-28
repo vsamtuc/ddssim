@@ -11,6 +11,7 @@
 #include "dsarch.hh"
 #include "agms.hh"
 #include "safezone.hh"
+#include "method.hh"
 
 using std::cout;
 using std::endl;
@@ -176,7 +177,9 @@ struct node :
 
 struct network : star_network<network, coordinator, node>
 {
-	network(projection _proj) {
+	network(projection _proj)
+	: star_network<network, coordinator, node>(CTX.metadata().source_ids())
+	{
 		setup(_proj);
 	}
 };
@@ -415,7 +418,7 @@ struct coordinator : process
 	void finish_round();
 
 	// remote call on host violation
-	oneway threshold_crossed(node* n, int delta_bitw);
+	oneway threshold_crossed(sender<node> ctx, int delta_bitw);
 };
 
 
@@ -458,7 +461,10 @@ struct node : local_site
 
 	void update_stream();
 
+	//
 	// Remote methods
+	//
+
 	oneway reset(const safezone& newsz) { 
 		// reset the safezone object
 		(sketch&)U = 0.0;
@@ -468,8 +474,6 @@ struct node : local_site
 		szone.prepare_inc(U);
 		zeta = minzeta = szone.zeta_E;
 		reset_bitweight(szone.zeta_E/2);
-
-		return oneway();
 	}
 
 	double get_zeta() {
@@ -481,7 +485,6 @@ struct node : local_site
 		zeta_0 = zeta;
 		zeta_quantum = Z;
 		bitweight = 0;
-		return oneway();
 	}
 
 	compressed_sketch get_drift() {

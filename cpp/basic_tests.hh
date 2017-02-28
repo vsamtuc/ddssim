@@ -5,12 +5,15 @@
 #include <cstdio>
 #include <valarray>
 #include <typeinfo>
+#include <unordered_map>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_sparse.hpp>
 #include <boost/numeric/ublas/vector_proxy.hpp>
 #include <boost/numeric/ublas/io.hpp>
 #include <boost/numeric/ublas/storage.hpp>
+
+#include <boost/range/adaptors.hpp>
 
 #include "dds.hh"
 #include "output.hh"
@@ -31,6 +34,13 @@ class MiscTestSuite : public CxxTest::TestSuite
 {
 public:
 
+	void test_range()
+	{
+		using namespace boost::adaptors;
+
+		std::unordered_map<double, int> x { {1.0, 10}, {2.0, 20} };
+		print(elements_of(x | map_keys));
+	}
 
 	void test_print()
 	{

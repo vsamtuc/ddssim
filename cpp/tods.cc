@@ -19,7 +19,9 @@ using namespace dds::tods;
 
 tods::network::network(const projection& _proj, double _theta, 
 	const set<stream_id>& _streams)
-: streams(_streams), proj(_proj), theta(_theta)
+: 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
+	streams(_streams), 
+	proj(_proj), theta(_theta)
 {
 
 }
@@ -89,7 +91,6 @@ oneway coordinator::update(source_id hid, stream_id sid,
 	const node_stream_state& nss)
 {
 	stream_state[sid]->Etot += nss.dE;
-	return oneway();
 }
 
 
