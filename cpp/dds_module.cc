@@ -646,8 +646,13 @@ BOOST_PYTHON_MODULE(_dds)
 		("comm_results_t")
 		;
 
+	// class_< dds::local_stream_stats_t, bases<dds::result_table>, boost::noncopyable>
+	// 	("local_stream_stats_t")
+	// 	;
+
+
 	try {
-		scope().attr("lsstats") = ptr(&dds::lsstats);
+		scope().attr("lsstats") = py::ptr((dds::output_table*)&dds::lsstats);
 		scope().attr("comm_results") = py::ptr(&dds::comm_results);
 	} catch(std::exception e) {
 		print("Error in binding result tables",e.what());

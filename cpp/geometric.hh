@@ -406,6 +406,8 @@ struct coordinator : process
 	int bit_level;
 	size_t round_updates;
 
+	// report the series 
+	computed<double> Qest_series;
 
 	coordinator(network* nw, const projection& proj, double beta); 
 

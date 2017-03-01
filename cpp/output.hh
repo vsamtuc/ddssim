@@ -7,6 +7,7 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <functional>
 #include <algorithm>
 #include <typeinfo>
 #include <typeindex>
@@ -41,13 +42,12 @@ protected:
 	type_index _type;
 	size_t _size;
 	size_t _align;
+
 	friend class output_table;
 public:
-	basic_column(const string& _name, const string& f, 
-		const type_info& _t, size_t _s, size_t _a)
-	: named(_name), _table(0), _format(f), 
-		_type(_t), _size(_s), _align(_a)
-	 { }
+	basic_column(
+		output_table* _tab, const string& _name, const string& f, 
+		const type_info& _t, size_t _s, size_t _a);
 
 	basic_column(const basic_column&)=delete;
 	basic_column(const basic_column&&)=delete;
@@ -72,11 +72,17 @@ class column : public basic_column
 protected:
 	T val;
 public:
+	column(output_table* _tab, const string& _n, const string& fmt) 
+	: basic_column(_tab, _n, fmt, typeid(T), sizeof(T), alignof(T)) { }
+
 	column(const string& _n, const string& fmt) 
-	: basic_column(_n, fmt, typeid(T), sizeof(T), alignof(T)) { }
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)) { }
+
+	column(output_table* _tab, const string& _n, const string& fmt, const T& _v) 
+	: basic_column(_tab, _n, fmt, typeid(T), sizeof(T), alignof(T)), val(_v) { }
 
 	column(const string& _n, const string& fmt, const T& _v) 
-	: basic_column(_n, fmt, typeid(T), sizeof(T), alignof(T)), val(_v) { }
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), val(_v) { }
 
 	inline T value() const { return val; }
 	inline T& value() { return val; }
@@ -85,7 +91,6 @@ public:
 		fprintf(s, format(), value());
 	}
 	void copy(void* ptr) { memcpy(ptr, &val, _size); }
-
 };
 
 template <>
@@ -95,14 +100,26 @@ protected:
 	const size_t maxlen;
 	string val;
 public:
-	column(const string& _n, size_t _maxlen, const string& fmt) 
-	: basic_column(_n, fmt, 
+	column(output_table* _tab, const string& _n, size_t _maxlen, const string& fmt) 
+	: basic_column(_tab, _n, fmt, 
 		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
 		maxlen(_maxlen) 
 		{ }
 
+	column(const string& _n, size_t _maxlen, const string& fmt) 
+	: basic_column(nullptr, _n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+		maxlen(_maxlen) 
+		{ }
+
+	column(output_table* _tab, const string& _n,  size_t _maxlen, const string& fmt, const string& _v) 
+	: basic_column(_tab, _n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
+			maxlen(_maxlen), val(_v) 
+		{ }
+
 	column(const string& _n,  size_t _maxlen, const string& fmt, const string& _v) 
-	: basic_column(_n, fmt, 
+	: basic_column(nullptr, _n, fmt, 
 		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])), 
 			maxlen(_maxlen), val(_v) 
 		{ }
@@ -122,13 +139,84 @@ public:
 	}
 };
 
+
+//
+//
+//  Some other types of basic_column, used mostly for time-series
+// 
+//
+
+/**
+	A column whose value is computed by a function
+  */
+template <typename T>
+struct computed : basic_column
+{
+	static_assert(std::is_arithmetic<T>::value, 
+		"Computed column on non-arithmentic type");
+protected:
+	std::function<T()> func;
+
+public:
+	computed(const string& _n, const string& fmt, 
+		const std::function<T()> _f) 
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), func(_f) { }
+
+	inline T value() const { return func(); }
+
+	void emit(FILE* s) override {
+		fprintf(s, format(), value());
+	}
+	void copy(void* ptr) {
+		T val = func();
+		memcpy(ptr, &val, _size); 
+	}
+};
+
+
+/**
+  A column which refers to an external variable.
+  */
+template <typename T>
+struct column_ref : basic_column
+{
+	static_assert(std::is_arithmetic<T>::value, 
+		"column_ref on non-arithmentic type");
+protected:
+	T& ref;
+
+public:
+	column_ref(const string& _n, const string& fmt, 
+		T& _r) 
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), ref(_r) { }
+
+	inline T value() const { return ref; }
+
+	void emit(FILE* s) override {
+		fprintf(s, format(), value());
+	}
+	void copy(void* ptr) {
+		memcpy(ptr, &ref, _size); 
+	}
+};
+
+
+
+
+
 class output_file;
 class output_table;
-struct __binding;
+struct output_binding;
 
-struct __binding 
+/**
+	An object that binds an output table to an output file.
+
+	These objects are created by the `bind()` methods in `output_file`
+	an `output_table`.
+  */
+struct output_binding 
 {
-	typedef std::list<__binding*> list;
+	typedef std::list<output_binding*> list;
 	typedef typename list::iterator iter;
 
 	output_file* file;
@@ -136,12 +224,13 @@ struct __binding
 	iter in_file_list, in_table_list;
 
 	bool enabled;
-	__binding(output_file* f, output_table* t);
-	~__binding();
+	output_binding(output_file* f, output_table* t);
+	~output_binding();
 	static void unbind_all(list&);
-	static __binding* find(list&, output_file*);
-	static __binding* find(list&, output_table*);
+	static output_binding* find(list&, output_file*);
+	static output_binding* find(list&, output_table*);
 };
+
 
 /**
 	Indicates the use for an output table
@@ -151,52 +240,91 @@ enum class table_flavor {
 	TIMESERIES
 };
 
+
+/**
+	An output table.
+
+	An output table contains a collection of columns.
+	Also, an output table can be bound to one or more output files.
+	During normal operations, when the `emit_row()` method is called,
+	each bound output file in turn processes the current values of
+	the columns to generate a row of output.
+
+	Columns can be added to a table at initialization time.
+	Once the columns are all added, and all output files are bound,
+	the `prolog()` method should be called.
+	After this point, it is legal to call `emit_row()`, therefore
+	columns should not be changed, nor should output files be 
+	bound or unbound.
+	However, once the `epilog()` method is called, 
+	columns can be added/removed again, and files can be bound or 
+	unbound. This design allows columns to be stored separately (in other
+	objects) and be added to a table in a preparation phase. 
+
+	There are two distinct ways to orchestrate the output process.
+
+	- A unique process that calls `emit_row()` when it decides, e.g.
+	periodically during a simulation. In this model, each column is 
+	kept updated independently, and is ready to be output at any time.
+	Since no 'central' location needs to know the state of all columns,
+	columns can be added by modules as they see fit.
+	This model is particularly suited to time-series output.
+
+	- Many processes can call `emit_output()` when they have output
+	for this table. However, they should be careful to initialize
+	every column of the table. 
+
+  */
 class output_table : public named
 {
 protected:
-	bool en;
-	std::vector<basic_column *> columns;
-	friend class basic_column;
-	inline void __associate(basic_column* col, size_t _i) {
-		if(col->_table)
-			throw std::runtime_error("column already added to a table");
-		col->_table = this;
-		col->_index = _i;
+	bool en;					// enabled flag
+	std::vector<basic_column *> columns;	// the columns
+	output_binding::list files;	// the bindings
+	bool _locked;				// signal that the table allows updates
+	bool _dirty;				// signal that columns have been deleted
+	table_flavor _flavor;		// advice to files/formats
+
+	void _check_unlocked() {
+		if(_locked) throw std::logic_error("cannot modify locked output_table");
 	}
 
-	__binding::list files;
-	friend struct __binding;
+	void _cleanup();
 
-	table_flavor _flavor;
+	friend struct output_binding;
+	friend class basic_column;
 public:
 	output_table(const string& _name, table_flavor _f);
 	virtual ~output_table();
 
-	inline void add(basic_column& col) {
-		__associate(&col, columns.size());
-		columns.push_back(&col); 
-	}
+	void add(basic_column& col);
+
+	void remove(basic_column& col);
 
 	void bind(output_file* f) { 
-		if(__binding::find(files, f)==0)
-			new __binding(f, this); 
+		_check_unlocked();
+		if(output_binding::find(files, f)==0)
+			new output_binding(f, this); 
 	}
 
 	template <typename T>
 	void bind_all(T& ctr) {
+		_check_unlocked();
 		std::for_each(std::begin(ctr), std::end(ctr), 
 			[&](output_file* f){ bind(f); } );
 	}
 
 	void unbind(output_file* f) {
-		auto b = __binding::find(files, f);
+		_check_unlocked();
+		auto b = output_binding::find(files, f);
 		if(b) delete b;
 	}
 
 	inline auto bindings() const { return files; }
 
 	void unbind_all() {
-		__binding::unbind_all(files);
+		_check_unlocked();
+		output_binding::unbind_all(files);
 	}
 
 	inline table_flavor flavor() const { return _flavor; }
@@ -246,8 +374,8 @@ const open_mode default_open_mode = open_mode::truncate;
 class output_file 
 {
 protected:
-	__binding::list tables;
-	friend struct __binding;
+	output_binding::list tables;
+	friend struct output_binding;
 public:
 	output_file();
 	output_file(const output_file&)=delete;
@@ -259,16 +387,16 @@ public:
 	virtual ~output_file();
 
 	void bind(output_table& t) { 
-		if(__binding::find(tables, &t)==0)
-			new __binding(this, &t); 
+		if(output_binding::find(tables, &t)==0)
+			new output_binding(this, &t); 
 	}
 	void unbind(result_table& t) {
-		auto b = __binding::find(tables, &t);
+		auto b = output_binding::find(tables, &t);
 		if(b) delete b;
 	}
 	inline auto bindings() const { return tables; }
 	void unbind_all() {
-		__binding::unbind_all(tables);
+		output_binding::unbind_all(tables);
 	}
 
 	virtual void flush() { }

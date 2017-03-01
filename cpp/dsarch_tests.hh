@@ -70,7 +70,9 @@ struct Echo_cli : process
 
 	string send_echo(string msg) {
 		proxy.init();
-		proxy.send_int(10);
+		auto ret = proxy.send_int(10);
+		TS_ASSERT( ret );
+		TS_ASSERT_EQUALS( ret.payload , 11);
 		return proxy.echo(msg);		
 	}
 
@@ -100,10 +102,12 @@ public:
 		TS_ASSERT_EQUALS(nw.hosts().size(), Ncli+1);
 		TS_ASSERT_EQUALS(nw.size(), Ncli+1);
 		TS_ASSERT_EQUALS(nw.groups().size(), 0);
-		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli);
 
 		size_t Echo_ifc = 1 << RPCC_BITS_PER_IFC;
 		TS_ASSERT_EQUALS(nw.decl_interface(typeid(Echo)), Echo_ifc);
+
+		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).num_channels(), 12);
+		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli);
 
 		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).name(), string("Echo"));
 		using namespace std::string_literals;
@@ -115,7 +119,6 @@ public:
 			TS_ASSERT_EQUALS(nw.rpc().get_method(Echo_ifc| 2*(i+1)).name(), 
 				methods[i]);
 		}
-
 
 		for(size_t i=0; i<Ncli; i++) {
 			TS_ASSERT_EQUALS(cli[i]->proxy._r_ifc, 
@@ -132,35 +135,60 @@ public:
 	}
 
 
-	void test_rpc()
+	void test_rpc_channels()
 	{
 		basic_network nw;
 
 		Echo* srv = new Echo(&nw);
 		Echo_cli* cli = new Echo_cli(&nw);
 
+		// no channels yet
 		TS_ASSERT_EQUALS(nw.channels().size(), 0);
 
+		// creates channels
 		cli->proxy <<= srv;
 
+		chan_frame chan(nw);
 
+		TS_ASSERT_EQUALS(chan.size(), 
+			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels()
+			);
 
+		TS_ASSERT_EQUALS(chan.count(), 0);
+		TS_ASSERT_EQUALS(chan.sum(), 0);
+		TS_ASSERT_EQUALS(chan.src(srv).size(), 5);
+		TS_ASSERT_EQUALS(chan.dst(srv).size(), 7);
+
+		TS_ASSERT_EQUALS(chan.endp_req().size(), 7);
+		TS_ASSERT_EQUALS(chan.endp_rsp().size(), 5);
 
 		TS_ASSERT_EQUALS(cli->proxy._r_proc, srv);
 		TS_ASSERT_EQUALS(cli->proxy._r_calls.size(), 7);
 
 		TS_ASSERT_EQUALS( cli->send_echo("Hi"), "Echoing Hi" );
-		TS_ASSERT_EQUALS( cli->proxy.echo.request_channel()->messages(), 1);
-		TS_ASSERT_EQUALS( cli->proxy.send_int.request_channel()->messages(), 1);
-		TS_ASSERT_EQUALS( cli->proxy.init.request_channel()->messages(), 1);
+		// The above call executed
+		//  srv-> init()      returning NAK
+		//  srv-> send_int(10) returning Acknoledge<int>(11)
+		//  srv-> echo("Hi")  returning "Echoing Hi"
+
+		TS_ASSERT_EQUALS(chan.src(srv).count(), 2);
+		TS_ASSERT_EQUALS(chan.dst(srv).count(), 3);
+		TS_ASSERT_EQUALS(chan.count(), 5);
+
+		TS_ASSERT_EQUALS(chan.src(srv).sum(), sizeof(int)+10);
+		TS_ASSERT_EQUALS(chan.dst(srv).sum(), sizeof(int)+2);
+		TS_ASSERT_EQUALS(chan.sum(), 2*sizeof(int) + 12);
+
 
 		TS_ASSERT_EQUALS( cli->get_int(), 10);
-
-
+		TS_ASSERT( cli->proxy.send_int(10) );     // returns Ack(11)
+		TS_ASSERT( !cli->proxy.send_int(-10) );   // returns NAK
+		TS_ASSERT_EQUALS( cli->get_int(), -10);
 		cli->proxy.say_bye("bye");
-
 		cli->proxy.finish();
 
+		TS_ASSERT_EQUALS(chan.endp_req().count(), 9);
+		TS_ASSERT_EQUALS(chan.endp_rsp().count(), 5);
 	}
 
 };

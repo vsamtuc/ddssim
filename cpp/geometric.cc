@@ -135,7 +135,9 @@ void coordinator::finish_round()
 	}
 	newE /= (double)k;
 
-//#define VALIDATE_INVARIANTS
+#if 0
+
+#define VALIDATE_INVARIANTS
 #ifdef VALIDATE_INVARIANTS
 
 	//
@@ -233,7 +235,7 @@ void coordinator::finish_round()
 		emit(RESULTS);
 	}
 
-
+#endif
 
 	// new round
 	query.update_estimate(newE);
@@ -257,8 +259,13 @@ void coordinator::setup_connections()
 
 
 coordinator::coordinator(network* nw, const projection& proj, double beta)
-: process(nw), proxy(this), query(beta, proj), total_updates(0), in_naive_mode(true), k(proxy.size())
-{  }
+: 	process(nw), proxy(this), 
+	query(beta, proj), total_updates(0), 
+	in_naive_mode(true), k(proxy.size()),
+	Qest_series("gm2_", "%.10g", [&]() { return k*k*query.Qest;} )
+{  
+	CTX.timeseries.add(Qest_series);
+}
 
 
 /*********************************************

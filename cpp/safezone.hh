@@ -223,6 +223,7 @@ struct selfjoin_agms_safezone : safezone_base
 struct selfjoin_query
 {
 	double beta; 	// the overall precision
+	double epsilon; // the assumed precision of the sketch
 	sketch E;   	// The current estimate for the stream
 
 	double Qest; 	// current estimate
@@ -233,10 +234,10 @@ struct selfjoin_query
 	double zeta_E;
 
 	selfjoin_query(double _beta, projection _proj)
-	: beta(_beta), E(_proj)
+	: beta(_beta), epsilon(beta/2), E(_proj)
 	{
 		assert( norm_Linf(E)==0.0);
-		assert(_proj.epsilon() < beta);
+		assert( epsilon < beta );
 		compute();
 		assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
 	}
@@ -254,8 +255,8 @@ struct selfjoin_query
 		Qest = dot_est(E);
 
 		if(Qest>0) {
-			Tlow = (1+E.proj.epsilon())*Qest/(1.0+beta);
-			Thigh = (1-E.proj.epsilon())*Qest/(1.0-beta);
+			Tlow = (1+epsilon)*Qest/(1.0+beta);
+			Thigh = (1-epsilon)*Qest/(1.0-beta);
 			safe_zone = std::move(selfjoin_agms_safezone(*this)); 
 		}
 		else {

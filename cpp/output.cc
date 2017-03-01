@@ -16,59 +16,75 @@ using namespace dds;
 //
 //-------------------------------------
 
-
-
-basic_column::~basic_column()
-{
-	if(_table) {
-		_table->columns[_index] = 0;
-		_table->set_enabled(false);
-	}
-}
-
-
-
-__binding::__binding(output_file* f, output_table* t)
+output_binding::output_binding(output_file* f, output_table* t)
 : file(f), table(t), 
 	in_file_list(f->tables.insert(f->tables.end(),this)),
 	in_table_list(t->files.insert(t->files.end(), this)),
 	enabled(true)
 { }
 
-void __binding::unbind_all(__binding::list& L)
+void output_binding::unbind_all(output_binding::list& L)
 {
 	while(! L.empty()) {
-		__binding* b = L.front();
+		output_binding* b = L.front();
 		delete b;
 	}
 }
 
-__binding::~__binding()
+output_binding::~output_binding()
 {
 	file->tables.erase(in_file_list);
 	table->files.erase(in_table_list);
 }
 
 
-__binding* __binding::find(list& L, output_file* f)
+output_binding* output_binding::find(list& L, output_file* f)
 {
 	auto found = std::find_if(L.begin(), L.end(), 
-		[=](__binding* b){ return b->file==f; });
+		[=](output_binding* b){ return b->file==f; });
 	if(found==L.end())
 		return nullptr;
 	else
 		return *found;
 }
 
-__binding* __binding::find(list& L, output_table* t)
+output_binding* output_binding::find(list& L, output_table* t)
 {
 	auto found = std::find_if(L.begin(), L.end(), 
-		[=](__binding* b){ return b->table==t; });
+		[=](output_binding* b){ return b->table==t; });
 	if(found==L.end())
 		return nullptr;
 	else
 		return *found;
 }
+
+
+//-------------------------------------
+//
+// basic_column
+//
+//-------------------------------------
+
+
+basic_column::basic_column(output_table* _tab, const string& _name, 
+	const string& f, 
+	const type_info& _t, size_t _s, size_t _a)
+: named(_name), _table(nullptr), 
+	_format(f), 
+	_type(_t), _size(_s), _align(_a)
+ { 
+ 	if(_tab) _tab->add(*this);
+ }
+
+
+basic_column::~basic_column()
+{
+	if(_table) {
+		_table->remove(*this);
+	}
+}
+
+
 
 
 //-------------------------------------
@@ -78,7 +94,7 @@ __binding* __binding::find(list& L, output_table* t)
 //-------------------------------------
 
 output_table::output_table(const string& _name, table_flavor _f)
-: named(_name), en(true), _flavor(_f)
+: named(_name), en(true), _locked(false), _dirty(false), _flavor(_f)
 { 
 }
 
@@ -89,33 +105,105 @@ output_table::~output_table()
 		// dissociate with column
 		if(c) c->_table = 0;
 	}
-	__binding::unbind_all(files);
+	output_binding::unbind_all(files);
+}
+
+
+void output_table::_cleanup()
+{
+	if(!_dirty) return; 	// we are clean
+	size_t pos=0;
+	for(size_t i=0; i<columns.size(); i++) {
+		// loop invariants: 
+		//  (1) pos <= i
+		//  (2) the range [0:pos) contains nonnulls
+		//  (3) every initial nonnull in [0:i) is in [0:pos)
+
+		if(columns[i]) {
+			if(pos < i) {
+				assert(columns[pos]==nullptr); 
+				columns[pos] = columns[i];  
+
+				assert(columns[pos]->_index == i); 
+				columns[pos]->_index = pos; 
+			}
+			pos++;
+		}
+	}
+	assert(pos<columns.size()); // since we were dirty!
+	columns.resize(pos);		// prune the vector
+}
+
+void output_table::add(basic_column& col) 
+{
+	_check_unlocked();
+
+	_cleanup();
+
+	if(col._table)
+		throw std::runtime_error("column already added to a table");
+	col._table = this;
+	col._index = columns.size();
+	columns.push_back(&col); 
+}
+
+
+void output_table::remove(basic_column& col)
+{
+	_check_unlocked();
+	if(col._table != this) 
+		throw std::invalid_argument(
+			"output_table::remove(col) column not bound to this table");
+	assert(columns[col._index]==&col);
+	columns[col._index] = nullptr;
+	col._table = nullptr;
+	_dirty = true;
 }
 
 
 void output_table::emit_row()
 {
+	if(!_locked)
+		throw std::logic_error("prolog() has not been called before emit_row()");
+	// is the table enabled?
+	if(!en) return;
+	// ok, we are enabled
 	for(auto b : bindings())
-		b->file->output_row(*this);
+		if(b->enabled){
+			// for every enabled binding
+			b->file->output_row(*this);
+		}
 }
 
 void output_table::prolog()
 {
+	// repack the table after possible column removals
+	_cleanup();
+
+	// do this for every bound file, enabled or not
 	for(auto b : bindings())
 		b->file->output_prolog(*this);
+
+	// we are ready for business
+	_locked = true;
 }
 
 void output_table::epilog()
 {
+	// changes are allowed
+	_locked = false;
+
+	// do this for every bound file, enabled or not
 	for(auto b : bindings())
 		b->file->output_epilog(*this);
 }
 
+
 result_table::result_table(const string& _name)
 	: output_table(_name, table_flavor::RESULTS)
 {
-	using std::cerr;
-	using std::endl;
+	//using std::cerr;
+	//using std::endl;
 	//cerr << "result table " << name() << " created"<< endl;
 }
 
@@ -125,8 +213,8 @@ result_table::result_table(const string& _name,
 {
 	add(col);
 
-	using std::cerr;
-	using std::endl;
+	//using std::cerr;
+	//using std::endl;
 	//cerr << "result table " << name() << " created"<< endl;
 }
 
@@ -161,7 +249,7 @@ output_file::output_file()
 
 output_file::~output_file()
 {
-	__binding::unbind_all(tables);
+	output_binding::unbind_all(tables);
 }
 
 //-------------------------------------

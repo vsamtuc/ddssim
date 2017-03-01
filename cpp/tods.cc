@@ -77,7 +77,7 @@ coordinator::coordinator(network* m)
 : process(m)
 {
 	for(stream_id sid : m->streams)
-		stream_state[sid] = new coord_stream_state(m->proj);
+		stream_state[sid] = new coord_stream_state(sid, m->proj);
 }
 
 

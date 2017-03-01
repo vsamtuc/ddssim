@@ -14,7 +14,7 @@ data_source_statistics::data_source_statistics()
 		for(auto hid : CTX.metadata().source_ids())
 		{
 			char buf[32];
-			sprintf(buf, "LSSize_%d@%d", sid,hid);
+			sprintf(buf, "LSSize_s%d_h%d", sid, hid);
 			col_t *c = new col_t(buf, "%d", 0);
 			lssize[local_stream_id {sid, hid}] = c;
 			CTX.timeseries.add(*c);
@@ -23,7 +23,7 @@ data_source_statistics::data_source_statistics()
 	for(auto sid : CTX.metadata().stream_ids()) 
 	{
 		char buf[32];
-		sprintf(buf, "SSize_%d", sid);
+		sprintf(buf, "SSize_s%d", sid);
 		col_t *c = new col_t(buf, "%d", 0);
 		ssize[sid] = c;
 		CTX.timeseries.add(*c);
@@ -32,7 +32,7 @@ data_source_statistics::data_source_statistics()
 	for(auto hid : CTX.metadata().source_ids())
 	{
 		char buf[32];
-		sprintf(buf, "SSize@%d", hid);
+		sprintf(buf, "SSize_h%d", hid);
 		col_t *c = new col_t(buf, "%d", 0);
 		hsize[hid] = c;
 		CTX.timeseries.add(*c);
@@ -140,7 +140,6 @@ void selfjoin_exact_method::process_record(const dds_record& rec)
 			curest -= 2*x - 1;
 		}
 	}
-	series = curest;
 }
 
 void selfjoin_exact_method::finish()
@@ -187,8 +186,6 @@ void twoway_join_exact_method::process_record(const dds_record& rec)
 	} else if(rec.sid == Q.param.second) {
 		dojoin(hist2, hist1, rec);		
 	} 
-	// else, discard the sample
-	series = curest;
 }
 
 void twoway_join_exact_method::finish()
@@ -214,7 +211,6 @@ selfjoin_agms_method::selfjoin_agms_method(stream_id sid, depth_type D, index_ty
 
 	isk = & agms_sketch_updater_factory(sid, agms::projection(D,L))->isk;
 	curest = dot_est_with_inc(incstate, *isk);
-	series = curest;
 
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
 	on(END_STREAM, [&](){  finish(); });
@@ -226,7 +222,6 @@ void selfjoin_agms_method::process_record()
 
 	if(CTX.stream_record().sid==Q.param) {
 		curest = dot_est_inc(incstate, isk->delta);
-		series = curest;
 	}
 }
 
@@ -247,7 +242,6 @@ twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, agm
 	isk1 = & agms_sketch_updater_factory(s1, agms::projection(D,L))->isk;
 	isk2 = & agms_sketch_updater_factory(s2, agms::projection(D,L))->isk;
 	curest = dot_est_with_inc(incstate, *isk1, *isk2);
-	series = curest;
 
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
 	on(END_STREAM, [&](){  finish(); });
@@ -258,10 +252,8 @@ void twoway_join_agms_method::process_record()
 	using namespace agms;
 	if(CTX.stream_record().sid==Q.param.first) {
 		curest = dot_est_inc(incstate, isk1->delta, *isk2);
-		series = curest;
 	} else if(CTX.stream_record().sid==Q.param.second) {
 		curest = dot_est_inc(incstate, *isk1, isk2->delta);
-		series = curest;
 	}
 }
 

@@ -73,10 +73,10 @@ protected:
 	query_type Q;
 	double curest = 0.0;
 
-	column<double> series;
+	column_ref<double> series { "hist_"s+repr(Q), "%.0f", curest };
 public:
 	exact_method(query_type _Q) 
-	: Q(_Q), series("hist_"s+repr(Q), string("%.0f").c_str())
+	: Q(_Q) //, series("hist_"s+repr(Q), string("%.0f").c_str())
 	{
 		CTX.timeseries.add(series);
 	}
@@ -167,15 +167,8 @@ public:
 	typedef typed_query<QType> query_type;
 	typedef typename agms::index_type index_type;
 	typedef typename agms::depth_type depth_type;
-protected:
-	query_type Q;
-	double curest = 0.0;
 
-	column<double> series;
-
-public:
-	static string make_name(query_type q, 
-		depth_type D, index_type L) 
+	static string make_name(query_type q) 
 	{
 		using std::ostringstream;
 		ostringstream s;
@@ -183,9 +176,16 @@ public:
 		return s.str();
 	}
 
+protected:
+	query_type Q;
+	double curest = 0.0;
+
+	column_ref<double> series { make_name(Q), "%.0f", curest };
+
+public:
 
 	agms_method(query_type _Q, agms::depth_type _D, agms::index_type _L) 
-	: Q(_Q), series(make_name(_Q,_D,_L), "%.0f")
+	: Q(_Q)
 	{
 		CTX.timeseries.add(series);
 	}

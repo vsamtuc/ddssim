@@ -22,17 +22,17 @@ void execute()
 	/* Set up data stream */
 	string HOME(getenv("HOME"));
 
-	//data_source* wcup = crawdad_ds(HOME+"/src/datasets/wifi_crawdad_sorted");
-	datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
-	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day44_1");
-	//data_source* wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
+	//datasrc wcup = crawdad_ds(HOME+"/src/datasets/wifi_crawdad_sorted");
+	//datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
+	//datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44_1");
+	datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
 
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(1000);
-	D.hash_sources(4);
+	//D.hash_sources(4);
 	D.hash_streams(1);
-	//D.set_time_window(4*3600);
+	D.set_time_window(3600);
 	D.create();
 
 	/* Create components */
@@ -45,20 +45,20 @@ void execute()
 
 	cout << "Treating " << sids.size() << " streams" << endl;
 
-	// for(size_t i=0; i<sids.size(); i++) {
-	// 	cout << "Treating stream " << sids[i] << endl;
-	// 	components.push_back(new selfjoin_exact_method(sids[i]));
-	// 	components.push_back(new selfjoin_agms_method(sids[i], 15, 10000));
-	// 	for(size_t j=i; j>0; j--){
-	// 		components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
-	// 		components.push_back(new 
-	// 			twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
-	// 	}
-	// }
+	for(size_t i=0; i<sids.size(); i++) {
+		cout << "Treating stream " << sids[i] << endl;
+		components.push_back(new selfjoin_exact_method(sids[i]));
+		components.push_back(new selfjoin_agms_method(sids[i], 7, 1000));
+		// for(size_t j=i; j>0; j--){
+		// 	components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
+		// 	components.push_back(new 
+		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
+		// }
+	}
 	projection proj(7 , 1000);
-	tods::network* tmeth = new tods::network(proj, proj.epsilon() );
+	tods::network* tmeth = new tods::network(proj, 0.025 );
 	components.push_back(tmeth);
-	components.push_back(new gm2::network(0, proj, tmeth->maximum_error() ));
+	components.push_back(new gm2::network(0, proj, 0.1 ));
 
 	/* Create output files */
 
@@ -99,6 +99,8 @@ void execute()
 	cout << "Execution time=" 
 		<< duration_cast<milliseconds>(endt-startt).count()/1000.0
 		<< "sec" << endl;
+
+	comm_results.epilog();
 
 	/* Clean up */
 	for(auto p : components)

@@ -22,8 +22,10 @@ using namespace std;
 host::host(basic_network* n, bool _b) 
 : _net(n), _bcast(_b)
 {
-	if(!_bcast) 
+	if(!_bcast) {
 		_net->_hosts.insert(this);
+		_net->all_hosts.join(this);
+	}
 	else
 		_net->_groups.insert(this);
 }
@@ -35,10 +37,6 @@ host::host(basic_network* n)
 host::~host()
 { }
 
-host_group::host_group(basic_network* n) 
-: host(n, true)
-{ }
-
 
 //-------------------
 //
@@ -46,6 +44,10 @@ host_group::host_group(basic_network* n)
 //
 //-------------------
 
+
+host_group::host_group(basic_network* n) 
+: host(n, true)
+{ }
 
 
 void host_group::join(host* h)
@@ -130,7 +132,28 @@ rpcc_t basic_network::decl_method(rpcc_t ifc, const string& name, bool onew)
 
 
 basic_network::basic_network()
-{ }
+: all_hosts(this)
+{ 
+	new_group_addr = -1;
+	new_host_addr = 0;
+	all_hosts.set_addr(-1);
+}
+
+
+void basic_network::assign_address(host* h, host_addr a)
+{
+	assert(! h->is_bcast());
+
+	if(a==unknown_addr)
+		throw std::invalid_argument("cannot assign unknown_addr");
+
+	// check that the address is unassigned
+	if(addr_map.find(a)==addr_map.end()) {
+		addr_map[a] = h;
+	}
+	
+
+}
 
 
 basic_network::~basic_network()
@@ -204,6 +227,25 @@ const rpc_method& rpc_interface::get_method(rpcc_t rpcc) const
 	return  methods.at( __method_index(rpcc) );
 }
 
+const size_t rpc_interface::num_channels() const
+{
+	size_t cno = 0;
+	for(auto& m : methods)
+		cno += m.num_channels();
+	return cno;
+}
+
+
+rpcc_t rpc_interface::code(const string& mname) const
+{
+	auto it = name_map.find(mname);
+	if(it != name_map.end()) {
+		return methods[it->second].rpcc;
+	}
+	return 0;
+}
+
+
 
 //-------------------
 //
@@ -246,6 +288,39 @@ const rpc_method& rpc_protocol::get_method(rpcc_t rpcc) const
 {
 	return ifaces.at(__ifc_index(rpcc)).get_method(rpcc);
 }
+
+
+rpcc_t rpc_protocol::code(const string& name) const
+{
+	auto it = name_map.find(name);
+	if(it != name_map.end()) {
+		return ifaces[it->second].rpcc;
+	}
+	return 0;
+}
+
+rpcc_t rpc_protocol::code(const type_info& ti) const
+{
+	return code(boost::core::demangle(ti.name()));
+}
+
+rpcc_t rpc_protocol::code(const string& name, const string& mname) const
+{
+	auto it = name_map.find(name);
+	if(it != name_map.end()) {
+		return ifaces[it->second].code(mname);
+	}
+	return 0;
+}
+
+rpcc_t rpc_protocol::code(const type_info& ti, const string& mname) const
+{
+	return code(boost::core::demangle(ti.name()), mname);
+}
+
+
+
+const rpc_protocol rpc_protocol::empty;
 
 
 //-------------------

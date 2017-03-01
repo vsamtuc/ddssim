@@ -15,6 +15,7 @@
 #include <typeinfo>
 #include <typeindex>
 #include <stdexcept>
+#include <algorithm>
 
 #include "dds.hh"
 
@@ -40,6 +41,34 @@ constexpr rpcc_t RPCC_METH_MASK = RPCC_ENDP_MASK -1;
 constexpr rpcc_t RPCC_RESP_MASK = 1;
 
 using std::string;
+using std::vector;
+using std::unordered_map;
+using std::unordered_set;
+using std::type_index;
+using std::type_info;
+
+/**
+	A numeric id for hosts.
+
+	host_addr is used for reporting, therefore the actual
+	addresses are user_definable. All that the library does
+	is check that the same address is not assigned to 
+	multiple hosts. A host's address is finalized when
+	the first channel to or from it is created.
+
+	The following are standard assumptions.
+
+	- For source sites, it is equal to the source_id.
+	- For normal hosts the address is non-negative.
+	- For host groups it is negative.
+	- The "all hosts" group	is -1.
+
+	- The "unknown address" is 2^31-1. Hosts (and groups) are initialized
+	to this address.
+  */
+typedef int32_t host_addr;
+
+constexpr host_addr unknown_addr = std::numeric_limits<host_addr>::max();
 
 /**
 	Point-to-point or broadcast unidirectional channel.
@@ -98,6 +127,9 @@ typedef std::unordered_set<channel*> channel_set;
 typedef std::unordered_set<host*> host_set;
 
 
+
+
+
 /**
 	Hosts are used as addresses in the basic_network.
 
@@ -117,6 +149,7 @@ class host : public named
 	friend class basic_network;
 protected:
 	basic_network* _net;
+	host_addr _addr;
 	bool _bcast;
 	channel_set _incoming;
 	virtual ~host();
@@ -125,6 +158,10 @@ public:
 	
 	inline basic_network* net() const { return _net; }
 	inline bool is_bcast() const { return _bcast; }
+	inline host_addr addr() const { return _addr; }
+
+	virtual void set_addr(host_addr _a);
+	virtual bool has_addr() const;
 
 	friend class channel;
 	friend class basic_network;
@@ -149,11 +186,17 @@ public:
 		Add a simple host to this group.
 	  */
 	void join(host* h);
+
+	virtual void set_addr(host_addr _a);
+	virtual bool has_addr() const;
+
+	/**
+		The members of the group
+	  */
+	const host_set& members() const { return grp; }
 };
 
 
-using std::vector;
-using std::unordered_map;
 
 /**
 	An rpc descriptor object.
@@ -176,6 +219,12 @@ struct rpc_method : rpc_obj, named
 	rpc_method() {}
 	rpc_method(rpcc_t _c, const string& _n, bool _o)
 	: rpc_obj(_c), named(_n), one_way(_o) {}
+
+	/**
+		Return the number of channels (either 1 or 2) for this
+		method.
+	  */
+	inline size_t num_channels() const { return one_way? 1 : 2; }
 };
 
 /**
@@ -194,7 +243,27 @@ struct rpc_interface : rpc_obj, named
 		Declare a method in the interface.
 	  */
 	rpcc_t declare(const string& mname, bool onew);
+
+	/**
+		Return a method object of the given rpcc.
+
+		If there is no such method, an `std::invalid_argument`
+		exception is raised.
+	  */
 	const rpc_method& get_method(rpcc_t rpcc) const;
+
+	/**
+		Return the number of channels that an instance of this
+		interface creates.
+	  */
+	const size_t num_channels() const;
+
+	/**
+		Return the rpcc code for the method of the given name.
+
+		If the method does not exist, 0 (an illegal rpcc) is returned.
+	  */
+	rpcc_t code(const string& name) const;
 };
 
 /**
@@ -219,13 +288,24 @@ struct rpc_protocol
 		```
 	  */
 	rpcc_t declare(rpcc_t ifc, const string& mname, bool onew);
+
 	const rpc_interface& get_interface(rpcc_t rpcc) const;
 	const rpc_method& get_method(rpcc_t rpcc) const;
+
+	rpcc_t code(const string& name) const;
+	rpcc_t code(const type_info& ti) const;
+	rpcc_t code(const string& name, const string& mname) const;
+	rpcc_t code(const type_info& ti, const string& mname) const;
+
+
+	// this is useful for chan_frame
+	static const rpc_protocol empty;
 };
 
 
 
-using std::type_index;
+
+
 struct rpc_call;
 
 /**
@@ -238,7 +318,7 @@ struct rpc_call;
 struct rpc_proxy
 {
 	rpcc_t _r_ifc;
-	std::vector<rpc_call*> _r_calls;
+	vector<rpc_call*> _r_calls;
 	host* _r_owner;
 	host* _r_proc = nullptr;
 
@@ -307,6 +387,15 @@ protected:
 	host_set _groups;		// all the host groups
 	channel_set _channels;	// all the channels
 
+	// address maps
+	std::unordered_map<host_addr, host*> addr_map;
+	host_addr new_host_addr;
+	host_addr new_group_addr;
+
+	// standard groups
+	host_group all_hosts;
+
+	// rpc protocol
 	rpc_protocol rpctab;
 public:
 
@@ -429,7 +518,7 @@ struct star_network : public basic_network
 {
 	set<source_id> hids;
 	Hub* hub;
-	std::unordered_map<source_id, Site*> sites;
+	unordered_map<source_id, Site*> sites;
 
 	star_network(const set<source_id>& _hids) 
 	: hids(_hids), hub(nullptr) { }
@@ -551,10 +640,10 @@ inline size_t byte_size< Ack >(const Ack& s) { return 0; }
 
 
 template <typename T>
-inline bool __omit_response(const T& val) { return true; }
+inline bool __transmit_response(const T& val) { return true; }
 
 template <typename T>
-inline bool __omit_response(const Acknowledge<T>& ackval) {
+inline bool __transmit_response(const Acknowledge<T>& ackval) {
 	return ackval;
 }
 
@@ -642,7 +731,7 @@ struct remote_method : proxy_method<Dest>
 		Response r = (this->proxy->proc()->* (this->method))(
 			std::forward<Args>(args)...
 			);
-		if(! __omit_response(r) )
+		if( __transmit_response(r) )
 			this->transmit_response(message_size(r));
 		return r;
 	}
@@ -696,13 +785,17 @@ make_remote_method(
 
 
 /**
-	Subclasses of context can pass arguments free of 
+	Subclasses of context can pass as RPC method arguments free of 
 	cost.
 
 	Theoretically, the arguments passed in this way are included
-	in the middleware. Examples include: 
+	in the middleware cost of sending a message. Therefore, they will
+	be accounted by whatever cost model the user assigns to the
+	network statistics, and in particular to the number of messages.
+
+	Examples include: 
 	- the sender host
-	- a Lamport timestamp
+	- a message timestamp or serial no
  */
 struct call_context {
 	size_t byte_size() const { return 0; }
@@ -753,6 +846,106 @@ msgwrapper<T> wrap(T* p) { return msgwrapper<T>(p); }
   */
 template <typename T>
 msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
+
+
+
+/*	----------------------------------------
+
+	Statistics utilities
+
+	--------------------------------------- */
+
+
+struct chan_frame : vector<channel*>
+{
+	typedef vector<channel*> container;
+
+	chan_frame() {}
+	chan_frame(channel* c) : container{ c } { }
+	chan_frame(const channel_set& cs) 
+	: container(cs.begin(), cs.end()) { }
+
+	chan_frame(const basic_network& nw) : chan_frame(nw.channels()) {}
+	chan_frame(const basic_network* nw) : chan_frame(nw->channels()) {}
+
+	inline const rpc_protocol& rpc() const {
+		if(! empty())
+			return front()->source()->net()->rpc();
+		else
+			return rpc_protocol::empty;
+	}
+
+	inline size_t count() const {
+		size_t ret=0;
+		for(auto c : *this) ret += c->messages();
+		return ret;
+	}
+
+	inline size_t sum() const {
+		size_t ret=0;
+		for(auto c:*this) ret += c->bytes();
+		return ret;
+	}
+
+	template <typename Pred>
+	inline chan_frame select(const Pred& pred) const& {
+		chan_frame cf;
+		std::copy_if(begin(), end(), back_inserter(cf), pred);
+		return cf;		
+	}
+
+	chan_frame src(host* _src) const {
+		return select([&](channel *c) {
+			return c->source() == _src;
+		});
+	}
+	chan_frame src_in(const host_set& hs) const {
+		return select([&](channel *c) {
+			return hs.find(c->source())!=hs.end();
+		});
+	}
+
+	chan_frame dst(host* _src) const {
+		return select([&](channel *c) {
+			return c->destination() == _src;
+		});
+	}
+	chan_frame dst_in(const host_set& hs) const {
+		return select([&](channel *c) {
+			return hs.find(c->destination())!=hs.end();
+		});
+	}
+
+	chan_frame endp(rpcc_t code, rpcc_t mask) const {
+		return select([&](channel *c) {
+			return (c->rpc_code()&mask) == (code&mask);
+		});
+	}
+	chan_frame endp(const type_info& ti) const {
+		return endp(rpc().code(ti), RPCC_IFC_MASK);
+	}
+	chan_frame endp(const string& ifname) const {
+		return endp(rpc().code(ifname), RPCC_IFC_MASK);
+	}
+
+	chan_frame endp(const type_info& ti, const string& mname) const {
+		return endp(rpc().code(ti, mname), RPCC_IFC_MASK);
+	}
+	chan_frame endp(const string& ifname, const string& mname) const {
+		return endp(rpc().code(ifname, mname), RPCC_IFC_MASK);
+	}
+
+	chan_frame endp_req() const {
+		return endp(0, RPCC_RESP_MASK);
+	}
+	chan_frame endp_rsp() const {
+		return endp(1, RPCC_RESP_MASK);
+	}
+
+};
+
+
+
 
 
 

@@ -1,7 +1,7 @@
 #ifndef __TODS_HH__
 #define __TODS_HH__
 
-#include <vector>
+#include <functional>
 
 #include "dds.hh"
 #include "mathlib.hh"
@@ -12,7 +12,6 @@
 
 namespace dds { namespace tods {
 
-using std::vector;
 using namespace agms;
 
 class network;
@@ -22,11 +21,16 @@ class network;
   */
 struct coord_stream_state
 {
+	stream_id sid;
 	sketch Etot;		// the sum of all E in node states
+	computed<double> curest_series;	
 
-	coord_stream_state(projection proj)
-	: Etot(proj)
-	{ }
+	coord_stream_state(stream_id _sid, projection proj)
+	: 	sid(_sid), Etot(proj), 
+		curest_series("tods_", "%.10g", [&](){ return dot_est(Etot); })
+	{ 
+		CTX.timeseries.add(curest_series); 
+	}
 };
 
 
