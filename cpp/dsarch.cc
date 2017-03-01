@@ -20,7 +20,7 @@ using namespace std;
 
 
 host::host(basic_network* n, bool _b) 
-: _net(n), _bcast(_b)
+: _net(n), _addr(unknown_addr), _bcast(_b)
 {
 	if(!_bcast) {
 		_net->_hosts.insert(this);
@@ -36,6 +36,31 @@ host::host(basic_network* n)
 
 host::~host()
 { }
+
+
+host_addr host::addr() 
+{
+	if(_addr == unknown_addr) {
+		set_addr();
+		if(_addr == unknown_addr)
+			this->host::set_addr();
+	}
+	return _addr;
+}
+
+
+bool host::set_addr(host_addr a)
+{
+	return _net->assign_address(this, a);
+}
+
+
+void host::set_addr()
+{
+	if(_addr == unknown_addr) 
+		_net->assign_address(this, _addr);
+	assert(_addr != unknown_addr);
+}
 
 
 //-------------------
@@ -140,20 +165,52 @@ basic_network::basic_network()
 }
 
 
-void basic_network::assign_address(host* h, host_addr a)
+bool basic_network::assign_address(host* h, host_addr a)
 {
-	assert(! h->is_bcast());
+	if(h->_addr != unknown_addr)
+		throw std::invalid_argument("host already has an address assignd");
 
-	if(a==unknown_addr)
-		throw std::invalid_argument("cannot assign unknown_addr");
+	if(a==unknown_addr) {
+		// assign a default address
+		int step = h->is_bcast() ? -1 : 1;
+		host_addr& ap = h->is_bcast() ? new_group_addr : new_host_addr;
+
+		while(h->_addr == unknown_addr) {
+
+			auto it = addr_map.find(ap);
+			if(it == addr_map.end()) {
+				// found it!
+				h->_addr = ap;
+				addr_map[ap] = h;
+			}
+
+			ap += step;
+		}
+		return true;
+	}
+
 
 	// check that the address is unassigned
 	if(addr_map.find(a)==addr_map.end()) {
+		h->_addr = a;
 		addr_map[a] = h;
+		return true;
+	} else {
+		return false;
 	}
 	
-
 }
+
+
+void basic_network::reserve_addresses(host_addr a)
+{
+	if(a>=0) {
+		if(new_host_addr <= a) new_host_addr = a + 1;
+	} else {
+		if(new_group_addr>=a) new_group_addr = a - 1;
+	}
+}
+
 
 
 basic_network::~basic_network()

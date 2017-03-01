@@ -56,7 +56,8 @@ using std::type_info;
 	multiple hosts. A host's address is finalized when
 	the first channel to or from it is created.
 
-	The following are standard assumptions.
+	The following are standard assumptions, encoded in the default 
+	implementation of `host::set_addr()`
 
 	- For source sites, it is equal to the source_id.
 	- For normal hosts the address is non-negative.
@@ -145,26 +146,59 @@ typedef std::unordered_set<host*> host_set;
 class host : public named
 {
 	host(basic_network* n, bool _bcast);
-	friend class host_group;
-	friend class basic_network;
-protected:
+
 	basic_network* _net;
 	host_addr _addr;
 	bool _bcast;
-	channel_set _incoming;
-	virtual ~host();
-public:
-	host(basic_network* n);
-	
-	inline basic_network* net() const { return _net; }
-	inline bool is_bcast() const { return _bcast; }
-	inline host_addr addr() const { return _addr; }
 
-	virtual void set_addr(host_addr _a);
-	virtual bool has_addr() const;
-
-	friend class channel;
+	friend class host_group;
 	friend class basic_network;
+	channel_set _incoming;
+public:
+
+	host(basic_network* n);
+	virtual ~host();
+	
+	/**
+		The network this host belongs to
+	  */
+	inline basic_network* net() const { return _net; }
+
+	/**
+		True this is a host group
+	  */
+	inline bool is_bcast() const { return _bcast; }
+
+	/**
+		Return the address of a host.
+
+		If the host has not been assigned an address, this
+		method will first call `set_addr()` without arguments,
+		to set a default address.
+
+		Note: if `set_addr()` has still not assigned a legal address,
+		this call will
+	  */
+	host_addr addr();
+
+	/**
+		Ask for an address explicitly.
+		If the address is successfully obtained, returns true,
+		else it returns false and the address is left undefined.
+	  */
+	virtual bool set_addr(host_addr _a);
+
+	/**
+		Ask for a default address.
+
+		Subclasses can override this method to define their own
+		address policy. The default implementation assigns addresses
+		as described in @ref host_addr.
+
+		@see host_addr
+	*/
+	virtual void set_addr();
+
 };
 
 
@@ -180,15 +214,13 @@ protected:
 	host_set grp;
 	friend class basic_network;
 public:
+	/** Constructor  */
 	host_group(basic_network* nw);
 
 	/**
 		Add a simple host to this group.
 	  */
 	void join(host* h);
-
-	virtual void set_addr(host_addr _a);
-	virtual bool has_addr() const;
 
 	/**
 		The members of the group
@@ -392,19 +424,29 @@ protected:
 	host_addr new_host_addr;
 	host_addr new_group_addr;
 
-	// standard groups
-	host_group all_hosts;
 
 	// rpc protocol
 	rpc_protocol rpctab;
+
+	friend class host;
 public:
 
 	basic_network();
+	virtual ~basic_network();
 
+	/// standard group, every host is added to it
+	host_group all_hosts;
+
+	/// The set of hosts
 	inline const host_set& hosts() const { return _hosts; }
+
+	/// The set of groups
 	inline const host_set& groups() const { return _groups; }
+
+	/// The set of channels
 	inline const channel_set& channels() const { return _channels; }
 
+	/// The number or hosts
 	inline size_t size() const { return _hosts.size(); }
 
 	/**
@@ -461,8 +503,30 @@ public:
 	 */
 	channel* connect(host* src, host* dest, rpcc_t rpcc);
 
-	virtual ~basic_network();
-	friend class host;
+	/**
+		Assign an address to a host. 
+
+		If `a` is a specific address, the call will assign `a` if available, else
+		it will return `false`.
+
+		If `a` is unknown_addr, then the call will assign a legal address and return
+		`true`.
+	  */
+	bool assign_address(host* h, host_addr a);
+
+
+	/**
+		Reserve all addresses in the range between 0 and a.
+
+		If `a` is non-negative, this call reserves addresses for hosts.
+		If `a` is negative, this call reserves addresses for groups.
+
+		These adresses are 'reserved' in the sense that they will not be 
+		automatically assigned to a host. They are still available after
+		this call, if they where available before the call
+	  */
+	void reserve_addresses(host_addr a);
+
 
 	/**
 		Fill the traffic entries in result table `comm_results`
@@ -495,7 +559,9 @@ protected:
 public:
 	local_site(basic_network* nw, source_id _sid) 
 	: process(nw), sid(_sid) 
-	{}
+	{
+		set_addr(_sid);
+	}
 
 	inline source_id site_id() const { return sid; }
 
@@ -521,7 +587,13 @@ struct star_network : public basic_network
 	unordered_map<source_id, Site*> sites;
 
 	star_network(const set<source_id>& _hids) 
-	: hids(_hids), hub(nullptr) { }
+	: hids(_hids), hub(nullptr) 
+	{ 
+		// reserve the source_id addresses for the sites
+		if(~ hids.empty()) {
+			reserve_addresses(* hids.rbegin());
+		}
+	}
 
 	template <typename ... Args>
 	Net* setup(Args...args)
@@ -855,7 +927,9 @@ msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
 
 	--------------------------------------- */
 
-
+/**
+ 	A fluent query interface over sets of channels
+  */
 struct chan_frame : vector<channel*>
 {
 	typedef vector<channel*> container;

@@ -45,8 +45,8 @@ struct network_host_traffic_t : result_table
 	column<host_addr> src 		{this, "src", "%d"};
 	column<host_addr> dst 		{this, "dst", "%d"};
 	column<rpcc_t>  endp		{this, "endp", "%u"};
-	column<size_t>  msgno		{this, "msgno", "%zu"};
-	column<size_t>  byteno		{this, "byteno", "%zu"};
+	column<size_t>  msgs		{this, "msgs", "%zu"};
+	column<size_t>  bytes		{this, "bytes", "%zu"};
 	network_host_traffic_t() : result_table("network_host_traffic") {}
 };
 extern network_host_traffic_t network_host_traffic;

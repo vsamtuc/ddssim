@@ -101,7 +101,7 @@ public:
 
 		TS_ASSERT_EQUALS(nw.hosts().size(), Ncli+1);
 		TS_ASSERT_EQUALS(nw.size(), Ncli+1);
-		TS_ASSERT_EQUALS(nw.groups().size(), 0);
+		TS_ASSERT_EQUALS(nw.groups().size(), 1);
 
 		size_t Echo_ifc = 1 << RPCC_BITS_PER_IFC;
 		TS_ASSERT_EQUALS(nw.decl_interface(typeid(Echo)), Echo_ifc);

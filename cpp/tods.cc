@@ -110,7 +110,7 @@ node::node(network* m, source_id hid)
 
 void node::setup_connections()
 {
-	coord <<= ( ((network*)_net)->hub );
+	coord <<= ( ((network*)net())->hub );
 }
 
 node::~node()
