@@ -7,6 +7,7 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <functional>
 #include <algorithm>
 #include <typeinfo>
@@ -57,14 +58,16 @@ public:
 	virtual void emit(FILE*) = 0;
 	virtual void copy(void*) = 0;
 
+	virtual bool is_arithmetic() const { return false; }
 	inline type_index type() const { return _type; }
 	inline size_t size() const { return _size; }
 	inline size_t align() const { return _align; }
 
-
-	template <typename T>
-	void set(T val);
-
+	// Using these, one can set a basic_column if only it is known
+	// whether it is arithmetic or not.
+	// The default implementation throws invalid_argument
+	virtual void set(double val);
+	virtual void set(const string&);
 };
 
 
@@ -97,6 +100,15 @@ public:
 		fprintf(s, format(), value());
 	}
 	void copy(void* ptr) { memcpy(ptr, &val, _size); }
+
+	void set(double val) override
+	{
+		set_value(val);
+	}
+	bool is_arithmetic() const override { 
+		return std::is_arithmetic<T>::value; 
+	}
+
 };
 
 template <>
@@ -146,15 +158,12 @@ public:
 		strncpy((char*)ptr,val.c_str(), maxlen+1); 
 		((char*)ptr)[maxlen] = '\0';
 	}
+
+	void set(const string& val) override
+	{
+		set_value(val);
+	}
 };
-
-
-template <typename T>
-inline void basic_column::set(T val)
-{
-	column<T>& self = dynamic_cast< column<T>& >(*this);
-	self.set_value(val);
-}
 
 
 
@@ -178,7 +187,9 @@ protected:
 public:
 	computed(const string& _n, const string& fmt, 
 		const std::function<T()>& _f) 
-	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), func(_f) { }
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), 
+		func(_f) 
+	{ }
 
 	inline T value() const { return func(); }
 
@@ -188,6 +199,10 @@ public:
 	void copy(void* ptr) {
 		T val = func();
 		memcpy(ptr, &val, _size); 
+	}
+
+	bool is_arithmetic() const override { 
+		return std::is_arithmetic<T>::value; 
 	}
 };
 
@@ -204,9 +219,10 @@ protected:
 	T& ref;
 
 public:
-	column_ref(const string& _n, const string& fmt, 
-		T& _r) 
-	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), ref(_r) { }
+	column_ref(const string& _n, const string& fmt, T& _r) 
+	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), 
+		ref(_r) 
+	{ }
 
 	inline T value() const { return ref; }
 
@@ -215,6 +231,10 @@ public:
 	}
 	void copy(void* ptr) {
 		memcpy(ptr, &ref, _size); 
+	}
+
+	bool is_arithmetic() const override { 
+		return std::is_arithmetic<T>::value; 
 	}
 };
 
@@ -297,20 +317,20 @@ class output_table : public named
 {
 protected:
 	bool en;					// enabled flag
-	std::vector<basic_column *> columns;	// the columns
+	std::vector<basic_column *> columns;		// the columns
+	std::unordered_map<string, basic_column*> 
+									colnames;	// the column names
 	output_binding::list files;	// the bindings
 	bool _locked;				// signal that the table allows updates
 	bool _dirty;				// signal that columns have been deleted
 	table_flavor _flavor;		// advice to files/formats
 
-	void _check_unlocked() {
+	inline void _check_unlocked() {
 		if(_locked) throw std::logic_error("cannot modify locked output_table");
 	}
 
 	void _cleanup();
-
 	friend struct output_binding;
-	friend class basic_column;
 public:
 	output_table(const string& _name, table_flavor _f);
 	virtual ~output_table();
@@ -351,6 +371,11 @@ public:
 	inline basic_column* operator[](size_t i) { 
 		_cleanup();
 		return columns.at(i); 
+	}
+
+	inline basic_column* operator[](const string& n) { 
+		_cleanup();
+		return colnames.at(n);
 	}
 
 	inline void set_enabled(bool _en) { en=_en; }

@@ -560,7 +560,7 @@ public:
 
 	inline source_id site_id() const { return sid; }
 
-	void handle(const dds_record& rec) {}
+	virtual void handle(const dds_record& rec) {}
 };
 
 

@@ -399,16 +399,83 @@ public:
 
 	void test_settable()
 	{
-		column<double> foo("foo", "%.10g", 0.0);
+		column<double> double_foo("double", "%.10g", 0.0);
+		column<bool> bool_foo("bool", "%c", 0);
+		column<unsigned short> ushort_foo("ushort", "%hu", 0);
+		column<long> long_foo("long", "%ld", 0);
+		column<string> str_foo("str", 40, "%ld", "");
 
-		foo.set(1.2);
-		TS_ASSERT_EQUALS(foo.value(), 1.2);
+		TS_ASSERT_THROWS(
+			dynamic_cast<basic_column&>(double_foo).set(string("Hello")), 
+			std::invalid_argument);
+		TS_ASSERT_THROWS( 
+			dynamic_cast<basic_column&>(str_foo).set(3.14),  
+			std::invalid_argument);
 
-		TS_ASSERT_THROWS( foo.set(1), std::bad_cast );
-		TS_ASSERT_THROWS( foo.set(true), std::bad_cast );
-		TS_ASSERT_THROWS( foo.set(1l), std::bad_cast );
-		foo.set(3.15);
+		bool_foo.set(0.2);
+		TS_ASSERT_EQUALS(bool_foo.value(), true);
+
+		ushort_foo.set(137.);
+		TS_ASSERT_EQUALS(ushort_foo.value(), 137);
+
+		long_foo.set(132437.);
+		TS_ASSERT_EQUALS(long_foo.value(), 132437);
+
+		double_foo.set(true);
+		TS_ASSERT_EQUALS(double_foo.value(), 1.0);
+
+		double_foo.set('A');
+		TS_ASSERT_EQUALS(double_foo.value(), 65.0);
+
+		double_foo.set(-165353);
+		TS_ASSERT_EQUALS(double_foo.value(), -165353.);
 	}
+
+
+	void test_untyped()
+	{
+		column<double> double_foo("double", "%.10g", 0.0);
+		column<bool> bool_foo("bool", "%c", 0);
+		column<unsigned short> ushort_foo("ushort", "%hu", 0);
+		column<long> long_foo("long", "%ld", 0);
+		column<string> str_foo("str", 40, "%ld", "");
+
+		result_table t("table");
+		t.add({&double_foo, &bool_foo, &ushort_foo, &long_foo, &str_foo});
+
+		TS_ASSERT( t["double"]->is_arithmetic() );
+		TS_ASSERT( t["bool"]->is_arithmetic() );
+		TS_ASSERT( t["ushort"]->is_arithmetic() );
+		TS_ASSERT( t["long"]->is_arithmetic() );
+		TS_ASSERT( !t["str"]->is_arithmetic() );
+
+		TS_ASSERT_THROWS( t["none"], std::out_of_range);
+
+		TS_ASSERT_THROWS(t["double"]->set(string("Hello")), 
+			std::invalid_argument);
+		TS_ASSERT_THROWS(t["str"]->set(3.14),
+			std::invalid_argument);
+
+		t["bool"]->set(0.2);
+		TS_ASSERT_EQUALS(bool_foo.value(), true);
+
+		t["ushort"]->set(137.);
+		TS_ASSERT_EQUALS(ushort_foo.value(), 137);
+
+		t["long"]->set(132437.);
+		TS_ASSERT_EQUALS(long_foo.value(), 132437);
+
+		t["double"]->set(true);
+		TS_ASSERT_EQUALS(double_foo.value(), 1.0);
+
+		t["double"]->set('A');
+		TS_ASSERT_EQUALS(double_foo.value(), 65.0);
+
+		t["double"]->set(-165353);
+		TS_ASSERT_EQUALS(double_foo.value(), -165353.);
+	}
+
+
 
 };
 

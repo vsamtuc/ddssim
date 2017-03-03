@@ -17,7 +17,7 @@ ostream& dds::operator<<(ostream& s, dds_record const & rec)
 }
 
 
-std::string named::anon(named* ptr)
+std::string named::anon(named const * ptr)
 {
 	using namespace std;
 	ostringstream S;

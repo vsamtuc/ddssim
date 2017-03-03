@@ -84,6 +84,19 @@ basic_column::~basic_column()
 	}
 }
 
+void basic_column::set(double val)
+{
+	using namespace std::string_literals;
+	throw std::invalid_argument("wrong column type: "s+name()
+		+" is not arithmetic");
+}
+
+void basic_column::set(const string&)
+{
+	using namespace std::string_literals;
+	throw std::invalid_argument("wrong column type"+name()
+		+" is not textual");
+}
 
 
 
@@ -143,9 +156,12 @@ void output_table::add(basic_column& col)
 
 	if(col._table)
 		throw std::runtime_error("column already added to a table");
+	if(colnames.find(col.name())!=colnames.end())
+		throw std::runtime_error("a column by this name already exists");
 	col._table = this;
 	col._index = columns.size();
-	columns.push_back(&col); 
+	columns.push_back(&col);
+	colnames[col.name()] = &col;
 }
 
 
@@ -157,6 +173,7 @@ void output_table::remove(basic_column& col)
 			"output_table::remove(col) column not bound to this table");
 	assert(columns[col._index]==&col);
 	columns[col._index] = nullptr;
+	colnames.erase(col.name());
 	col._table = nullptr;
 	_dirty = true;
 }

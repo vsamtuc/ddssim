@@ -39,9 +39,20 @@ from _dds import basic_column, output_binding, \
 	output_file, open_mode, output_c_file, output_stdout,\
 	output_stderr, output_pyfile, output_hdf5
 
+def _output_table_getattr(self, attr):
+	return self[attr].value
+def _output_table_setattr(self, attr, val):
+	self[attr].value = val  # this may throw (e.g. for computed)
+output_table.__getattr__ = _output_table_getattr
+output_table.__setattr__ = _output_table_setattr
+
 from _dds import (column_str, column_bool, column_float, column_double,
  column_short, column_int, column_long, column_llong,
- column_ushort, column_uint, column_ulong, column_ullong,)
+ column_ushort, column_uint, column_ulong, column_ullong,
+ computed_short, computed_int, computed_long, computed_llong,
+ computed_ushort, computed_uint, computed_ulong, computed_ullong,
+ computed_bool, computed_float, computed_double
+ )
 
 # eca.hh
 
@@ -72,6 +83,14 @@ from _dds import selfjoin_query, selfjoin_agms_safezone
 # mathlib.hh
 
 from _dds import Vec
+
+# dsarch.hh
+
+from _dds import (channel, host, host_group, basic_network, 
+	rpc_obj, rpc_method, rpc_interface, rpc_protocol,
+	process, local_site,
+	RPCC_BITS_PER_IFC, unknown_addr
+	)
 
 
 import dds.agms

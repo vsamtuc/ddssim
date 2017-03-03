@@ -16,6 +16,8 @@ using binc::print;
 
 namespace { // Avoid cluttering the global namespace.
 
+	using namespace boost::python;
+	namespace py = boost::python;
 
 	// template <typename DS>
 	// void __wrap_dataset_load(dds::dataset& D, 
@@ -31,8 +33,6 @@ namespace { // Avoid cluttering the global namespace.
 	// 	ds.release();
 	// 	return ret;
 	// }
-
-	using namespace boost::python;
 
 	struct output_pyfile : dds::output_c_file
 	{
@@ -208,6 +208,20 @@ namespace { // Avoid cluttering the global namespace.
   		object buf = object(handle<>(py_buf));
   		return import("numpy").attr("frombuffer")(buf);
 	}
+
+	template <typename T, typename Container >
+	py::list collection_to_list(const Container& c) {
+		py::list L;
+		typename reference_existing_object::apply<T*>::type converter;
+		for(T* elem : c) {
+			PyObject* obj = converter(elem);
+			object e = object(handle<>(obj));
+			L.append( e );
+		}
+		return L;
+	}
+
+
 
 
 } // namespace anonymous
@@ -538,7 +552,7 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		("output_binding", no_init)
 		;
 
-	class_<dds::output_table,boost::noncopyable>("output_table", no_init)
+	class_<dds::output_table, bases<dds::named>, boost::noncopyable>("output_table", no_init)
 		.def("set_enabled", &dds::output_table::set_enabled)
 		.def("enabled", &dds::output_table::enabled)
 		.def("add", &dds::output_table::add,
@@ -549,7 +563,16 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 			)
 		.def("unbind", &dds::output_table::unbind, args("f"))
 		.def("unbind_all", &dds::output_table::unbind_all)
-		.def("__getitem__", &dds::output_table::operator[], 
+		.def("__getitem__", 
+			+[](dds::output_table& self, size_t idx) {
+				return self[idx];
+			},
+			return_value_policy<reference_existing_object,
+				return_internal_reference<>>())
+		.def("__getitem__", 
+			+[](dds::output_table& self, const std::string& cname) {
+				return self[cname];
+			},
 			return_value_policy<reference_existing_object,
 				return_internal_reference<>>())
 		.def("size", &dds::output_table::size)
@@ -617,6 +640,146 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		("output_hdf5", init<int, dds::open_mode>())
 		.def(init<const std::string&>())
 		;
+
+
+    /**********************************************
+     *
+     *  dsarch.hh
+     *
+     **********************************************/
+
+	scope().attr("RPCC_BITS_PER_IFC") = dds::RPCC_BITS_PER_IFC;
+	scope().attr("RPCC_ENDP_MASK") = dds::RPCC_ENDP_MASK;
+	scope().attr("RPCC_METH_MASK") = dds::RPCC_METH_MASK;
+	scope().attr("RPCC_RESP_MASK") = dds::RPCC_RESP_MASK;
+
+	scope().attr("unknown_addr") = dds::unknown_addr;
+
+	auto _netw = class_<dds::basic_network, bases<dds::named>, boost::noncopyable>
+		("basic_network", init<>())
+		;
+
+	class_< dds::host, bases<dds::named>, boost::noncopyable >
+		("host", init<dds::basic_network*>()[
+				with_custodian_and_ward<2,1
+					//,with_custodian_and_ward<1,2>
+				>()
+			])
+		.add_property("net", make_function(&dds::host::net,
+			return_internal_reference<>()
+			))
+		.add_property("is_bcast", &dds::host::is_bcast)
+		.add_property("addr", &dds::host::addr)
+		.def("set_addr", (void (dds::host::*)()) &dds::host::set_addr)
+		.def("set_addr", (bool (dds::host::*)(dds::host_addr)) &dds::host::set_addr)
+		;
+
+	class_<dds::host_group, bases<dds::host>, boost::noncopyable>
+		("host_group", init<dds::basic_network*>())
+		.def("join", &dds::host_group::join, 
+			with_custodian_and_ward<1,2>())
+		.def("members", +[](dds::host_group& g){
+			return collection_to_list<dds::host>(g.members());
+		})
+		;
+
+	class_< dds::rpc_obj >
+		("rpc_obj", no_init)
+		.def_readonly("rpcc", &dds::rpc_obj::rpcc)
+		;
+
+	class_< dds::rpc_method, bases<dds::rpc_obj> >
+		("rpc_method", init<dds::rpcc_t, const std::string&, bool>())
+		.def_readonly("one_way", &dds::rpc_method::one_way)
+		.add_property("num_channels", &dds::rpc_method::num_channels)
+		;
+
+	class_< dds::rpc_interface, bases<dds::rpc_obj> >
+		("rpc_interface", init<dds::rpcc_t, const std::string&>())
+		.def("declare", &dds::rpc_interface::declare)
+		.def("get_method", &dds::rpc_interface::get_method,
+			return_value_policy<copy_const_reference>())
+		.add_property("num_channels", &dds::rpc_interface::num_channels)
+		.def("code", &dds::rpc_interface::code)
+		;
+
+	class_<dds::rpc_protocol>
+		("rpc_protocol", init<>())
+		.def("declare", // big overload
+			(dds::rpcc_t (dds::rpc_protocol::*)(const std::string&))
+			& dds::rpc_protocol::declare )
+		.def("declare", 
+			(dds::rpcc_t (dds::rpc_protocol::*)(dds::rpcc_t, 
+												const std::string&, bool))
+			&dds::rpc_protocol::declare)
+		.def("get_interface", &dds::rpc_protocol::get_interface,
+			return_value_policy<copy_const_reference>())
+		.def("get_method", &dds::rpc_protocol::get_method,
+			return_value_policy<copy_const_reference>())
+		// only 2 out of the 4 overloads are relevant !
+		.def("code", 
+			(dds::rpcc_t (dds::rpc_protocol::*)(const std::string&) const)
+			&dds::rpc_protocol::code)
+		.def("code", 
+			(dds::rpcc_t (dds::rpc_protocol::*)(const std::string&, 
+									const std::string&) const)
+			&dds::rpc_protocol::code)
+		;
+
+	class_< dds::channel >
+		("channel", no_init)
+		.add_property("source", make_function(&dds::channel::source, 
+			return_internal_reference<>()))
+		.add_property("destination", make_function(&dds::channel::destination,
+			return_internal_reference<>()))
+		.add_property("rpc_code", &dds::channel::rpc_code)
+		.add_property("messages", &dds::channel::messages)
+		.add_property("bytes", &dds::channel::bytes)
+		.def("transmit", &dds::channel::transmit)
+		;
+
+	_netw
+		.def("size", &dds::basic_network::size)
+		.def("hosts", +[](dds::basic_network& self){
+			return collection_to_list<dds::host>(self.hosts());
+		})
+		.def("groups", +[](dds::basic_network& self) {
+			return collection_to_list<dds::host>(self.groups());
+		})
+		.def("channels", +[](dds::basic_network& self) {
+			return collection_to_list<dds::channel>(self.channels());
+		})
+		.def("decl_interface", 
+			(dds::rpcc_t (dds::basic_network::*)(const std::string&))
+			&dds::basic_network::decl_interface)
+		.def("decl_method", 
+			(dds::rpcc_t (dds::basic_network::*)(dds::rpcc_t, 
+									const std::string&, bool))
+			&dds::basic_network::decl_method)
+		.def("rpc", &dds::basic_network::rpc,
+			return_value_policy<copy_const_reference>())
+		.def("connect", &dds::basic_network::connect,
+			return_internal_reference<1,
+				with_custodian_and_ward_postcall<1,0,
+					with_custodian_and_ward<1,2, 
+						with_custodian_and_ward<1,3> > >
+				>())
+		.def("assign_address", &dds::basic_network::assign_address,
+			with_custodian_and_ward<1,2>()
+			)
+		.def("reserve_addresses", &dds::basic_network::reserve_addresses)
+		;
+
+	class_<dds::process, bases<dds::host>, boost::noncopyable>
+		("process", init<dds::basic_network*>())
+		.def("setup_connections", &dds::process::setup_connections)
+		;
+
+	class_<dds::local_site, bases<dds::process>, boost::noncopyable>
+		("local_site", init<dds::basic_network*, dds::source_id>())
+		.add_property("site_id", &dds::local_site::site_id)
+		;
+
 
 
     /**********************************************
