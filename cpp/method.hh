@@ -3,6 +3,7 @@
 
 #include <vector> 
 #include <map>
+#include <unordered_set>
 #include <deque>
 #include <list>
 #include <utility>
@@ -158,21 +159,98 @@ public:
 };
 
 
+/**
+	A component that manages output.
 
-struct reporter : reactive
+	An instance of this class can perform actions during
+	a simulation, such as
+	- enable/disable output tables and/or bindings
+	- call prolog() and epilog() on output tables
+	- call close() on output files
+	- call emit_row() on timeseries using a particular
+	  sampling logic 
+  */
+class reporter : public reactive
 {
-	reporter(size_t n_times) {
-		on(START_STREAM, [&]() { 
-			CTX.timeseries.prolog();
-		});
-		on(REPORT, every_n_times(n_times), [&]() { 
-			CTX.timeseries.now = CTX.now();
-			CTX.timeseries.emit_row();
-		});
-		on(END_STREAM, [&]() {
-			CTX.timeseries.epilog();
+	// remember output tables we watch
+	std::unordered_set<output_table*> _watched;
+public:
+
+	/**
+		Call `prolog()` and `epilog()` on the table.
+
+		The events on which the `prolog()` and `epilog()` methods
+		are called depend on the table flavor:
+		- For `result_table` tables, `INIT` and `DONE`.
+		- For `time_series` tables, `START_STREAM` and `END_STREAM`.
+
+		Calling this method multiple times for the same table is
+		acceptable.
+	  */
+	void watch(output_table& otab)
+	{
+		if(_watched.find(&otab) == _watched.end()) {
+			switch(otab.flavor()) {
+				case table_flavor::RESULTS:
+					on(INIT, [&]() { otab.prolog(); });
+					on(DONE, [&]() { otab.epilog(); });
+					break;
+				case table_flavor::TIMESERIES:
+					on(START_STREAM, [&]() { otab.prolog(); });
+					on(END_STREAM, [&]() { otab.epilog(); });
+					break;				
+			}
+		}
+	}
+
+	/**
+		Registers a conditional action to emit a `time_series` row.
+
+		The method registers an ECA rule of the form
+		```
+		  on(REPORT, emit_cond, emit_action)
+		```
+		Also, the `ts` object becomes wathced.
+
+		The `emit_cond` can determine some sampling strategy, e.g.,
+		using `struct every_n_times` or `struct n_times_out_of_N`
+		arguments. For example, to emit time-series of 100 elements
+		over the run (assuming that the `data_feed` of the context has
+		been initialized), one can call
+		```
+		rep.emit_row(ts, n_times_out_of_N(100, CTX.metadata().size()));
+		```
+
+		@see watch
+		@see struct n_times_out_of_N
+		@see struct every_n_times
+		@see struct n_times
+	  */
+	template <typename Cond>
+	void emit_row(time_series& ts, const Cond& emit_cond)
+	{
+		watch(ts);
+		on(REPORT, emit_cond , [&]() { 
+			ts.emit_row();
 		});
 	}
+
+	/**
+		Set the sampling size for a time_series.
+
+		The sample will include the initial and final record
+		and will be linearly spread through the stream size.
+
+		This method is a shortcut for
+		```
+		emit_row(ts, n_times(nsamp));
+		```
+	  */
+	void sample(time_series& ts, size_t nsamp)
+	{
+		emit_row(ts, n_times(nsamp));
+	}
+
 };
 
 struct progress_reporter : reactive, progress_bar

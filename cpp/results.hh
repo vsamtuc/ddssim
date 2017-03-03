@@ -16,16 +16,16 @@ struct local_stream_stats_t : result_table
 	column<stream_id> 	sid			{this, "sid", "%hd" };
 	column<source_id> 	hid 		{this, "hid", "%hd" };
 	column<size_t>		stream_len 	{this, "stream_len", "%zu", 0 };
-	local_stream_stats_t();
+	local_stream_stats_t() : result_table("local_stream_stats") {}
 };
-extern local_stream_stats_t lsstats;
+extern local_stream_stats_t local_stream_stats;
 
 /**
 	Communication results for each network
   */
-struct comm_results_t : result_table
+struct network_comm_results_t : result_table
 {
-	column<string> netname   	{this, "netname", 24, "%s" };
+	column<string> netname   	{this, "netname", 64, "%s" };
 	column<double> max_error 	{this, "max_error", "%.8g" };
 	column<size_t> sites     	{this, "sites", "%zu" };
 	column<size_t> streams   	{this, "streams", "%zu" };
@@ -33,24 +33,39 @@ struct comm_results_t : result_table
 	column<size_t> total_msg 	{this, "total_msg", "%zu" };
 	column<size_t> total_bytes 	{this, "total_bytes", "%zu" };
 	column<double> traffic_pct  {this, "traffic_pct", "%.10g" };
-	comm_results_t();
+
+	network_comm_results_t() : result_table("network_comm_results") {}
+	void fill_columns(basic_network* nw);
 };
-extern comm_results_t comm_results;
+extern network_comm_results_t network_comm_results;
 
 
 struct network_host_traffic_t : result_table
 {
 	// each row corresponds to a channel
-	column<string> netname		{this, "netname", 24, "%s"};
+	column<string> netname		{this, "netname", 64, "%s"};
 	column<host_addr> src 		{this, "src", "%d"};
 	column<host_addr> dst 		{this, "dst", "%d"};
 	column<rpcc_t>  endp		{this, "endp", "%u"};
 	column<size_t>  msgs		{this, "msgs", "%zu"};
 	column<size_t>  bytes		{this, "bytes", "%zu"};
 	network_host_traffic_t() : result_table("network_host_traffic") {}
+	void output_results(basic_network* nw);	
 };
 extern network_host_traffic_t network_host_traffic;
 
+struct network_interfaces_t : result_table
+{
+	// each row corresponds to a host interface
+	column<string> netname		{this, "netname", 64, "%s"};
+	column<rpcc_t> rpcc 		{this, "rpcc", "%hu"};
+	column<string> iface 		{this, "iface", 32, "%s"};
+	column<string> method 		{this, "method", 32, "%s"};
+	column<bool>   oneway		{this, "oneway", "%c"};
+	network_interfaces_t() : result_table("network_interfaces") {}
+	void output_results(basic_network* nw);	
+};
+extern network_interfaces_t network_interfaces;
 
 } // end namespace dds
 

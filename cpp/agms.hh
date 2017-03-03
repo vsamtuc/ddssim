@@ -81,7 +81,7 @@ class projection
 {
 	hash_family* hf;
 	index_type L;
-
+	double eps;
 public:
 
 	inline hash_family* hashf() const { return hf; }
@@ -92,11 +92,11 @@ public:
 	inline projection() : hf(0), L(0) {}
 
 	inline projection(hash_family* _hf, index_type _L)
-	: hf(_hf), L(_L)
+	: hf(_hf), L(_L), eps(ams_epsilon())
 	{ }
 
 	inline projection(depth_type _D, index_type _L)
-	: hf(hash_family::get_cached(_D)), L(_L)
+	: projection(hash_family::get_cached(_D),_L)
 	{ }
 
 
@@ -115,7 +115,9 @@ public:
 
 
 	/** Sketch performance bounds according to Alon et al. */
-	inline double epsilon() const { return 4./sqrt(L); }
+	inline double epsilon() const { return eps; }
+	inline void set_epsilon(double e) { eps=e; }
+	inline double ams_epsilon() const { return 4./sqrt(L); }
 	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
 
 };

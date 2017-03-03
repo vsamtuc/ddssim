@@ -47,7 +47,9 @@ def execute(sids=None):
 	CTX.timeseries.bind(wcout)
 	print("timeseries=", CTX.timeseries.size())
 
-	repter = reporter(CTX.metadata().size//1000)
+	R = reporter()
+	R.watch(network_comm_results)
+	R.sample(CTX.timeseries, 1000)
 
 	# run
 	CTX.run()
@@ -67,20 +69,34 @@ def execute_exp():
 	D.set_time_window(4*3600)
 	D.create()
 
+	# components
 	proj = agms.projection(7, 500)
-	tods1 = tods.network(proj, 0.1)
-	gm21 = gm2.network(0, proj, tods1.maximum_error())
+	C = [
+		tods.network(proj, 0.1),
+		gm2.network(0, proj, 0.1),
+		selfjoin_exact_method(0),
+		selfjoin_agms_method(0, proj)
+	]
+
+	R = reporter()
 
 	# prepare output
 	wcout = CTX.open("wc_tseries.dat",open_mode.truncate)
-	CTX.timeseries.bind(wcout)
 	print("timeseries=", CTX.timeseries.size())
 	h5out = output_hdf5('testfile.h5')
-	comm_results.bind(output_stdout)
-	comm_results.bind(h5out)
-	comm_results.prolog()
+	
+	CTX.timeseries.bind(wcout)
+	CTX.timeseries.bind(h5out)
 
-	repter = reporter(CTX.metadata().size//1000)
+	network_comm_results.bind(output_stdout)
+	network_comm_results.bind(h5out)
+	network_host_traffic.bind(h5out)
+	network_interfaces.bind(h5out)
+
+	R.watch(network_comm_results)
+	R.watch(network_host_traffic)
+	R.watch(network_interfaces)
+	R.sample(CTX.timeseries, 1000)
 
 	# run
 	CTX.run()

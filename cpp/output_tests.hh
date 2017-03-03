@@ -75,27 +75,6 @@ public:
 		free(buf);
 	}
 
-	void test_time_series()
-	{
-		time_series T("series");
-
-		column<double> t1 { "t1", "%f" };
-		column<double> t2 { "t2", "%f" };
-
-		T.add(t1);
-		T.add(t2);
-
-		//T.emit_header(stdout);
-
-		t1 = 13.2;
-		t2 = 11.4;
-		for(dds::timestamp t=10; t < 12; t++) {
-			T.now = t;
-			t1 = t1.value() + t;
-			t2 = t2.value() - t;
-			//T.emit(stdout);
-		}
-	}
 
 
 	void test_output_file() 
@@ -111,7 +90,8 @@ public:
 		tab.mean_x = 3.14;
 		tab.label = "Hello";
 
-		tab.bind_all(fset);
+		tab.bind(fset[0]);
+		tab.bind(fset[1]);
 		tab.prolog();
 		tab.emit_row();
 
@@ -417,6 +397,18 @@ public:
 		check_dummy_dataset(file.openDataSet("dummy"), 25);
 	}
 
+	void test_settable()
+	{
+		column<double> foo("foo", "%.10g", 0.0);
+
+		foo.set(1.2);
+		TS_ASSERT_EQUALS(foo.value(), 1.2);
+
+		TS_ASSERT_THROWS( foo.set(1), std::bad_cast );
+		TS_ASSERT_THROWS( foo.set(true), std::bad_cast );
+		TS_ASSERT_THROWS( foo.set(1l), std::bad_cast );
+		foo.set(3.15);
+	}
 
 };
 

@@ -1,4 +1,6 @@
 
+#include <sstream>
+
 #include "dds.hh"
 #include "data_source.hh"
 #include "method.hh"
@@ -178,6 +180,35 @@ namespace { // Avoid cluttering the global namespace.
 
 	using numeric::array;
 
+	/*
+		Computed columns that take python functions as arguments
+	 */
+	template <typename T>
+	struct computed_wrapper : dds::computed<T>
+	{
+		object func;
+
+		computed_wrapper(const std::string& name, const std::string& fmt, 
+			object _func)
+		: dds::computed<T>(name, fmt, [=]()->T {
+			return extract<T>(_func());
+			})
+		{ }
+
+	};
+
+
+	using std::valarray;
+	/* Make a view of the data of a valarray */
+	object make_array(valarray<double>& v)
+	{
+		PyObject* py_buf = PyMemoryView_FromMemory((char*) std::begin(v), 
+			sizeof(double) * v.size(), 
+			PyBUF_WRITE);
+  		object buf = object(handle<>(py_buf));
+  		return import("numpy").attr("frombuffer")(buf);
+	}
+
 
 } // namespace anonymous
 
@@ -192,6 +223,52 @@ BOOST_PYTHON_MODULE(_dds)
     	PairToTupleConverter<short, short> > __dummy();
 
     TupleToIdPairConverter();
+
+
+    /**********************************************
+     *
+     *  mathlib.hh
+     *
+     **********************************************/
+
+    class_< dds::Vec >
+    	("Vec", init<size_t>())
+    	.def(init<const Vec&>())
+    	.def(init<double, size_t>())
+    	.def("__len__", & dds::Vec::size)
+    	.def("resize", &dds::Vec::resize)
+    	.add_property("arr", &make_array)
+    	.def("__getitem__", +[](dds::Vec& self, size_t idx){
+			if(idx>=self.size()) 
+				throw std::out_of_range("index too large");		
+			return self[idx];
+		})
+    	.def("__setitem__", +[](dds::Vec& self, size_t idx, double val) {
+    		if(idx>=self.size()) 
+    			throw std::out_of_range("index too large");
+    		self[idx] = val;
+    	})
+    	.add_property("sum", &dds::Vec::sum)
+    	.add_property("min", &dds::Vec::min)
+    	.add_property("max", &dds::Vec::max)
+    	//.def(self_ns::repr(self_ns::self))
+    	.def("__repr__", +[](dds::Vec& self)->std::string {
+    		std::ostringstream s;
+    		s << self;
+    		return s.str();
+    	})
+    	/* These don't work, because of expression templates !
+    	.def( self + other<dds::Vec>())
+    	.def( self - other<dds::Vec>())
+    	.def( self * other<dds::Vec>())
+    	.def( self / other<dds::Vec>())
+    	.def( self * other<double>() )
+    	.def( other<double>() * self )
+    	*/
+    	;
+
+
+
 
     /**********************************************
      *
@@ -211,6 +288,14 @@ BOOST_PYTHON_MODULE(_dds)
     	.def_readwrite("ts", &dds::dds_record::ts)
     	.def_readwrite("key", &dds::dds_record::key)
     	.def(self_ns::repr(self_ns::self))
+    	;
+
+    class_<dds::named>("named", init<>())
+    	.def(init<std::string>())
+    	.add_property("name", 
+    		make_function(&dds::named::name, 
+    			return_value_policy<copy_const_reference>()), 
+    		&dds::named::set_name)
     	;
 
     enum_<dds::qtype>("qtype")
@@ -262,7 +347,7 @@ BOOST_PYTHON_MODULE(_dds)
     	.def("clear", &std::set<dds::stream_id>::clear )
     	.def("__bool__", &set_ops<dds::stream_id>::not_empty )
     	.def("__contains__", &set_ops<dds::stream_id>::contains )
-    	.def("add", &set_ops<dds::stream_id>::add )    	
+    	.def("add", &set_ops<dds::stream_id>::add )
     	;
 
     class_<dds::ds_metadata>("ds_metadata")
@@ -347,12 +432,126 @@ BOOST_PYTHON_MODULE(_dds)
      *
      **********************************************/
 
+	class_<dds::basic_column, bases<dds::named>, boost::noncopyable>
+		("basic_column", no_init)
+		.def("format", &dds::basic_column::format)
+		.def("type", 
+			make_function([](dds::basic_column& col) {
+				return boost::core::demangle(col.type().name());
+			},
+				return_value_policy<return_by_value>(),
+				boost::mpl::vector<std::string, dds::basic_column&>()
+			)
+		)
+		.def("size", &dds::basic_column::size)
+		.def("align", &dds::basic_column::align)
+		;
+
+		/*
+			Instantiate the column template for all numeric types
+		 */
+
+#define DECL_COLUMN_TYPE(atype , asuffix) \
+	class_<dds::column< atype >, bases<dds::basic_column>, boost::noncopyable>\
+		("column_" #asuffix, \
+			init<dds::output_table*,\
+				const std::string&, \
+				const std::string,\
+				atype \
+				>()[with_custodian_and_ward_postcall<2,1>()])\
+		.add_property("value",\
+			make_function([](dds::column< atype >& col)-> atype {\
+					return col.value();\
+				},\
+				return_value_policy<return_by_value>(),\
+				boost::mpl::vector<atype , dds::column<atype>&>()\
+				),\
+			& dds::column<atype>::set_value\
+			)\
+		;
+
+
+DECL_COLUMN_TYPE(float, float)
+DECL_COLUMN_TYPE(double, double)
+DECL_COLUMN_TYPE(bool, bool)
+DECL_COLUMN_TYPE(short, short)
+DECL_COLUMN_TYPE(int, int)
+DECL_COLUMN_TYPE(long, long)
+DECL_COLUMN_TYPE(long long, llong)
+DECL_COLUMN_TYPE(unsigned short, ushort)
+DECL_COLUMN_TYPE(unsigned int, uint)
+DECL_COLUMN_TYPE(unsigned long, ulong)
+DECL_COLUMN_TYPE(unsigned long long, ullong)
+
+#undef DECL_COLUMN_TYPE
+
+	/* String columns need special treatment due to length parameter */
+
+	class_<dds::column<std::string>, bases<dds::basic_column>, boost::noncopyable>
+		("column_" "str", 
+			init<dds::output_table*,
+				const std::string&,
+				size_t,
+				const std::string&,
+				const std::string&
+				>()[with_custodian_and_ward_postcall<2,1>()])
+		.add_property("value",
+			make_function([](dds::column<std::string>& col)-> std::string {
+					return col.value();
+				},
+				return_value_policy<return_by_value>(),
+				boost::mpl::vector<std::string, dds::column<std::string>&>()
+				),
+			& dds::column<std::string>::set_value
+			)
+		;
+
+
+	/* Computed columns */
+#define DECL_COMPUTED_TYPE(atype, asuffix)\
+	class_< computed_wrapper<atype>, bases<dds::basic_column>, \
+	boost::noncopyable >\
+		("computed_" #asuffix , \
+			init<const std::string&,\
+				const std::string&,\
+				py::object\
+				>())\
+		.add_property("value", & computed_wrapper<atype>::value)\
+		;\
+
+DECL_COMPUTED_TYPE(float, float)
+DECL_COMPUTED_TYPE(double, double)
+DECL_COMPUTED_TYPE(bool, bool)
+DECL_COMPUTED_TYPE(short, short)
+DECL_COMPUTED_TYPE(int, int)
+DECL_COMPUTED_TYPE(long, long)
+DECL_COMPUTED_TYPE(long long, llong)
+DECL_COMPUTED_TYPE(unsigned short, ushort)
+DECL_COMPUTED_TYPE(unsigned int, uint)
+DECL_COMPUTED_TYPE(unsigned long, ulong)
+DECL_COMPUTED_TYPE(unsigned long long, ullong)
+
+#undef DECL_COMPUTED_TYPE
+
+
+	class_<dds::output_binding, boost::noncopyable>
+		("output_binding", no_init)
+		;
+
 	class_<dds::output_table,boost::noncopyable>("output_table", no_init)
 		.def("set_enabled", &dds::output_table::set_enabled)
 		.def("enabled", &dds::output_table::enabled)
-		.def("bind", &dds::output_table::bind, args("f"))
+		.def("add", &dds::output_table::add,
+			with_custodian_and_ward_postcall<1,2>())
+		.def("remove", &dds::output_table::remove)
+		.def("bind", &dds::output_table::bind, args("f"),
+				return_internal_reference<>()
+			)
 		.def("unbind", &dds::output_table::unbind, args("f"))
 		.def("unbind_all", &dds::output_table::unbind_all)
+		.def("__getitem__", &dds::output_table::operator[], 
+			return_value_policy<reference_existing_object,
+				return_internal_reference<>>())
 		.def("size", &dds::output_table::size)
 		.def("prolog", & dds::output_table::prolog)
 		.def("epilog", & dds::output_table::epilog)
@@ -360,15 +559,17 @@ BOOST_PYTHON_MODULE(_dds)
 		;
 
 	class_<dds::result_table, bases<dds::output_table>,boost::noncopyable>
-		("result_table", no_init)
+		("result_table", init<const std::string&>())
 		;
 
 	class_<dds::time_series, bases<dds::output_table>,boost::noncopyable>
-		("time_series", no_init)
+		("time_series", init<const std::string&>())
 		;
 
 	class_<dds::output_file, boost::noncopyable>("output_file",no_init)
-		.def("bind", &dds::output_file::bind)
+		.def("bind", &dds::output_file::bind,
+			return_internal_reference<>()
+			)
 		.def("unbind", &dds::output_file::unbind)
 		.def("unbind_all", &dds::output_file::unbind_all)
 		.def("close", &dds::output_file::close)
@@ -506,7 +707,9 @@ BOOST_PYTHON_MODULE(_dds)
 
 	class_<dds::reporter, bases<dds::reactive>, 
 		boost::noncopyable>("reporter",
-			init< size_t >())
+			init< >())
+		.def("watch", & dds::reporter::watch)
+		.def("sample", & dds::reporter::sample)
 		;
 
 	class_<dds::progress_reporter, 
@@ -558,8 +761,9 @@ BOOST_PYTHON_MODULE(_dds)
 			boost::noncopyable
 			>
 		("selfjoin_agms_method", 
-			init<dds::stream_id, agms::depth_type, agms::index_type>()
+			init<dds::stream_id, const agms::projection&>()
 		)
+		.def(init<dds::stream_id, agms::depth_type, agms::index_type>())
 		.def("query", &dds::selfjoin_agms_method::query,
 			return_value_policy<copy_const_reference>())
 		.add_property("current_estimate", 
@@ -573,8 +777,10 @@ BOOST_PYTHON_MODULE(_dds)
 			>
 		("twoway_join_agms_method", 
 			init<dds::stream_id, dds::stream_id, 
-				agms::depth_type, agms::index_type>()
+				const agms::projection&>()
 		)
+		.def(init<dds::stream_id, dds::stream_id, 
+				agms::depth_type, agms::index_type>())
 		.def("query", &dds::twoway_join_agms_method::query,
 			return_value_policy<copy_const_reference>())
 		.add_property("current_estimate", 
@@ -609,14 +815,16 @@ BOOST_PYTHON_MODULE(_dds)
 		.add_property("size", &agms::projection::size)
 		.def(self == other<agms::projection>())
 		.def(self != other<agms::projection>())
-		.def("epsilon", &agms::projection::epsilon)
+		.add_property("epsilon", &agms::projection::epsilon, 
+				&agms::projection::set_epsilon)
+		.def("ams_epsilon", &agms::projection::ams_epsilon)
 		.def("prob_failure", &agms::projection::prob_failure)
 		;
 
 	object numpy = import("numpy");
 	//numeric::array::set_module_and_type("numpy","ndarray");
 
-	class_< agms::sketch >("agms_sketch",
+	class_< agms::sketch, bases<dds::Vec> >("agms_sketch",
 			init<agms::projection>())
 		.def(init<agms::depth_type, agms::index_type>())
 		.def("hashf", &agms::sketch::hashf, return_internal_reference<>())
@@ -642,21 +850,26 @@ BOOST_PYTHON_MODULE(_dds)
      *
      **********************************************/
 
-	class_< dds::comm_results_t, bases<dds::result_table>, boost::noncopyable>
-		("comm_results_t")
-		;
+	// class_< dds::comm_results_t, bases<dds::result_table>, boost::noncopyable>
+	// 	("comm_results_t")
+	// 	;
 
 	// class_< dds::local_stream_stats_t, bases<dds::result_table>, boost::noncopyable>
 	// 	("local_stream_stats_t")
 	// 	;
+#define DECL_RESULT_TABLE(tname)\
+    scope().attr( #tname ) = py::ptr((dds::result_table*) & dds:: tname );
 
+    DECL_RESULT_TABLE(local_stream_stats)
+    DECL_RESULT_TABLE(network_comm_results)
+    DECL_RESULT_TABLE(network_host_traffic)
+    DECL_RESULT_TABLE(network_interfaces)
 
-	try {
-		scope().attr("lsstats") = py::ptr((dds::output_table*)&dds::lsstats);
-		scope().attr("comm_results") = py::ptr(&dds::comm_results);
-	} catch(std::exception e) {
-		print("Error in binding result tables",e.what());
-	}
+#undef DECL_RESULT_TABLE
+	// scope().attr("local_stream_stats") 
+	// 	= py::ptr((dds::result_table*) &dds::local_stream_stats);
+	// scope().attr("network_comm_results") 
+	// 	= py::ptr((dds::result_table*) &dds::network_comm_results);
 
 
     /**********************************************
@@ -680,6 +893,32 @@ BOOST_PYTHON_MODULE(_dds)
 	class_< dds::gm2::network, bases<dds::reactive>, boost::noncopyable >
 		("gm2_network", init<dds::stream_id, const agms::projection&, double>())
 		.def(init<dds::stream_id, agms::depth_type, agms::index_type, double>())
+		;
+
+
+    /**********************************************
+     *
+     *  safezone.hh
+     *
+     **********************************************/
+
+	class_< dds::selfjoin_agms_safezone, boost::noncopyable >
+		("selfjoin_agms_safezone", 
+			init<const agms::sketch&, double, double>())
+		.def("__call__", & dds::selfjoin_agms_safezone::operator())
+		;
+
+	class_< dds::selfjoin_query, boost::noncopyable >
+		("selfjoin_query", init<double, agms::projection>())
+		.def("update_estimate", & dds::selfjoin_query::update_estimate)
+		.def_readonly("beta", &dds::selfjoin_query::beta)
+		.def_readonly("epsilon", &dds::selfjoin_query::epsilon)
+		.def_readonly("Qest", &dds::selfjoin_query::Qest)
+		.def_readonly("Tlow", &dds::selfjoin_query::Tlow)
+		.def_readonly("Thigh", &dds::selfjoin_query::Thigh)
+		.def_readonly("zeta_E", &dds::selfjoin_query::zeta_E)
+		.def_readonly("E", &dds::selfjoin_query::E)
+		.def_readonly("safe_zone", &dds::selfjoin_query::safe_zone)
 		;
 
 }

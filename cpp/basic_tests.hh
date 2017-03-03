@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <iomanip>
 #include <tuple>
 #include <string>
 #include <cstdio>
@@ -34,13 +35,6 @@ class MiscTestSuite : public CxxTest::TestSuite
 {
 public:
 
-	void test_range()
-	{
-		using namespace boost::adaptors;
-
-		std::unordered_map<double, int> x { {1.0, 10}, {2.0, 20} };
-		print(elements_of(x | map_keys));
-	}
 
 	void test_print()
 	{

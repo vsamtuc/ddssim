@@ -17,6 +17,7 @@ namespace dds {
 
 using std::set;
 using std::map;
+using std::vector;
 using std::cout;
 using std::endl;
 
@@ -180,11 +181,11 @@ protected:
 	query_type Q;
 	double curest = 0.0;
 
-	column_ref<double> series { make_name(Q), "%.0f", curest };
-
 public:
 
-	agms_method(query_type _Q, agms::depth_type _D, agms::index_type _L) 
+	column_ref<double> series { make_name(Q), "%.0f", curest };
+
+	agms_method(query_type _Q) 
 	: Q(_Q)
 	{
 		CTX.timeseries.add(series);
@@ -205,8 +206,8 @@ class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 	Vec incstate;
 
 	void process_record();
-	void finish();
 public:
+	selfjoin_agms_method(stream_id sid, const agms::projection& proj);
 	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
 };
 
@@ -221,8 +222,8 @@ class twoway_join_agms_method : public agms_method<qtype::JOIN>
 
 	// callbacks
 	void process_record();
-	void finish();
 public:
+	twoway_join_agms_method(stream_id s1, stream_id s2, const agms::projection& proj);
 	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
 };
 

@@ -96,7 +96,7 @@ class named
 	std::string n;
 public:
 	/// Make a name from a pointer
-	static std::string anon(void* ptr);
+	static std::string anon(named* ptr);
 
 	named() : n(anon(this)) { }
 	named(const std::string& _n) : n(_n) {}

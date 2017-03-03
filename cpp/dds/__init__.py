@@ -8,7 +8,7 @@ import _dds
 
 # from dds.hh
 from _dds import ds_metadata, record, stream_op, qtype,\
-  query, self_join, join, twoway_join, id_set
+  query, self_join, join, twoway_join, id_set, named
 
 def __describe(mdata):
 	return {
@@ -34,9 +34,14 @@ from _dds import data_source, time_window_source, \
 
 # from output.hh
 
-from _dds import output_table, result_table, time_series,\
+from _dds import basic_column, output_binding, \
+	output_table, result_table, time_series,\
 	output_file, open_mode, output_c_file, output_stdout,\
 	output_stderr, output_pyfile, output_hdf5
+
+from _dds import (column_str, column_bool, column_float, column_double,
+ column_short, column_int, column_long, column_llong,
+ column_ushort, column_uint, column_ulong, column_ullong,)
 
 # eca.hh
 
@@ -57,9 +62,20 @@ from _dds import data_source_statistics, selfjoin_exact_method,\
 
 # results.hh
 
-from _dds import comm_results
+from _dds import local_stream_stats, network_comm_results, \
+	network_host_traffic, network_interfaces
+
+# safezone.hh
+
+from _dds import selfjoin_query, selfjoin_agms_safezone
+
+# mathlib.hh
+
+from _dds import Vec
+
 
 import dds.agms
 import dds.tods
 import dds.gm2
+
 

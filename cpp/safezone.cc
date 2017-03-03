@@ -243,3 +243,44 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 
 
 
+
+//
+//  Query objects
+//
+
+
+selfjoin_query::selfjoin_query(double _beta, projection _proj)
+	: beta(_beta), epsilon(_proj.epsilon()), E(_proj)
+{
+	assert( norm_Linf(E)==0.0);
+	if( epsilon >= beta )
+		throw std::invalid_argument("total error is less than sketch error");
+	compute();
+	assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
+}
+
+
+void selfjoin_query::update_estimate(const sketch& newE)
+{
+	// compute the admissible region
+	E += newE;
+	compute();
+}
+
+void selfjoin_query::compute()
+{
+	Qest = dot_est(E);
+
+	if(Qest>0) {
+		Tlow = (1+epsilon)*Qest/(1.0+beta);
+		Thigh = (1-epsilon)*Qest/(1.0-beta);
+		safe_zone = std::move(selfjoin_agms_safezone(*this)); 
+	}
+	else {
+		Tlow = 0.0; Thigh=1.0;
+		safe_zone = selfjoin_agms_safezone(E,0.0,1.0);
+	}
+
+	zeta_E = safe_zone(E);
+}
+

@@ -528,11 +528,6 @@ public:
 	void reserve_addresses(host_addr a);
 
 
-	/**
-		Fill the traffic entries in result table `comm_results`
-	  */
-	void comm_results_fill_in();
-
 };
 
 

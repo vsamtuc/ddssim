@@ -61,7 +61,12 @@ public:
 	inline size_t size() const { return _size; }
 	inline size_t align() const { return _align; }
 
+
+	template <typename T>
+	void set(T val);
+
 };
+
 
 
 template <typename T>
@@ -86,6 +91,7 @@ public:
 
 	inline T value() const { return val; }
 	inline T& value() { return val; }
+	inline void set_value(const T& v) { val=v; }
 	inline T& operator=(T v) { val=v; return val; }
 	void emit(FILE* s) override {
 		fprintf(s, format(), value());
@@ -126,8 +132,11 @@ public:
 
 	inline const string& value() const { return this->val; }
 	inline string& value() { return val; }
-	inline string& operator=(const string& v) { 
+	inline void set_value(const string& v) { 
 		val=v.substr(0,maxlen); 
+	}
+	inline string& operator=(const string& v) { 
+		set_value(v);
 		return val; 
 	}
 	void emit(FILE* s) override {
@@ -138,6 +147,15 @@ public:
 		((char*)ptr)[maxlen] = '\0';
 	}
 };
+
+
+template <typename T>
+inline void basic_column::set(T val)
+{
+	column<T>& self = dynamic_cast< column<T>& >(*this);
+	self.set_value(val);
+}
+
 
 
 //
@@ -159,7 +177,7 @@ protected:
 
 public:
 	computed(const string& _n, const string& fmt, 
-		const std::function<T()> _f) 
+		const std::function<T()>& _f) 
 	: basic_column(nullptr, _n, fmt, typeid(T), sizeof(T), alignof(T)), func(_f) { }
 
 	inline T value() const { return func(); }
@@ -301,23 +319,19 @@ public:
 
 	void remove(basic_column& col);
 
-	void bind(output_file* f) { 
+	output_binding* bind(output_file* f) { 
 		_check_unlocked();
-		if(output_binding::find(files, f)==0)
-			new output_binding(f, this); 
+		auto b = output_binding::find(files, f);
+		if(b==nullptr)
+			b = new output_binding(f, this); 
+		return b;
 	}
 
-	template <typename T>
-	void bind_all(T& ctr) {
-		_check_unlocked();
-		std::for_each(std::begin(ctr), std::end(ctr), 
-			[&](output_file* f){ bind(f); } );
-	}
-
-	void unbind(output_file* f) {
+	bool unbind(output_file* f) {
 		_check_unlocked();
 		auto b = output_binding::find(files, f);
 		if(b) delete b;
+		return b;
 	}
 
 	inline auto bindings() const { return files; }
@@ -329,8 +343,15 @@ public:
 
 	inline table_flavor flavor() const { return _flavor; }
 	
-	inline size_t size() const { return columns.size(); }
-	inline basic_column* operator[](size_t i) const { return columns.at(i); }
+	inline size_t size() { 
+		_cleanup();
+		return columns.size(); 
+	}
+
+	inline basic_column* operator[](size_t i) { 
+		_cleanup();
+		return columns.at(i); 
+	}
 
 	inline void set_enabled(bool _en) { en=_en; }
 	inline bool enabled() const { return en; }
@@ -364,7 +385,7 @@ public:
 	time_series();
 	time_series(const string& _name);
 
-	column<dds::timestamp> now;
+	computed<dds::timestamp> now;
 };
 
 
@@ -386,13 +407,16 @@ public:
 
 	virtual ~output_file();
 
-	void bind(output_table& t) { 
-		if(output_binding::find(tables, &t)==0)
-			new output_binding(this, &t); 
+	output_binding* bind(output_table& t) { 
+		auto b = output_binding::find(tables, &t);
+		if(b==nullptr)
+			b = new output_binding(this, &t); 
+		return b;
 	}
-	void unbind(result_table& t) {
+	bool unbind(result_table& t) {
 		auto b = output_binding::find(tables, &t);
 		if(b) delete b;
+		return b;
 	}
 	inline auto bindings() const { return tables; }
 	void unbind_all() {

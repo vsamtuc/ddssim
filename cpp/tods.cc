@@ -23,7 +23,7 @@ tods::network::network(const projection& _proj, double _theta,
 	streams(_streams), 
 	proj(_proj), theta(_theta)
 {
-
+	set_name("TODS");
 }
 
 tods::network::network(const projection& _proj, double _theta)
@@ -58,13 +58,17 @@ double tods::network::maximum_error() const
 
 void tods::network::output_results()
 {
-	comm_results.netname = "TODS";
-	comm_results.max_error = maximum_error();
-	comm_results.sites = k;
-	comm_results.streams = CTX.metadata().stream_ids().size();
-	comm_results.local_viol = 0;
-	this->comm_results_fill_in();
-	comm_results.emit_row();
+	network_comm_results.fill_columns(this);
+
+	network_comm_results.max_error = maximum_error();
+	network_comm_results.sites = k;
+	network_comm_results.streams = CTX.metadata().stream_ids().size();
+	network_comm_results.local_viol = 0;
+
+	network_comm_results.emit_row();
+
+	network_host_traffic.output_results(this);
+	network_interfaces.output_results(this);
 }
 
 /************************************

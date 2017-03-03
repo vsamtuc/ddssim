@@ -279,6 +279,8 @@ gm2::network::network(stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
+	set_name("GM2");
+	
 	setup(proj, beta);
 	on(START_STREAM, [&]() { 
 		process_init(); 
@@ -307,11 +309,15 @@ hub->start_round();
 
 void gm2::network::output_results()
 {
-	comm_results.netname = "GM2";
-	comm_results.max_error = beta;
-	comm_results.sites = sites.size();
-	comm_results.streams = 1;
-	comm_results.local_viol = 0;
-	this->comm_results_fill_in();
-	comm_results.emit_row();
+	//network_comm_results.netname = "GM2";
+
+	network_comm_results.max_error = beta;
+	network_comm_results.sites = sites.size();
+	network_comm_results.streams = 1;
+	network_comm_results.local_viol = 0;
+	network_comm_results.fill_columns(this);
+	network_comm_results.emit_row();
+
+	network_host_traffic.output_results(this);
+	network_interfaces.output_results(this);
 }

@@ -1,6 +1,7 @@
 
 #include "dds.hh"
 #include "eca.hh"
+#include "method.hh"
 
 #define ECA_TRACE
 
@@ -208,3 +209,79 @@ basic_control::basic_control()
 
 basic_control::~basic_control()
 { }
+
+
+//
+//  Condition objects
+//
+
+
+every_n_times::every_n_times(size_t _n) 
+: n(_n), t(_n) 
+{ 
+	assert(_n>0);
+}
+
+bool every_n_times::operator()() 
+{
+	if((--t)==0) {
+		t = n;
+		return true;
+	} else 
+		return false;
+}
+
+
+n_times_out_of_N::n_times_out_of_N(size_t _n, size_t _N) 
+: N(_N), n(std::min(_n, _N)), t(0), tnext(0), r(n)
+{
+	if(N==0) throw std::out_of_range("the period cannot be 0");
+	if(n==0) tnext = N;
+}
+
+
+bool n_times_out_of_N::operator()() 
+{
+	bool ret = (t==tnext);
+
+	// update state
+	t++; 
+	if(t==N) {
+		// last call, reset
+		r = n; t=0; tnext=0;
+	} else if(ret) {
+		r--;
+		tnext = (r>0) ? 
+			t-1+(N-t)/r   /* remaining calls / remaining true calls */
+			: N /*never!*/ ;
+	}
+
+	return ret;
+}
+
+
+n_times_out_of_N dds::n_times(size_t n)
+{
+	return n_times_out_of_N(n, CTX.metadata().size());
+}
+
+
+level_changed::level_changed(const real_func& _f, double _p, double _d, 
+	double f_init)
+: func(_f), p(_p), d(_d), f_last(f_init)
+{ }
+
+level_changed::level_changed(const real_func& _f, double _p, double _d)
+: level_changed(_f, _p, _d, _f())
+{ }
+
+bool level_changed::operator()()
+{
+	double f_cur = func();
+	if( fabs(f_cur - f_last) > p*f_last + d ) {
+		f_last = fabs(f_cur);
+		return true;
+	}
+	return false;
+}
+

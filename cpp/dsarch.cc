@@ -216,23 +216,6 @@ void basic_network::reserve_addresses(host_addr a)
 basic_network::~basic_network()
 { }
 
-void basic_network::comm_results_fill_in()
-{
-	size_t total_msg = 0;
-	size_t total_bytes = 0;
-	for(auto h : _hosts) {
-		for(auto c : h->_incoming) 
-		{
-			total_msg += c->messages();
-			total_bytes += c->bytes();
-		}
-	}
-	comm_results.total_msg = total_msg;
-	comm_results.total_bytes = total_bytes;
-
-	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
-	comm_results.traffic_pct = total_bytes/stream_bytes;
-}
 
 
 //-------------------

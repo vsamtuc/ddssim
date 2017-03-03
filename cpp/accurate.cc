@@ -99,10 +99,10 @@ void data_source_statistics::report(std::ostream& s)
 		for(auto sid: sids) {
 			auto stream_len = lshist[std::make_pair(sid,hid)]; 
 
-			lsstats.sid = sid;
-			lsstats.hid = hid;
-			lsstats.stream_len = stream_len;
-			lsstats.emit_row();
+			local_stream_stats.sid = sid;
+			local_stream_stats.hid = hid;
+			local_stream_stats.stream_len = stream_len;
+			local_stream_stats.emit_row();
 
 			s << setw(NW) << stream_len;
 		}
@@ -204,16 +204,21 @@ factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
 
-selfjoin_agms_method::selfjoin_agms_method(stream_id sid, depth_type D, index_type L) 
-: agms_method<qtype::SELFJOIN>(self_join(sid), D, L)
+selfjoin_agms_method::selfjoin_agms_method(stream_id sid,
+	depth_type D, index_type L) 
+: selfjoin_agms_method(sid, agms::projection(D,L))
+{}
+
+selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
+	const agms::projection& proj) 
+: agms_method<qtype::SELFJOIN>(self_join(sid))
 { 
 	using namespace agms;
 
-	isk = & agms_sketch_updater_factory(sid, agms::projection(D,L))->isk;
+	isk = & agms_sketch_updater_factory(sid, proj)->isk;
 	curest = dot_est_with_inc(incstate, *isk);
 
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
-	on(END_STREAM, [&](){  finish(); });
 }
 
 void selfjoin_agms_method::process_record()
@@ -225,26 +230,27 @@ void selfjoin_agms_method::process_record()
 	}
 }
 
-void selfjoin_agms_method::finish()
-{ 
-	cout << Q << "=" << curest << endl;
-}
-
 
 //
 //////////////////////////////////////////////
 //
 
-twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L) 
-: agms_method<qtype::JOIN>(join(s1,s2), D, L)
+
+twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 
+	agms::depth_type D, agms::index_type L) 
+: twoway_join_agms_method(s1, s2, agms::projection(D,L))
+{ }
+
+twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 
+	const agms::projection& proj) 
+: agms_method<qtype::JOIN>(join(s1,s2))
 {
 	using namespace agms;
-	isk1 = & agms_sketch_updater_factory(s1, agms::projection(D,L))->isk;
-	isk2 = & agms_sketch_updater_factory(s2, agms::projection(D,L))->isk;
+	isk1 = & agms_sketch_updater_factory(s1, proj)->isk;
+	isk2 = & agms_sketch_updater_factory(s2, proj)->isk;
 	curest = dot_est_with_inc(incstate, *isk1, *isk2);
 
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
-	on(END_STREAM, [&](){  finish(); });
 }
 
 void twoway_join_agms_method::process_record()
@@ -255,10 +261,5 @@ void twoway_join_agms_method::process_record()
 	} else if(CTX.stream_record().sid==Q.param.second) {
 		curest = dot_est_inc(incstate, *isk1, isk2->delta);
 	}
-}
-
-void twoway_join_agms_method::finish()
-{ 
-	cout << Q << "=" << curest << endl;
 }
 

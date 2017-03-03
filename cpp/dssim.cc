@@ -29,7 +29,7 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	//D.set_max_length(1000);
+	D.set_max_length(10000);
 	//D.hash_sources(4);
 	D.hash_streams(1);
 	D.set_time_window(3600);
@@ -61,24 +61,30 @@ void execute()
 	components.push_back(new gm2::network(0, proj, 0.1 ));
 
 	/* Create output files */
+	reporter R;
 
 	output_file* sto = CTX.open(stdout);
 	
 	/* Bind files to outputs */
 
-#if 0
+
 	output_file* lsstats_file = CTX.open("wc_lsstats.dat");
 	auto lss = new data_source_statistics();
 	components.push_back(lss);
-	lsstats.bind(lsstats_file);
-	lsstats.prolog();
-#endif
+	local_stream_stats.bind(lsstats_file);
+	R.watch(local_stream_stats);
 
 	output_hdf5 h5f("wc_results.h5");
-	comm_results.bind(sto);
-	comm_results.bind(&h5f);
-	comm_results.prolog();
 
+	network_comm_results.bind(sto);
+	network_comm_results.bind(&h5f);
+	R.watch(network_comm_results);
+
+	network_host_traffic.bind(&h5f);
+	R.watch(network_host_traffic);
+
+	network_interfaces.bind(&h5f);
+	R.watch(network_interfaces);
 
 	/* Configure the timeseries reporting */
 	output_file* wcout = 
@@ -86,7 +92,7 @@ void execute()
 	//CTX.timeseries.bind(sto);
 	CTX.timeseries.bind(wcout);
 	CTX.timeseries.bind(&h5f);
-	reporter repter(CTX.metadata().size()/1000);
+	R.emit_row(CTX.timeseries, n_times(1000));
 
 	/* Print a progress bar */
 	progress_reporter pbar(stdout, 40, "Progress: ");
@@ -99,8 +105,6 @@ void execute()
 	cout << "Execution time=" 
 		<< duration_cast<milliseconds>(endt-startt).count()/1000.0
 		<< "sec" << endl;
-
-	comm_results.epilog();
 
 	/* Clean up */
 	for(auto p : components)
@@ -140,6 +144,7 @@ void execute_generated()
 	data_source_statistics stat;
 
 	/* Create output files */
+	reporter R;
 
 	output_file* sto = CTX.open(stdout);
 	output_file* wcout = 
@@ -151,7 +156,7 @@ void execute_generated()
 	CTX.timeseries.bind(wcout);
 
 	/* Configure the timeseries reporting */
-	reporter repter(10000);
+	R.emit_row(CTX.timeseries, every_n_times(CTX.metadata().size()/1000));
 
 	/* Print a progress bar */
 	progress_reporter pbar(stdout, 40, "Progress: ");

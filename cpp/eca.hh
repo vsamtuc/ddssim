@@ -90,24 +90,104 @@ struct condition_action : action_function<Action>
 };
 
 
-/* 
-	Some useful condition objects 
+/*
+ *
+ *	Some useful condition objects 
+ *
  */
+
+/**
+	A function object that returns true once every \f$n\f$ times.
+
+	For example, `every_n_times(3)` is a function object that will 
+	return the following sequence (in binary): `001001001001001....`.
+  */
 struct every_n_times
 {
-	size_t N;
-	size_t count;
-	every_n_times(size_t _N) : N(_N), count(_N) { 
-		assert(_N>0);
-	}
+	/// The object's period
+	size_t n;
 
-	bool operator()() {
-		if((--count)==0) {
-			count = N;
-			return true;
-		} else 
-			return false;
-	}
+	/// the current state
+	size_t t;
+
+	every_n_times(size_t _n);
+	bool operator()();
+};
+
+/**
+	A function object that returns true \f$n\f$ times out of \f$N\f$.
+
+	In particular, for \f$N\geq n>1\f$, this object will return true
+	exactly \f$n\f$ times, more or less evenly spaced with \f$N/(n-1)\f$ calls
+	between them.
+	Note that the first call and the \f$N\f$-th call will always be true.
+
+	If initialized with \f$n\geq N>0\f$, the object will return true on every
+	call. 
+
+	If initialized with \f$N\geq n=1\f$, the object will return true only the
+	first time.
+  */
+struct n_times_out_of_N
+{
+	size_t N;  ///< The length of the interval
+	size_t n;  ///< The number of true times
+
+	// state
+	size_t t;		// time of next call
+	size_t tnext;	// time of next true call
+	size_t r;			// remaining true calls
+
+	n_times_out_of_N(size_t _n, size_t _N);
+	bool operator()();
+};
+
+
+/**
+	Return a predicate that will be true `n` times during a run.
+
+	The data source of the context must be set, or an
+	`std::out_of_range` exception is thrown.
+  */
+n_times_out_of_N n_times(size_t n);
+
+
+/**
+	A predicate object which returns true when a level change
+	occurs.
+
+	Given a function object `func` and two weights, `p` and `d`,
+	the predicate returns true on every call, where
+	```
+		fabs( func() - f_last ) > p*fabs(f_last) + d
+	```
+
+	Note: by setting `d==0.0` we can watch for relative changes, 
+	and setting `p==0.0` we can watch for absolute changes.
+
+	Performance: the function `func` is called once at each invocation
+	of the predicate.
+  */
+struct level_changed
+{
+	typedef std::function<double ()> real_func;
+	real_func func; 				// the value provider
+	double p,d;						// the level check
+
+	// state: last value
+	double f_last;
+
+	/// Basic constructor
+	level_changed(const real_func& _f, double _p, double _d, double f_init);
+
+	/** 
+		Constructor.
+
+		The initial value `f_init` is computed by calling `_f()` 
+	  */
+	level_changed(const real_func& _f, double _p, double _d);
+
+	bool operator()();
 };
 
 

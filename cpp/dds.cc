@@ -1,6 +1,9 @@
 
 #include <sstream>
 #include <iterator>
+
+#include <boost/core/demangle.hpp>
+
 #include "dds.hh"
 
 using namespace dds;
@@ -14,11 +17,11 @@ ostream& dds::operator<<(ostream& s, dds_record const & rec)
 }
 
 
-std::string named::anon(void* ptr)
+std::string named::anon(named* ptr)
 {
 	using namespace std;
 	ostringstream S;
-	S << ptr;
+	S << "<" << boost::core::demangle(typeid(*ptr).name()) << " @ "<< ptr << ">";
 	return S.str();
 }
 

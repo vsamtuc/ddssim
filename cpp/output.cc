@@ -132,6 +132,7 @@ void output_table::_cleanup()
 	}
 	assert(pos<columns.size()); // since we were dirty!
 	columns.resize(pos);		// prune the vector
+	_dirty = false; 			// we ar clean!
 }
 
 void output_table::add(basic_column& col) 
@@ -233,10 +234,8 @@ result_table::~result_table()
 
 time_series::time_series(const string& _name) 
 : output_table(_name, table_flavor::TIMESERIES), 
-	now("time", "%d") 
-{
-	add(now);
-}
+	now("time", "%d", std::bind(&context::now, &CTX)) 
+{ add(now); }
 
 time_series::time_series() 
 : time_series("timeseries") 

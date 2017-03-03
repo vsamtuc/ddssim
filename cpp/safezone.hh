@@ -233,39 +233,12 @@ struct selfjoin_query
 	selfjoin_agms_safezone safe_zone;
 	double zeta_E;
 
-	selfjoin_query(double _beta, projection _proj)
-	: beta(_beta), epsilon(beta/2), E(_proj)
-	{
-		assert( norm_Linf(E)==0.0);
-		assert( epsilon < beta );
-		compute();
-		assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
-	}
+	selfjoin_query(double _beta, projection _proj);
 
+	void update_estimate(const sketch& newE);
 
-	void update_estimate(const sketch& newE)
-	{
-		// compute the admissible region
-		E += newE;
-		compute();
-	}
-
-	void compute()
-	{
-		Qest = dot_est(E);
-
-		if(Qest>0) {
-			Tlow = (1+epsilon)*Qest/(1.0+beta);
-			Thigh = (1-epsilon)*Qest/(1.0-beta);
-			safe_zone = std::move(selfjoin_agms_safezone(*this)); 
-		}
-		else {
-			Tlow = 0.0; Thigh=1.0;
-			safe_zone = selfjoin_agms_safezone(E,0.0,1.0);
-		}
-
-		zeta_E = safe_zone(E);
-	}
+private:
+	void compute();
 };
 
 

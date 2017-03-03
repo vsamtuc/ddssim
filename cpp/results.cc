@@ -1,42 +1,59 @@
+
 #include "results.hh"
+#include "method.hh"
 #include "binc.hh"
 
 namespace dds {
 
+local_stream_stats_t local_stream_stats;
 
-local_stream_stats_t lsstats;
-local_stream_stats_t::local_stream_stats_t()
-: result_table("local_stream_stats")
+network_comm_results_t network_comm_results;
+void network_comm_results_t::fill_columns(basic_network* nw)
 {
-	// add({
-	// 	&sid,
-	// 	&hid,
-	// 	&stream_len
-	// });
-}
+	netname = nw->name();
 
-comm_results_t comm_results;
-comm_results_t::comm_results_t()
-: result_table("comm_results")
-{
-	// add({
-	// 	&netname,
-	// 	&max_error,
-	// 	&sites,
-	// 	&streams,
-	// 	&local_viol,
-	// 	&total_msg,
-	// 	&total_bytes,
-	// 	&traffic_pct
-	// });
+	size_t total_msg = 0;
+	size_t total_bytes = 0;
+	for(auto&& c : nw->channels()) {
+		total_msg += c->messages();
+		total_bytes += c->bytes();
+	}
+	this->total_msg = total_msg;
+	this->total_bytes = total_bytes;
 
-	// using binc::print;
-	// for(size_t i=0;i<size();i++) 
-	// 	print(columns[i]->name(), columns[i]->type().name(), 
-	// 		columns[i]->size(), columns[i]->align(),columns[i]->format());
+	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
+	traffic_pct = total_bytes/stream_bytes;	
 }
 
 network_host_traffic_t network_host_traffic;
+void  network_host_traffic_t::output_results(basic_network* nw)
+{
+	netname = nw->name();
+	for(auto&& c : nw->channels()) {
+		src = c->source()->addr();
+		dst = c->destination()->addr();
+		endp = c->rpc_code();
+		msgs = c->messages();
+		bytes = c->bytes();
+		emit_row();
+	}	
+}
+
+
+network_interfaces_t network_interfaces;
+void  network_interfaces_t::output_results(basic_network* nw)
+{
+	netname =nw->name();
+	for(auto&& ifc : nw->rpc().ifaces) {
+		iface = ifc.name();
+		for(auto&& meth : ifc.methods) {
+			rpcc = meth.rpcc;
+			method = meth.name();
+			oneway = meth.one_way;
+			emit_row();
+		}
+	}
+}
 
 
 } // end namespace dds
