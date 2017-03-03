@@ -21,6 +21,7 @@ namespace dds {
 using fileset_t = std::vector<output_file*>;
 
 
+
 /**
 	The CTX context object's type
   */
@@ -28,7 +29,23 @@ struct context : basic_control
 {
 
 	/// Each simulation generates one time series table
+	struct {
+		time_series total_traffic {"namea"};
+
+		struct {
+
+			time_series traffica {"nabe"};
+			
+			time_series trafficb { "namec" };
+
+		} traffic_per_msg;
+
+
+	} tseries;
+
+
 	time_series timeseries;
+	time_series query_estimate;
 
 	// managed files for results
 	fileset_t result_files;

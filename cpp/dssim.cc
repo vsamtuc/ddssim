@@ -29,10 +29,10 @@ void execute()
 
 	dataset D;
 	D.load(wcup);
-	D.set_max_length(10000);
+	//D.set_max_length(10000);
 	//D.hash_sources(4);
 	D.hash_streams(1);
-	D.set_time_window(3600);
+	D.set_time_window(6*3600);
 	D.create();
 
 	/* Create components */
@@ -56,6 +56,7 @@ void execute()
 		// }
 	}
 	projection proj(7 , 1000);
+	proj.set_epsilon( 0.05 );
 	tods::network* tmeth = new tods::network(proj, 0.025 );
 	components.push_back(tmeth);
 	components.push_back(new gm2::network(0, proj, 0.1 ));

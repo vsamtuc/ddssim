@@ -4,6 +4,14 @@
 # This library wraps the C++ library of the same name
 #
 
+
+##############################################
+#
+#  Imports and pythonization of warts
+#
+##############################################
+
+
 import _dds
 
 # from dds.hh
@@ -89,12 +97,53 @@ from _dds import Vec
 from _dds import (channel, host, host_group, basic_network, 
 	rpc_obj, rpc_method, rpc_interface, rpc_protocol,
 	process, local_site,
-	RPCC_BITS_PER_IFC, unknown_addr
+	RPCC_BITS_PER_IFC, unknown_addr,
+	RPCC_ENDP_MASK, RPCC_METH_MASK, RPCC_RESP_MASK
 	)
 
 
 import dds.agms
 import dds.tods
 import dds.gm2
+
+
+##########################################
+#
+#  Python Utilities
+#
+#  This is the pythonic part of the standard
+#  dds library.
+#
+##########################################
+
+
+#############################
+#
+# Execution patterns
+# 
+#############################
+
+
+
+
+
+#############################
+#
+# Execution data
+#
+#############################
+
+
+
+
+
+#############################
+#
+# Result analysis
+#
+#############################
+
+
+
 
 

@@ -2,157 +2,184 @@
 # General-purpose library for distributed stream simulations
 #
 
-import sys
+import sys, os
 from dds import *
 import pandas as pd
 import numpy as np
 
-def prepare_data():
-	wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
 
+##############################################
+#
+#  Standard execution utilities
+#
+##############################################
+
+#
+#  Input data/streams
+#
+
+dataset_path = os.getenv("HOME")+"/src/datasets/"
+def wc_day44():
+	return wcup_ds(dataset_path+"wc_day44")
+def wc_day45():
+	return wcup_ds(dataset_path+"wc_day44")
+def wc_day46():
+	return wcup_ds(dataset_path+"wc_day44")
+def crawdad():
+	return p_ds(dataset_path+"wifi_crawdad_sorted")
+
+
+def feed_data(dset, max_length=None, streams=None, sources=None,time_window=None):
 	D = dataset()
-	D.load(wcup)
-	D.set_max_length(10000)
-	D.set_time_window(3600)
+	D.load(dset)
+	if max_length is not None:
+		D.set_max_length(max_length)
+	if streams is not None:
+		D.hash_streams(streams)
+	if sources is not None:
+		D.hash_sources(sources)
+	if time_window is not None:
+		D.set_time_window(time_window)
 	D.create()
 
-def prepare_components(sids = None):
-	components = []
-	if sids is None:
-		sids = list(CTX.metadata().stream_ids) # need to order them!
-	else:
-		sids = list(sids)
-	sids.sort()
-	for i in range(len(sids)):
-		components.append(selfjoin_exact_method(sids[i]))
-		components.append(selfjoin_agms_method(sids[i], 11, 1000))
-		for j in range(i):
-			components.append(twoway_join_exact_method(sids[j], sids[i]))
-			components.append(twoway_join_agms_method(sids[j], sids[i], 11, 1000))
 
-	r = progress_reporter(40)
-	dss = data_source_statistics()
-	components += [r,dss]
-	return components
+#
+#
+#  Output config
+#
+#
 
+def setup_output(tseries = 1000, txtout=False):
+	from datetime import datetime
+	import h5py as h5
+	
+	std_tables = [CTX.timeseries,
+		network_comm_results,
+		network_host_traffic,
+		network_interfaces
+	]
 
-def execute(sids=None):
-	prepare_data()
-	components = prepare_components(sids)
-
-	# prepare output
-	wcout = CTX.open("wc_tseries.dat",open_mode.truncate)
-	sout = output_pyfile(sys.stdout)
-
-	CTX.timeseries.bind(wcout)
-	print("timeseries=", CTX.timeseries.size())
+	# make a run id
+	runid = "run_%d" % (round(datetime.now().timestamp())%100000)
+	print("runid=",runid)
 
 	R = reporter()
-	R.watch(network_comm_results)
-	R.sample(CTX.timeseries, 1000)
 
-	# run
-	CTX.run()
+	h5file = h5.File(runid+".h5")
+	h5of = output_hdf5(h5file.id.id, open_mode.truncate)
 
-	# cleanup
-	CTX.close_result_files()
+	R.sample(CTX.timeseries, tseries)
+	for table in std_tables:
+		R.watch(table)
+		table.bind(h5of)
+	pbar = progress_reporter(40)
+
+	CTX.C += [h5of, R, pbar]
 
 
-def execute_exp():
+def all_runs():
+	l =  [x for x in os.listdir() if x.startswith('run_') and x.endswith('.h5')]
+	l.sort()
+	return l
 
-	wcup = wcup_ds("/home/vsam/src/datasets/wc_day44")
+def cleanup_runs():
+	allfiles = all_runs()
+	if len(allfiles)>1:
+		for f in allfiles[:-1]:
+			os.unlink(f)
 
-	D = dataset()
-	D.load(wcup)
-	D.hash_streams(1)
-	D.set_max_length(10000)
-	D.set_time_window(4*3600)
-	D.create()
+def latest_run():
+	allfiles = all_runs()
+	if allfiles:
+		return allfiles[-1]
+
+
+#
+#
+#  Execution
+#
+#
+
+def execute():
+
+	feed_data(wc_day46(), streams=1, time_window=4*3600)
 
 	# components
 	proj = agms.projection(7, 500)
-	C = [
+	proj.epsilon = 0.05
+	CTX.C = [
 		tods.network(proj, 0.1),
 		gm2.network(0, proj, 0.1),
 		selfjoin_exact_method(0),
 		selfjoin_agms_method(0, proj)
 	]
 
-	R = reporter()
+	setup_output(tseries=10000)
+	CTX.run()
+	del CTX.C
 
-	# prepare output
-	wcout = CTX.open("wc_tseries.dat",open_mode.truncate)
-	print("timeseries=", CTX.timeseries.size())
-	h5out = output_hdf5('testfile.h5')
+
+
+#
+#
+#  Output analytics
+#
+#
+
+import pandas as pd
+
+def latest_store():
+	return pd.HDFStore(latest_run())
+
+
+
+def traffic_by_message_type(bytes_per_message=20.):
+	"""
+	For each network draw a pie chart showing the distribution
+	of traffic among message types.
+	"""
+	store = latest_store()
+	nht = store['network_host_traffic']
+	ni = store['network_interfaces']
+
+	# join with ni to replace rpcc with text
+
+	# first add the RSP codes to ni, getting nin
+	nio = pd.DataFrame(ni[ni.oneway==0])
+	nio['rpcc'] +=1
+	nin = pd.concat([ni, nio])
+
+	# join nht with nin
+	ntraf = pd.merge(nht, nin, 
+		left_on=('netname','endp'), right_on=('netname','rpcc')
+		)[['netname','method','src','dst','msgs','bytes']]
+
+	# group by method and sum
+	ntraf = ntraf.groupby(('netname','method')).sum()
+	# throw away the (meaningless) src and dst sums
+	ntraf = ntraf[['msgs','bytes']]
+
+	for netname in ni['netname'].unique():
+		# get the data for GM2
+		ntraf_net = ntraf.T[netname].T
+		ntraf_tot = bytes_per_message*ntraf_net['msgs'] + ntraf_net['bytes']
 	
-	CTX.timeseries.bind(wcout)
-	CTX.timeseries.bind(h5out)
-
-	network_comm_results.bind(output_stdout)
-	network_comm_results.bind(h5out)
-	network_host_traffic.bind(h5out)
-	network_interfaces.bind(h5out)
-
-	R.watch(network_comm_results)
-	R.watch(network_host_traffic)
-	R.watch(network_interfaces)
-	R.sample(CTX.timeseries, 1000)
-
-	# run
-	CTX.run()
-
-	# cleanup
-	CTX.close_result_files()
-	print("Done")
+		# plot together
+		ntraf_tot.plot.pie(subplots=True)
 
 
 
-def execute_generated():
-	CTX.data_feed(uniform_data_source(5, 25, 1000, 1000))
-	components = prepare_components()
+def query_approximation_error():
+	"""
+	For each network, show the time-series of the relative error
+	in query estimates.
+	"""
+	store = latest_store()
+	
 
-	wcout = CTX.open("uni_tseries.dat",open_mode.truncate)
-	sout = output_pyfile(sys.stdout)
-
-	CTX.timeseries.bind(wcout)
-	print("timeseries=", CTX.timeseries.size())
-
-	repter = reporter(1000)
-
-	# run
-	CTX.run()
-
-	# cleanup
-	CTX.close_result_files()
-
-
-def load_timeseries(fname):
-	return pd.read_csv(fname)
-
-def make_error_frame(df, singles=[], pairs=[], streams=set()):
-	E = pd.DataFrame()
-	stream_set = set(streams)
-	for s in stream_set:
-		for exc,est in singles:
-			E['Err%d'%s] = relerr(df[exc%s], df[est%s])
-		for s2 in stream_set:
-			if s2>s:
-				for exc,est in pairs:
-					E['Err_%d_%d'%(s,s2)] = relerr(df[exc%(s,s2)], df[est%(s,s2)])
-	return E
-
-
-@np.vectorize
-def relerr(xacc,xest): 
-    if xacc==0.0:
-        return 0.0
-    else:
-        return abs((xacc-xest)/xacc)
 
 
 if __name__=='__main__':
-	#execute()
-	#execute_generated()
-	execute_exp()
+	#execute_exp()
 	pass
 
