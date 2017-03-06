@@ -15,7 +15,7 @@
 import _dds
 
 # from dds.hh
-from _dds import ds_metadata, record, stream_op, qtype,\
+from _dds import ds_metadata, dds_record, qtype,\
   query, self_join, join, twoway_join, id_set, named
 
 def __describe(mdata):
@@ -35,9 +35,10 @@ del __describe
 # from data_source.hh
 
 from _dds import data_source, time_window_source, \
-	wcup_ds, crawdad_ds, time_window, analyzed_data_source,\
+	wcup_ds, crawdad_ds, time_window,\
 	uniform_data_source, \
-	buffered_dataset, buffered_data_source
+	buffered_dataset, buffered_data_source, \
+	materialized_data_source, hdf5_ds
 
 
 # from output.hh

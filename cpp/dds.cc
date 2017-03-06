@@ -8,7 +8,7 @@
 
 using namespace dds;
 
-const dds_record dds_record::zero { 0, 0, INSERT, 0, 0 };
+const dds_record dds_record::zero { 0, 0, 0, 0, 0};
 
 ostream& dds::operator<<(ostream& s, dds_record const & rec)
 {

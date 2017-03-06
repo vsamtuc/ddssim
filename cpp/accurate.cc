@@ -6,7 +6,6 @@ using namespace dds;
 
 data_source_statistics::data_source_statistics()
 {
-	stream_size.resize(dds::MAX_SID);
 	on(START_RECORD, [&](){ process(CTX.stream_record()); });
 	on(RESULTS, [&](){ finish(); });
 
@@ -46,13 +45,14 @@ void data_source_statistics::process(const dds_record& rec)
 	te = rec.ts;
 	sids.insert(rec.sid);
 	hids.insert(rec.hid);
-	stream_size.add(rec.sid);
+
+	stream_size[rec.sid]++;
 	//std::cout << rec << std::endl;
-	lshist.add(rec.local_stream());
-	int delta = (rec.sop==INSERT)?1:-1;
-	lssize[rec.local_stream()]->value() += delta;
-	ssize[rec.sid]->value() += delta;
-	hsize[rec.hid]->value() += delta;
+	lshist[rec.local_stream()] ++;
+
+	lssize[rec.local_stream()]->value() += rec.upd;
+	ssize[rec.sid]->value() += rec.upd;
+	hsize[rec.hid]->value() += rec.upd;
 	scount++;
 }
 
@@ -97,7 +97,7 @@ void data_source_statistics::report(std::ostream& s)
 	for(auto hid: hids) {
 		s << "host "<< setw(3) << hid << ":";
 		for(auto sid: sids) {
-			auto stream_len = lshist[std::make_pair(sid,hid)]; 
+			auto stream_len = lshist[local_stream_id {sid,hid}]; 
 
 			local_stream_stats.sid = sid;
 			local_stream_stats.hid = hid;
@@ -110,7 +110,7 @@ void data_source_statistics::report(std::ostream& s)
 	}
 
 	for(auto sid=stream_size.begin();sid!=stream_size.end();sid++) {
-		s << "stream[" << sid.index() << "]=" << *sid << endl;
+		s << "stream[" << sid->first << "]=" << sid->second << endl;
 	}
 }
 
@@ -123,22 +123,27 @@ void data_source_statistics::report(std::ostream& s)
 selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
 : exact_method<qtype::SELFJOIN>(self_join(sid)) 
 { 
+	on(START_STREAM, [&]() { process_warmup(CTX.warmup); });
 	on(START_RECORD, [&](){ process_record(CTX.stream_record()); });
 	on(END_STREAM, [&](){  finish(); });
 }
 
+void selfjoin_exact_method::process_warmup(const buffered_dataset& wset)
+{
+	for(auto&& rec: wset) {
+		process_record(rec);
+	}
+}
+
+
 void selfjoin_exact_method::process_record(const dds_record& rec)
 {
 	if(rec.sid == Q.param) {
-		size_t x;
-		if(rec.sop == INSERT) {
-			x = histogram.add(rec.key);
-			curest += 2*x + 1;
-		}
-		else {
-			x = histogram.erase(rec.key);
-			curest -= 2*x - 1;
-		}
+
+		long& x = histogram.get_counter(rec.key);
+		curest = (2*x + rec.upd)*rec.upd;
+		x += rec.upd;
+
 	}
 }
 
@@ -156,6 +161,7 @@ void selfjoin_exact_method::finish()
 twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
 : exact_method<qtype::JOIN>(join(s1,s2)) 
 { 
+	on(START_STREAM, [&]() { process_warmup(CTX.warmup); });
 	on(START_RECORD, [=](){ process_record(CTX.stream_record()); 
 	});
 	on(END_STREAM, [=](){
@@ -167,17 +173,20 @@ twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
 void twoway_join_exact_method::
 	dojoin(histogram& h1, histogram& h2, const dds_record& rec)
 {
-	size_t& x = h1.get_counter(rec.key);
-	size_t& y = h2.get_counter(rec.key);
+	auto & x = h1.get_counter(rec.key);
+	auto& y = h2.get_counter(rec.key);
 
-	if(rec.sop == INSERT) {
-		x += 1;
-		curest += y;		
-	} else {
-		x -= 1;
-		curest -= y;				
+	x += rec.upd;
+	curest += rec.upd*y;
+}
+
+void twoway_join_exact_method::process_warmup(const buffered_dataset& wset)
+{
+	for(auto&& rec: wset) {
+		process_record(rec);
 	}
 }
+
 
 void twoway_join_exact_method::process_record(const dds_record& rec)
 {
@@ -200,6 +209,30 @@ void twoway_join_exact_method::finish()
 //////////////////////////////////////////////
 //
 
+
+agms_sketch_updater::agms_sketch_updater(stream_id _sid, agms::projection proj)
+: sid(_sid), isk(proj)
+{
+	on(START_STREAM, [&]() {
+		for(auto&& rec : CTX.warmup) {
+			if(rec.sid==sid) {
+				isk.update(rec.key, rec.upd);
+			}
+		}
+		emit(STREAM_SKETCH_INITIALIZED);
+	});
+
+	on(START_RECORD, [&]() {
+		const dds_record& rec = CTX.stream_record();
+		if(rec.sid==sid) {
+			isk.update(rec.key, rec.upd);
+			emit(STREAM_SKETCH_UPDATED);
+		}
+	});
+}
+
+
+
 factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
@@ -216,10 +249,19 @@ selfjoin_agms_method::selfjoin_agms_method(stream_id sid,
 	using namespace agms;
 
 	isk = & agms_sketch_updater_factory(sid, proj)->isk;
-	curest = dot_est_with_inc(incstate, *isk);
 
+	on(STREAM_SKETCH_INITIALIZED, [&](){ initialize(); });
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
 }
+
+
+void selfjoin_agms_method::initialize()
+{
+	if(isinit) return;
+	curest = dot_est_with_inc(incstate, *isk);
+	isinit = true;
+}
+
 
 void selfjoin_agms_method::process_record()
 {
@@ -248,9 +290,16 @@ twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2,
 	using namespace agms;
 	isk1 = & agms_sketch_updater_factory(s1, proj)->isk;
 	isk2 = & agms_sketch_updater_factory(s2, proj)->isk;
-	curest = dot_est_with_inc(incstate, *isk1, *isk2);
 
+	on(STREAM_SKETCH_INITIALIZED, [&](){ initialize(); });
 	on(STREAM_SKETCH_UPDATED, [&](){ process_record(); });
+}
+
+void twoway_join_agms_method::initialize()
+{
+	if(isinit) return;
+	curest = dot_est_with_inc(incstate, *isk1, *isk2);
+	isinit = true;	
 }
 
 void twoway_join_agms_method::process_record()

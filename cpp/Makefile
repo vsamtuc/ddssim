@@ -12,7 +12,8 @@ DEBUG=1
 endif
 
 INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
-LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5_serial -lm
+LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
+	-lhdf5_serial -ldl -lbz2 -llz -laec -lsz -lz -lm
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 #-Og

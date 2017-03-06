@@ -82,6 +82,8 @@ constexpr Event RESULTS(9);
 
 /// from accurate.hh
 constexpr Event STREAM_SKETCH_UPDATED(100);
+constexpr Event STREAM_SKETCH_INITIALIZED(101);
+
 
 
 }

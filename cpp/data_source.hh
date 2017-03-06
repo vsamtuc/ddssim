@@ -6,6 +6,7 @@
 #include <vector>
 #include <type_traits>
 #include <random>
+#include <algorithm>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/iterator/counting_iterator.hpp>
@@ -32,9 +33,11 @@ typedef shared_ptr<data_source> datasrc;
 class data_source : public std::enable_shared_from_this<data_source>
 {
 protected:
+	ds_metadata dsm;
 	bool isvalid;
 	dds_record rec;
 	friend struct iterator;
+
 public:
 
 	struct iterator 
@@ -90,6 +93,13 @@ public:
 		return ret; 
 	}
 
+
+	/// The metadata for this source
+	inline const ds_metadata& metadata() const { return dsm; }
+	inline void set_metadata(const ds_metadata& other) { dsm = other; }
+	inline bool analyzed() const {  return dsm.valid(); }
+
+
 	/// Virtual destructor
 	virtual ~data_source() { }
 };
@@ -117,30 +127,24 @@ public:
 	filtered_data_source(datasrc _sub, const Func& _func) 
 	: sub(_sub), func(_func)
 	{
+		set_metadata(sub->metadata());
+		func(dsm);
+
 		advance();
 	}
 
-	filtered_data_source(const dds::dds_record& initrec, const Func& _func) 
-	: data_source(initrec), sub(nullptr), func(_func)
-	{
-		advance();
-	}
 
 	const Func& function() const { return func; }
 
 	void advance() { 
 		if(isvalid){
-			if(sub) {
-			 	if(sub->valid()) {
-					rec = sub->get();
-					isvalid = func(rec);
-					sub->advance();
-				} else  {
-					isvalid = false;
-				} 
-			} else {
+		 	if(sub->valid()) {
+				rec = sub->get();
 				isvalid = func(rec);
-			}
+				sub->advance();
+			} else  {
+				isvalid = false;
+			} 
 		}
 	}
 };
@@ -152,12 +156,6 @@ inline auto filtered_ds(datasrc ds, const Func& func)
 	return datasrc(new filtered_data_source<Func>(ds, func));
 }
 
-/// Construct a generated data source
-template <typename Func>
-inline auto generated_ds(const dds_record& rec, const Func& func)
-{
-	return datasrc(new filtered_data_source<Func>(rec, func));
-}
 
 
 //------------------------------------
@@ -212,78 +210,71 @@ struct max_length
 		else 
 			return false;
 	}
+
+	void operator()(ds_metadata& dsm) {
+		// We cannot know the new end-time
+		using std::min;
+		dsm.set_valid(false);
+	}
 };
 
 
-/*
-	Setting or incrementing attributes
- */
-
-template <typename AttrType, typename Func>
-struct set_attr_f
+/// A maximum-time  filter
+struct max_timestamp
 {
-	AttrType dds::dds_record::* attr;
-	Func func;
-	
-	inline set_attr_f(AttrType dds::dds_record::* _attr, const Func& f)
-	: attr(_attr), func(f) {}
-	
+	timestamp tend;
+
+	max_timestamp(timestamp _tend) : tend(_tend) {}
+
 	inline bool operator()(dds::dds_record& rec) {
-		rec.*attr = func(rec);
-		return true;
-	}	
+		return rec.ts <= tend;
+	}
+
+	void operator()(ds_metadata& dsm) {
+		// We cannot know the new end-time
+		using std::min;
+		dsm.set_valid(false);
+	}
 };
 
 
-template <typename T, typename Rng, typename Distr>
-auto set_attr(T dds::dds_record::* ptr, Rng& r, Distr& distr)
+
+/// A filter to hash source id of stream id by applying modulo
+struct modulo_attr
 {
-	auto f = [&r, &distr](const dds::dds_record& rec) -> T {
-		return distr(r);
-	};
+	typedef int16_t intid;
+	intid dds_record::* ptr;
+	intid n;
 
-	return set_attr_f<T, decltype(f)>(ptr, f);
-}
+	modulo_attr(intid dds_record::* _ptr, intid _n) 
+	: ptr(_ptr), n(_n)
+	{ }
 
-template <typename T>
-auto set_attr(T dds::dds_record::* ptr, T val)
-{
-	//return set_att_func<T, false, void, void>(ptr, val);
-	auto f = [val](const dds::dds_record& rec) {
-		return val;
-	};
-	return  set_attr_f<T, decltype(f)>(ptr, f);
-}
+	inline bool operator()(dds_record& rec) { 
+		rec.*ptr %= n;
+		return true;
+	}
+
+	// this is an ugly hack!!!
+	void operator()(ds_metadata& dsm) {
+		bool onsid = ptr == &dds_record::sid;
+
+		if(! onsid && ptr != &dds_record::hid)
+			throw std::logic_error("unknown dds_record attribute in modulo_attr_func");
+
+		set<intid> ids {  (onsid)? dsm.stream_ids() : dsm.source_ids()  };
+		set<intid> newids;
+
+		for(auto id : ids) newids.insert( id % n );
+
+		if(onsid)
+			dsm.set_stream_range(newids.begin(), newids.end());
+		else
+			dsm.set_source_range(newids.begin(), newids.end());
+	}
+};
 
 
-template <typename T, typename Rng, typename Distr>
-auto addto_attr(T dds::dds_record::* ptr, Rng& r, Distr& distr)
-{
-	//distribution<Rng, Distr> d(r, distr);
-	auto dfunc = [ptr, &r, &distr](const dds::dds_record& rec) {
-			return rec.*ptr + distr(r);
-	};
-	return set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
-}
-
-template <typename T>
-auto addto_attr(T dds::dds_record::* ptr, T delta)
-{
-	//return set_att_func<T, true, void, void>(ptr, val, delta);
-	auto dfunc = [ptr, delta](const dds::dds_record& rec) {
-			return rec.*ptr + delta;
-		};
-	return  set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
-}
-
-template <typename T>
-auto modulo_attr(T dds::dds_record::* ptr, T n)
-{
-	auto dfunc = [ptr, n](const dds::dds_record& rec) {
-			return rec.*ptr % n;
-		};
-	return  set_attr_f<T, decltype(dfunc)>(ptr, dfunc);
-}
 
 
 //------------------------------------
@@ -344,17 +335,6 @@ datasrc wcup_ds(const std::string& fpath);
 //
 //------------------------------------
 
-/**
-	Base class for a data source with metadata.
-  */
-class analyzed_data_source : public data_source
-{
-protected:
-	ds_metadata dsm;
-public:
-	/// The metadata for this source
-	inline const ds_metadata& metadata() const { return dsm; }
-};
 
 
 /**
@@ -375,20 +355,9 @@ public:
 	timestamp maxtime;
 	timestamp now;
 
-	uniform_generator(stream_id maxsid, 
-			source_id maxhid, 
-			key_type maxkey):
-		stream_distribution(1,maxsid), source_distribution(1, maxhid),
-		key_distribution(1, maxkey), now(0)
-	{ }
+	uniform_generator(stream_id maxsid, source_id maxhid, key_type maxkey);
 
-	void set(dds_record& rec) {
-		rec.sid = stream_distribution(rng);
-		rec.hid = source_distribution(rng);
-		rec.sop = INSERT;
-		rec.ts = ++now;
-		rec.key = key_distribution(rng);
-	}
+	void set(dds_record& rec);
 
 	inline dds_record operator()() {
 		dds_record ret;
@@ -400,37 +369,15 @@ public:
 /**
 	A data source from a uniform generator
   */
-struct uniform_data_source : analyzed_data_source
+struct uniform_data_source : data_source
 {
 	uniform_generator gen;
 	timestamp maxtime;
 
 	uniform_data_source(stream_id maxsid, source_id maxhid,
-		 key_type maxkey, timestamp maxt)
-	: gen(maxsid, maxhid, maxkey), maxtime(maxt)
-	{
-		dsm.set_size(maxtime);
-		dsm.set_ts_range(1, maxtime);
-		dsm.set_key_range(1, maxkey);
+		 key_type maxkey, timestamp maxt);
 
-		typedef boost::counting_iterator<stream_id> sid_iter;
-		dsm.set_stream_range(sid_iter(1), sid_iter(maxsid+1));
-
-		typedef boost::counting_iterator<source_id> hid_iter;
-		dsm.set_source_range(hid_iter(1), hid_iter(maxhid+1));
-		advance();
-	}
-
-	void advance() override 
-	{
-		if(isvalid) {
-			if(gen.now < maxtime) {
-				gen.set(rec);
-			} else {
-				isvalid = false;
-			}
-		}
-	}
+	void advance() override ;
 
 };
 
@@ -510,7 +457,7 @@ make_uniform_dataset(stream_id maxsid, source_id maxhid,
 	TODO: make the data source rewindable multiple times,
 	to create a long stream
   */
-class buffered_data_source : public analyzed_data_source
+class buffered_data_source : public data_source
 {
 	buffered_dataset* buffer;
 
@@ -543,6 +490,31 @@ public:
 	materialized_data_source(datasrc src);
 
 };
+
+inline datasrc materialize(datasrc src)
+{
+	return datasrc(new materialized_data_source(src));
+}
+
+
+/**
+   Load the dataset found in an HDF5 file 
+   with the given name.
+  */
+datasrc hdf5_ds(const std::string& fname, const std::string& dsetname);
+datasrc hdf5_ds(const std::string& fname /* dsetname=="ddstream" */);
+
+/**
+   Load the dataset found at the location locid of an HDF5 file,
+   with the given name.
+ */
+datasrc hdf5_ds(int locid, const std::string& dsetname);
+
+/**
+   Load the dataset with the given dataset id.
+ */
+datasrc hdf5_ds(int dsetid);
+
 
 
 };

@@ -152,6 +152,7 @@
 #include <numeric>
 #include <valarray>
 #include <iostream>
+#include <algorithm>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_sparse.hpp>
@@ -385,16 +386,31 @@ Vec uniform_random_vector(size_t n, double a, double b);
 
 
 /**
-	A distinct histogram is used to hold a frequency
-	count over a stream of observations.
+	A sparse vector-like object.
 
-	It is similar to \ref frequency_vector, but
-	\c Domain need not be non-negative integers.
+	It is used to hold a frequency count over a stream of observations. It cannot
+	be properly called a vector, since its "dimension" is unknown. It much more
+	resembles a "materialized function".
+
+	The `Domain` type can be any type usable as a key to `std::map`. The range
+	should be a numeric type.
   */
-template <typename Domain, typename Range=size_t>
-class distinct_histogram : public std::map<Domain, Range>
+template <typename Domain, typename Range=long int, typename Compare=std::less<Domain> >
+class frequency_vector : public std::map<Domain, Range, Compare>
 {
+	static_assert(std::is_arithmetic<Range>::value, 
+		"non-arithmetic range in histogram is not allowed");
 public:
+	typedef Domain domain_type;
+	typedef Range range_type;
+	typedef std::map<Domain, Range> container;
+	typedef typename container::iterator iterator;
+	typedef typename container::const_iterator const_iterator;
+
+
+	using std::map<Domain,Range>::begin;
+	using std::map<Domain,Range>::end;
+
 	inline Range& get_counter(const Domain& key) {
 		auto loc = this->find(key);
 		if(loc==this->end()) {
@@ -405,43 +421,150 @@ public:
 		}		
 	}
 
-	inline Range add(const Domain& key) {
-		return get_counter(key)++;
+	// overload the std::map [] operators so as to avoid surprises!
+	inline Range& operator[](const Domain& key) {
+		return get_counter(key);
 	}
-	inline Range erase(const Domain& key) {
-		return get_counter(key)--;
+	inline Range operator[](const Domain& key) const {
+		auto loc = this->find(key);
+		if(loc==this->end())
+			return ((Range)0);
+		else
+			return loc.second;
 	}
 
+	/**
+		Pack a frequency vector by deleting 0 entries.
+
+	  	This method takes linear time.
+	  */
+	void pack() {
+		// do a "delayed erase"
+		iterator prev = end();
+		for(auto iter=begin(); iter!=end(); iter++) {
+			if(prev!=end()) {
+				erase(prev);
+			}
+			if(iter.second != ((Range)0)) {
+				prev = end();
+			} else {
+				prev = end();
+			}
+		}
+		return *this;
+	}
+
+	/** Convenience method that calls `pack()` and returns *this */
+	inline auto packed() { pack(); return *this; }
+
+	/**
+		Return true if there is no mapping for a key
+
+		Note that a mapping may exist and be `((Range)0)` if the vector is unpacked.
+	  */
+	inline bool mapping_exists(const Domain& key) const { return find(key)!=end(); }
+
+	/**
+		Declare this object as a function : `Domain` -> `Range`
+	*/
+	inline Range operator()(const Domain& x) const { return (*this)[x]; }
+
+
+	/**
+		Call f( x ) for x in keys
+	  */
+	template <typename Func>
+	void foreach_key(const Func& f) const { for(auto it : (*this)) f(it->first); }
+	/**
+		Call f( self(x) ) for x in keys
+	  */
+	template <typename Func>
+	void foreach_value(const Func& f) { for(auto it : (*this)) f(it->value); }
+
+	/**
+		Call f( x, self(x) ) for x in keys
+	  */
+	template <typename Func>
+	void foreach_point(const Func& f) { for(auto it : (*this)) f(it->first, it->second); }
+
+	/*
+		Note: we don't call these `assign` since this method will be offered by
+		std::map in C++17
+	*/
+
+
+	template <typename Func>
+	auto pointwise_map(const Func& f) { 
+		for(auto it : (*this))  it->second = f(it->second); 
+		return *this;
+	}
+	template <typename Func>
+	auto pointwise_map_point(const Func& f) { 
+		for(auto it : (*this))  it->second = f(it->first, it->second); 
+		return *this;
+	}
+
+	template <typename Func, typename Range2>
+	auto pointwise_map(const Func& f, const frequency_vector<Domain,Range2,Compare>& other) {
+		// first apply on my own domain
+		for(auto it : (*this)) {
+			it->second = f(it->second, other(it->first) ); 
+		}
+		// add the domain of the other vector
+		for(auto it : other) {
+			if(! mapping_exists(it->first)) 
+				get_counter(it->first) = f(((Range)0), it->second);
+		}
+		return *this;
+	}
+
+
+	template <typename Func, typename Range2>
+	auto pointwise_map_point(const Func& f, const frequency_vector<Domain,Range2,Compare>& other) {
+		// first apply on my own domain
+		for(auto it : (*this)) {
+			it->second = f(it->first, it->second, other(it->first) ); 
+		}
+		// add the domain of the other vector
+		for(auto it : other) {
+			if(! mapping_exists(it->first)) 
+				get_counter(it->first) = f(it->first, ((Range)0), it->second);
+		}
+		return *this;
+	}
 
 };
 
-using boost::numeric::ublas::map_std;
-using boost::numeric::ublas::mapped_vector;
 
 
-/**
-	A frequency vector is used to hold a frequency
-	count over a stream of numeric observations.
-
-	The domain is restricted to the non-negative integers
-	and the max. possible observation needs to be
-	known in advance.
-
-	This is a uBLAS vector, and can be used direcly with all
-	the nice linear algebra routines in boost uBLAS.
-  */
-template <typename Domain, typename Range=size_t>
-class frequency_vector 
-	: public mapped_vector< Range, map_std<Domain, Range> >
+template <typename Domain, typename Range1, typename Range2, typename Compare>
+inline auto inner_product(
+	const frequency_vector<Domain, Range1, Compare>& v1,
+	const frequency_vector<Domain, Range2, Compare>& v2
+ )
 {
-public:
-	typedef mapped_vector< Range, map_std<Domain, Range> > vector_type;
+	auto less = v1.key_comp();
+	auto i1 = v1.begin();
+	auto e1 = v1.end();
+	auto i2 = v2.begin();
+	auto e2 = v2.end();
+	typedef decltype( ((Range1)0) * ((Range2)0) ) result_type;
+	result_type res = 0;
 
-	using vector_type::mapped_vector;
-	inline void add(const Domain& key, Range count=(Range)1) {
-		(*this)(key) += count;
+	while(true) {
+		if(i1==e1 || i2==e2) 
+			return res;
+		else if(less(i1->first, i2->first))
+			++i1;
+		else if(less(i2->first, i1->first))
+			++i2;
+		else {
+			res += i1->second * i2->second;
+			++i1; ++i2;
+		}
 	}
-};
+}
+
 
 using namespace boost::accumulators;
 

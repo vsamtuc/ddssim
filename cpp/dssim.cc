@@ -26,14 +26,16 @@ void execute()
 	//datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44");
 	//datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day44_1");
 	datasrc wcup = wcup_ds(HOME+"/src/datasets/wc_day46");
+	//datasrc wcup = hdf5_ds(HOME+"/git/ddssim/cpp/wc_test.h5","dsstream");
 
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(10000);
-	//D.hash_sources(4);
+	D.hash_sources(4);
 	D.hash_streams(1);
-	D.set_time_window(6*3600);
-	D.create();
+	D.set_time_window(4*3600);
+	//D.create();
+	D.create_warmup_time(4*3600, true);
 
 	/* Create components */
 
@@ -45,18 +47,19 @@ void execute()
 
 	cout << "Treating " << sids.size() << " streams" << endl;
 
+	projection proj(7 , 1500);
+	proj.set_epsilon( 0.05 );
+
 	for(size_t i=0; i<sids.size(); i++) {
-		cout << "Treating stream " << sids[i] << endl;
-		components.push_back(new selfjoin_exact_method(sids[i]));
-		components.push_back(new selfjoin_agms_method(sids[i], 7, 1000));
+		// cout << "Treating stream " << sids[i] << endl;
+		// components.push_back(new selfjoin_exact_method(sids[i]));
+		// components.push_back(new selfjoin_agms_method(sids[i], proj));
 		// for(size_t j=i; j>0; j--){
 		// 	components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
 		// 	components.push_back(new 
 		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		// }
 	}
-	projection proj(7 , 1000);
-	proj.set_epsilon( 0.05 );
 	tods::network* tmeth = new tods::network(proj, 0.025 );
 	components.push_back(tmeth);
 	components.push_back(new gm2::network(0, proj, 0.1 ));
@@ -69,11 +72,11 @@ void execute()
 	/* Bind files to outputs */
 
 
-	output_file* lsstats_file = CTX.open("wc_lsstats.dat");
-	auto lss = new data_source_statistics();
-	components.push_back(lss);
-	local_stream_stats.bind(lsstats_file);
-	R.watch(local_stream_stats);
+	// output_file* lsstats_file = CTX.open("wc_lsstats.dat");
+	// auto lss = new data_source_statistics();
+	// components.push_back(lss);
+	// local_stream_stats.bind(lsstats_file);
+	// R.watch(local_stream_stats);
 
 	output_hdf5 h5f("wc_results.h5");
 

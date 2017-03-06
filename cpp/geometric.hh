@@ -87,7 +87,7 @@ struct local_stream_state_sketch
 
 	void update_stream_state(const dds_record& rec) {
 		assert(rec.hid == Self.site_id());
-		local_stream_state[rec.sid].update(rec.key, (rec.sop==stream_op::INSERT)?1.0:-1.0);
+		local_stream_state[rec.sid].update(rec.key, rec.upd);
 	}
 };
 
@@ -411,9 +411,12 @@ struct coordinator : process
 
 	coordinator(network* nw, const projection& proj, double beta); 
 
-	inline network* net() { return dynamic_cast<network*>(host::net()); }
+	inline network* net() { return static_cast<network*>(host::net()); }
 
 	void setup_connections() override;
+
+	// load the warmup dataset
+	void warmup();
 
 	// initialize a new round
 	void start_round();

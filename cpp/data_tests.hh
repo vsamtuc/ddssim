@@ -57,7 +57,7 @@ public:
 
 	FVec make_sparse(const Stream& S)
 	{
-		FVec ret(MAX_KEY);
+		FVec ret;
 		for(key_type x : S) {
 			ret[x] += 1;
 		}
@@ -69,7 +69,7 @@ public:
 		sketch sk(proj);
 		size_t count = 0;
 		for(auto x=begin(f);x!=end(f);x++) {
-			sk.update(x.index(), *x);
+			sk.update(x->first, x->second);
 			count ++;
 		}
 		// cout << "FVec has " << count << " distinct keys" << endl;
@@ -85,14 +85,14 @@ public:
 		FVec f = make_sparse(S);
 		sketch sk = make_sketch(proj, f);
 
-		double exc = u::inner_prod(f,f);
+		double exc = inner_product(f,f);
 		double est = dot_est(sk,sk);
 		double err = fabs((exc-est)/exc);
-		// cout << "Estimated =" << est 
-		// 	<< "  exact = " << exc 
-		// 	<< "  error = " << err 
-		// 	<< "  theoretical = " << proj.epsilon()
-		// 	<< endl;
+		 // cout << "Estimated =" << est 
+		 // 	<< "  exact = " << exc 
+		 // 	<< "  error = " << err 
+		 // 	<< "  theoretical = " << proj.epsilon()
+		 // 	<< endl;
 		return err<proj.epsilon();
 	}
 
@@ -102,6 +102,7 @@ public:
 		key_type maxkey, size_t length)
 	{
 		projection proj(D, L);
+		proj.set_epsilon(proj.ams_epsilon()/3.);
 
 		size_t fails = 0;
 
@@ -124,7 +125,7 @@ public:
 
 		double Prfail = (double)fails/ N ;
 
-		cout << "Prob[fail]=" << Prfail
+		cout << "Prob[fail]=" << Prfail << "(" << fails << ")"
 			<< "   theoretical=" << proj.prob_failure() 
 			<< endl;
 		return Prfail <= proj.prob_failure();
@@ -135,7 +136,7 @@ public:
 	{
 		cout << endl;
 		for(depth_type D=3; D<=7; D+=2)
-		for(index_type L=500; L<=2500; L+=1000)
+		for(index_type L=500; L<=2500; L+=500)
 		for(key_type mk = 1000; mk<=100000; mk*=10) {			
 			for(size_t len=1000; len <=100000; len*=10) 
 			{
@@ -167,7 +168,7 @@ public:
 			// assert that values are all positive
 			keys.insert(ddsrec.key);
 			TS_ASSERT_LESS_THAN_EQUALS(0, ddsrec.key);
-			TS_ASSERT_EQUALS(dds::INSERT, ddsrec.sop);
+			TS_ASSERT_EQUALS(1,  ddsrec.upd);
 
 			sids.insert(ddsrec.sid);
 			hids.insert(ddsrec.hid);
@@ -192,7 +193,7 @@ public:
 
 	void test_wcup()
 	{
-		datasrc wcup_orig = wcup_ds("/home/vsam/src/datasets/wc_day44");
+		datasrc wcup_orig = wcup_ds("/home/vsam/src/datasets/wc_day44_1");
 		buffered_dataset wcup_dset;
 		wcup_dset.load(wcup_orig);
 		buffered_data_source* wcup = new buffered_data_source(wcup_dset);
@@ -219,7 +220,7 @@ public:
 			// assert that values are all positive
 			keys.insert(ddsrec.key);
 			TS_ASSERT_LESS_THAN_EQUALS(0, ddsrec.key);
-			TS_ASSERT_EQUALS(dds::INSERT, ddsrec.sop);
+			TS_ASSERT_EQUALS(1, ddsrec.upd);
 
 			sids.insert(ddsrec.sid);
 			hids.insert(ddsrec.hid);

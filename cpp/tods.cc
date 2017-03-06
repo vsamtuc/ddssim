@@ -34,8 +34,33 @@ tods::network::network(const projection& _proj, double _theta)
 	setup();
 
 	// callback to process new record
+	on(START_STREAM, [&](){ process_warmup(); });
 	on(START_RECORD, [&](){ process_record(); });
 	on(RESULTS, [&](){ output_results(); });
+}
+
+
+void tods::network::process_warmup()
+{
+	// ok, first spread the goods to the node states
+	for(auto&& rec : CTX.warmup) {
+		if(streams.find(rec.sid) == streams.end()) continue;
+		sites[rec.hid]->stream_state[rec.sid]->update(rec.key, rec.upd);
+	}
+
+	for(stream_id sid : streams) {
+		// flush all node states, adding up to the coord state
+		coord_stream_state* cstate= hub->stream_state[sid];
+
+		for(auto&& h : sites) {
+			node_stream_state* nss = h.second->stream_state[sid];
+
+			cstate->Etot += nss->dE;
+			nss->flush();
+		}
+	}
+
+
 }
 
 
@@ -47,7 +72,7 @@ tods::network::~network()
 void tods::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
-	sites[rec.hid]->update(rec.sid, rec.key, rec.sop);
+	sites[rec.hid]->update(rec.sid, rec.key, rec.upd);
 }
 
 double tods::network::maximum_error() const
@@ -124,7 +149,7 @@ node::~node()
 }
 
 
-void node::update(stream_id sid, key_type key, stream_op op)
+void node::update(stream_id sid, key_type key, counter_type upd)
 {
 	// skip the record!
 	if(net()->streams.find(sid)==net()->streams.end()) return;
@@ -132,7 +157,7 @@ void node::update(stream_id sid, key_type key, stream_op op)
 	// get the state
 	auto nss = stream_state[sid];
 	// add update
-	nss->update(key, (op==stream_op::INSERT)? 1.0 : -1.0);
+	nss->update(key, upd);
 	// check local condition
 	if(! nss->local_condition()) {
 		coord.update(site_id(), sid, *nss);

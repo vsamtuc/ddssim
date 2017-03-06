@@ -29,13 +29,13 @@ class data_source_statistics : public reactive
 	set<source_id> hids;
 
 	// count total size of local streams
-	distinct_histogram<local_stream_id> lshist;
+	frequency_vector<local_stream_id> lshist;
 
 	// count each stream size
 	frequency_vector<stream_id> stream_size;
 
 	// timeseries for 'active' records per local stream
-	typedef column<int> col_t;
+	typedef column<long int> col_t;
 	map<local_stream_id, col_t*> lssize;
 
 	// timeseries for 'active' records per stream
@@ -90,9 +90,10 @@ public:
 
 class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 {
-	distinct_histogram<key_type> histogram;
+	frequency_vector<key_type> histogram;
 
 	void process_record(const dds_record& rec);
+	void process_warmup(const buffered_dataset& wset);
 	void finish();
 public:
 	selfjoin_exact_method(stream_id sid);
@@ -101,13 +102,14 @@ public:
 
 class twoway_join_exact_method : public exact_method<qtype::JOIN>
 {
-	typedef distinct_histogram<key_type> histogram;
+	typedef frequency_vector<key_type> histogram;
 	histogram hist1;
 	histogram hist2;
 
 	// helper
 	void dojoin(histogram& h1, histogram& h2, const dds_record& rec);
 	// callbacks
+	void process_warmup(const buffered_dataset& wset);
 	void process_record(const dds_record& rec);
 	void finish();
 public:
@@ -131,17 +133,7 @@ struct agms_sketch_updater : reactive
 	stream_id sid;
 	agms::isketch isk;
 
-	agms_sketch_updater(stream_id _sid, agms::projection proj)
-	: sid(_sid), isk(proj)
-	{
-		on(START_RECORD, [&]() {
-			const dds_record& rec = CTX.stream_record();
-			if(rec.sid==sid) {
-				isk.update(rec.key, (rec.sop==INSERT)?1.0:-1.0);
-				emit(STREAM_SKETCH_UPDATED);
-			}
-		});
-	}
+	agms_sketch_updater(stream_id _sid, agms::projection proj);
 };
 
 // Factory
@@ -204,7 +196,9 @@ class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 {
 	agms::isketch* isk;
 	Vec incstate;
+	bool isinit = false;
 
+	void initialize();
 	void process_record();
 public:
 	selfjoin_agms_method(stream_id sid, const agms::projection& proj);
@@ -219,8 +213,10 @@ class twoway_join_agms_method : public agms_method<qtype::JOIN>
 {
 	agms::isketch *isk1, *isk2;
 	Vec incstate;
+	bool isinit = false;
 
 	// callbacks
+	void initialize();
 	void process_record();
 public:
 	twoway_join_agms_method(stream_id s1, stream_id s2, const agms::projection& proj);

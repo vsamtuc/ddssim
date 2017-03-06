@@ -16,7 +16,7 @@ void node::update_stream()
 {
 	assert(CTX.stream_record().hid == site_id());
 
-	U.update(CTX.stream_record().key, CTX.stream_record().sop==INSERT?1.0:-1.0 );
+	U.update(CTX.stream_record().key, CTX.stream_record().upd);
 	update_count++;
 
 	zeta = szone(U);
@@ -135,9 +135,9 @@ void coordinator::finish_round()
 	}
 	newE /= (double)k;
 
-#if 0
+#if 1
 
-#define VALIDATE_INVARIANTS
+//#define VALIDATE_INVARIANTS
 #ifdef VALIDATE_INVARIANTS
 
 	//
@@ -177,7 +177,7 @@ void coordinator::finish_round()
 		minzeta_min = min(minzeta_min, ni->minzeta);
 	}
 
-	if(zeta_Enext < zeta_total/k) {    // check that we didn't screw up!
+	if(zeta_Enext + 1E-6 < zeta_total/k ) {    // check that we didn't screw up!
 		// recompute zetas from the source!
 		print("*** PROBLEM: zeta_E(X)=",zeta_Enext," < (1/sum(X_i))=", zeta_total/k);
 		invariants_ok=false;
@@ -243,8 +243,16 @@ void coordinator::finish_round()
 }
 
 
+void coordinator::warmup()
+{
+	sketch dE(net()->proj);
 
-
+	for(auto&& rec : CTX.warmup) {
+		if(rec.sid == net()->sid) 
+			dE.update(rec.key, rec.upd);
+	}
+	query.update_estimate(dE/k);
+}
 
 
 void coordinator::setup_connections()
@@ -303,7 +311,8 @@ void gm2::network::process_record()
 void gm2::network::process_init()
 {
 	// let the coordinator initialize the nodes
-hub->start_round();
+	hub->warmup();
+	hub->start_round();
 }
 
 

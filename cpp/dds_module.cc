@@ -290,17 +290,13 @@ BOOST_PYTHON_MODULE(_dds)
      *
      **********************************************/
 
-    enum_<dds::stream_op>("stream_op")
-    	.value("INSERT", dds::INSERT)
-    	.value("DELETE", dds::DELETE)
-    	;
 
-    class_<dds::dds_record>("record")
+    class_<dds::dds_record>("dds_record")
     	.def_readwrite("sid", &dds::dds_record::sid)
     	.def_readwrite("hid", &dds::dds_record::hid)
-    	.def_readwrite("sop", &dds::dds_record::sop)
-    	.def_readwrite("ts", &dds::dds_record::ts)
     	.def_readwrite("key", &dds::dds_record::key)
+    	.def_readwrite("upd", &dds::dds_record::upd)
+    	.def_readwrite("ts", &dds::dds_record::ts)
     	.def(self_ns::repr(self_ns::self))
     	;
 
@@ -354,7 +350,9 @@ BOOST_PYTHON_MODULE(_dds)
     	;
 
     // Also good for std::set<source_id> !!!!
-    class_< std::set<dds::stream_id> >("id_set")
+    class_< std::set<dds::stream_id> >
+    		("id_set", init<>())
+    	.def( init< const::set<dds::stream_id>& >() )
     	.def("__len__", & std::set<dds::stream_id>::size )
     	.def("__iter__", py::iterator<std::set<dds::stream_id>>())
     	.add_property("empty", &std::set<dds::stream_id>::empty)
@@ -375,10 +373,14 @@ BOOST_PYTHON_MODULE(_dds)
     	.def("set_ts_range", &dds::ds_metadata::set_ts_range)
     	.add_property("stream_ids", 
     		make_function(&dds::ds_metadata::stream_ids,
-    			return_value_policy<copy_const_reference>()))
+    			return_value_policy<copy_const_reference>()),
+    		&dds::ds_metadata::set_stream_ids)
     	.add_property("source_ids", 
     		make_function(&dds::ds_metadata::source_ids,
-    			return_value_policy<copy_const_reference>()))
+    			return_value_policy<copy_const_reference>()),
+    		&dds::ds_metadata::set_source_ids)
+    	.add_property("valid", &dds::ds_metadata::valid,
+    			&dds::ds_metadata::set_valid)
     	;
 
     /**********************************************
@@ -393,7 +395,14 @@ BOOST_PYTHON_MODULE(_dds)
     		return_value_policy<copy_const_reference>())
     	.def("advance", &dds::data_source::advance)
     	.def("valid", &dds::data_source::valid)
-		.def("__iter__", py::iterator<dds::data_source>())    	
+		.def("__iter__", py::iterator<dds::data_source>())
+		.add_property("metadata",
+			// getter
+			make_function(&dds::data_source::metadata,
+				return_value_policy<copy_const_reference>()),
+			// setter
+			&dds::data_source::set_metadata)
+		.add_property("analyzed", &dds::data_source::analyzed)
     	;
 
     py::register_ptr_to_python< dds::datasrc > ();
@@ -407,14 +416,8 @@ BOOST_PYTHON_MODULE(_dds)
     def("crawdad_ds", dds::wcup_ds);
     def("time_window", dds::time_window);
 
-    class_< dds::analyzed_data_source, bases<dds::data_source>, 
-    	boost::noncopyable>(
-    		"analyzed_data_source", no_init)
-    	.def("metadata", &dds::analyzed_data_source::metadata,
-    		return_internal_reference<>())
-    	;
 
-    class_< dds::uniform_data_source, bases<dds::analyzed_data_source>, 
+    class_< dds::uniform_data_source, bases<dds::data_source>, 
     	boost::noncopyable>(
     		"uniform_data_source",
     		init<dds::stream_id, dds::source_id, dds::key_type, dds::timestamp>()
@@ -429,16 +432,28 @@ BOOST_PYTHON_MODULE(_dds)
     	.def("analyze", &dds::buffered_dataset::analyze)
 		;
 
-	class_< dds::buffered_data_source, 
-			bases<dds::analyzed_data_source>,
-			boost::noncopyable >("buffered_data_source",
+	class_< dds::buffered_data_source, bases<dds::data_source>, boost::noncopyable >
+		("buffered_data_source",
 				init<dds::buffered_dataset&>()[
 					with_custodian_and_ward<1,2>()])
-			.def(init<dds::buffered_dataset&,
-					const dds::ds_metadata&>()[
-						with_custodian_and_ward<1,2>()
-					])
-			;
+		.def(init<dds::buffered_dataset&,
+				const dds::ds_metadata&>()[
+					with_custodian_and_ward<1,2>()
+				])
+		;
+
+	class_< dds::materialized_data_source, bases<dds::buffered_data_source>, 
+		boost::noncopyable>
+		("materialized_data_source", init<dds::datasrc>())
+		;
+
+
+	def("hdf5_ds", (dds::datasrc (*)(const std::string&, const std::string&)) 
+		&dds::hdf5_ds);
+	def("hdf5_ds", (dds::datasrc (*)(const std::string&)) &dds::hdf5_ds);
+	def("hdf5_ds", (dds::datasrc (*)(int, const std::string&)) &dds::hdf5_ds);
+	def("hdf5_ds", (dds::datasrc (*)(int)) 	&dds::hdf5_ds);
+
 
     /**********************************************
      *
@@ -620,7 +635,7 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 			&dds::output_c_file::set_owner)
 		.def("path", &dds::output_c_file::path, 
 			return_value_policy<copy_const_reference>())
-		;
+ 		;
 
 	scope().attr("output_stdout") = ptr(&dds::output_stdout);
 	scope().attr("output_stderr") = ptr(&dds::output_stderr);

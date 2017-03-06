@@ -223,7 +223,7 @@ protected:
 	timestamp _now;
 
 	// data source
-	shared_ptr<analyzed_data_source> ds;
+	datasrc ds;
 
 	// internal methods
 	void run_action(action*);

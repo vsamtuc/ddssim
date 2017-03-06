@@ -29,19 +29,6 @@ struct context : basic_control
 {
 
 	/// Each simulation generates one time series table
-	struct {
-		time_series total_traffic {"namea"};
-
-		struct {
-
-			time_series traffica {"nabe"};
-			
-			time_series trafficb { "namec" };
-
-		} traffic_per_msg;
-
-
-	} tseries;
 
 
 	time_series timeseries;
@@ -53,7 +40,8 @@ struct context : basic_control
 	output_file* open(FILE* f, bool owner = false);
 	output_file* open(const string& path, 
 		open_mode mode = default_open_mode);
-	
+
+	buffered_dataset warmup;	
 
 	void close_result_files();
 	void clear();
@@ -160,6 +148,7 @@ class dataset : reactive
 	boost::optional<source_id> _sources;
 	boost::optional<timestamp> _time_window;
 
+	datasrc apply_filters();
 
 public:
 	dataset();
@@ -172,7 +161,10 @@ public:
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
 	void set_time_window(timestamp Tw);
+
 	void create();
+	void create_warmup(size_t wsize, bool cool);
+	void create_warmup_time(timestamp wtime, bool cool);
 };
 
 

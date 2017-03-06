@@ -25,11 +25,10 @@ typedef int32_t  timestamp;
 constexpr key_type MAX_TS = std::numeric_limits<timestamp>::max();
 constexpr key_type MIN_TS = std::numeric_limits<timestamp>::min();
 
-/// The operation type
-enum stream_op : int8_t {
-	INSERT,
-	DELETE
-};
+/// The stream counter type
+typedef int32_t  counter_type;
+constexpr counter_type MAX_COUNTER = std::numeric_limits<counter_type>::max();
+constexpr counter_type MIN_COUNTER = std::numeric_limits<counter_type>::min();
 
 /// The id of a stream 
 typedef int16_t stream_id;
@@ -42,32 +41,83 @@ constexpr key_type MAX_HID = std::numeric_limits<source_id>::max();
 constexpr key_type MIN_HID = (source_id)0;
 
 
-typedef std::pair<stream_id, source_id> local_stream_id;
 
 using std::ostream;
 
 /**
-	A stream tuple with a single key. 
+	A local stream id combines a `stream_id` and a `source_id`.
+
+	Its size is 4 bytes.
   */
-struct dds_record
+struct local_stream_id
 {
-	stream_id sid;  /// stream id
-	source_id hid;	/// local host id
-	stream_op sop;	/// stream operation
-	timestamp ts;	/// timestamp
-	key_type key;	/// record key
+	stream_id sid;  		/// stream id
+	source_id hid;			/// local host id
+};
+
+
+
+
+inline bool operator<(local_stream_id lsid1, local_stream_id lsid2)
+{
+	return lsid1.hid < lsid2.hid || (lsid1.hid==lsid2.hid && lsid1.sid < lsid2.sid);
+}
+
+inline bool operator==(local_stream_id lsid1, local_stream_id lsid2)
+{
+	return lsid1.hid == lsid2.hid && lsid1.sid == lsid2.sid;
+}
+inline bool operator!=(local_stream_id lsid1, local_stream_id lsid2) {
+	return !(lsid1 == lsid2);
+}
+
+
+
+/**
+ 	A stream update contains a key and a counter.
+
+ 	Its size is 8 bytes.
+  */
+struct stream_update
+{
+	key_type key;			/// record key
+	counter_type upd;		/// the update
+};
+
+
+/**
+	A distributed stream tuple.
+
+	This object combines a local stream id, a stream update and
+	a timestamp. Its total size is 16 bytes.
+  */
+struct dds_record 
+{
+	stream_id sid;  		/// stream id
+	source_id hid;			/// local host id
+	key_type key;			/// record key
+	counter_type upd;		/// the update	
+	timestamp ts;			/// timestamp
+
 
 	inline local_stream_id local_stream() const { 
-		return std::make_pair(sid, hid);
+		return local_stream_id { sid, hid };
+	}
+	inline operator local_stream_id() const { return {sid, hid}; }
+
+	inline stream_update update() const { 
+		return stream_update {key, upd}; 
+	}
+	inline operator stream_update() const {
+		return { key, upd }; 
 	}
 
 	inline void repr(ostream& s) const {
 		s 
-			<< "<"
-			<< sid << ","
-			<< (sop==INSERT ? "INS[" : "DEL[") << key << "],"
-			<< "ts="<< ts << " "
-			<< "at "<< hid
+			<< "<s="<< sid 
+			<< ",h="<< hid
+			<< ",["	<< key << (upd>=0 ? "]+" : "]") << upd
+			<< ",t="<< ts
 			<< ">";
 	}	
 
@@ -75,9 +125,12 @@ struct dds_record
 };
 
 inline dds_record make_record(stream_id sid, source_id hid, 
-	stream_op sop, timestamp ts, key_type key)
+	timestamp ts, key_type key, counter_type upd=1)
 {
-	return dds_record {sid, hid, sop, ts, key};
+	//return dds_record { sid, hid, key, upd, ts};
+	dds_record rec;
+	rec.sid = sid; rec.hid=hid; rec.key=key; rec.upd = upd; rec.ts=ts;
+	return rec;
 }
 
 inline bool before(const dds_record& r1, const dds_record& r2)
@@ -125,6 +178,8 @@ using std::set;
 class ds_metadata
 {
 protected:
+	bool isvalid = false;
+
 	set<stream_id> sids;
 	set<source_id> hids;
 
@@ -132,6 +187,10 @@ protected:
 	timestamp ts=0, te=0;
 	key_type kmin = MAX_KEY, kmax=MIN_KEY;
 public:
+
+	inline bool valid() const { return isvalid; }
+	inline void set_valid(bool v=true) { isvalid=v; }
+
 	inline void collect(const dds_record& rec) {
 		if(scount==0) ts=rec.ts;
 		te = rec.ts;
@@ -143,17 +202,25 @@ public:
 	}
 
 	inline size_t size() const { return scount; }
+	inline timestamp duration() const { return te-ts+1; }
+
 	inline timestamp mintime() const { return ts; }
 	inline timestamp maxtime() const { return te; }
+
 	inline key_type minkey() const { return kmin; }
 	inline key_type maxkey() const { return kmax; }	
+
 	inline const set<stream_id>& stream_ids() const { return sids; }
 	inline const set<source_id>& source_ids() const { return hids; }
+
 
 	// mutable interface
 	void set_size(size_t s) { scount = s; }
 	void set_ts_range(timestamp _ts, timestamp _te) { ts=_ts; te=_te; }
 	void set_key_range(key_type _kmin, key_type _kmax) { kmin=_kmin; kmax=_kmax; }
+
+	void set_stream_ids(const set<stream_id>& _sids) { sids = _sids; }
+	void set_source_ids(const set<source_id>& _hids) { hids = _hids; }
 
 	template <typename Iter>
 	void set_stream_range(Iter from, Iter to) {
@@ -317,9 +384,9 @@ BYTE_SIZE_SIZEOF(double)
 
 BYTE_SIZE_SIZEOF(dds_record)
 
-
-
 } // end namespace dds
+
+
 
 
 

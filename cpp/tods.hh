@@ -110,7 +110,7 @@ struct node : local_site
 
 	void setup_connections() override;
 
-	void update(stream_id sid, key_type key, stream_op op);
+	void update(stream_id sid, key_type key, counter_type upd);
 };
 
 
@@ -135,6 +135,7 @@ struct network
 	: network(projection(D,L), theta)
 	{ }
 
+	void process_warmup();
 	void process_record();
 	void output_results();
 

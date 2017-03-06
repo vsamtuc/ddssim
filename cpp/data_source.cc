@@ -8,7 +8,8 @@
 #include <boost/endian/conversion.hpp>
 
 #include "data_source.hh"
-
+#include "hdf5_util.hh"
+#include "binc.hh"
 
 using namespace std;
 using namespace dds;
@@ -18,6 +19,17 @@ using namespace dds;
 time_window_source::time_window_source(datasrc _sub, dds::timestamp _w)
 	: sub(_sub), Tw(_w) 
 	{
+		set_metadata(sub->metadata());
+
+		// double the size
+		dsm.set_size( dsm.size() );
+
+		// adjust the limits
+		dsm.set_ts_range( 
+			min(dsm.mintime(), dsm.mintime()+Tw),
+			max(dsm.maxtime(), dsm.maxtime()+Tw)
+		  );
+
 		advance();
 	}
 
@@ -48,7 +60,7 @@ void time_window_source::advance_from_sub()
 	rec = sub->get();
 	sub->advance();
 	window.push(rec);
-	window.back().sop = dds::DELETE;
+	window.back().upd = -window.back().upd;
 	window.back().ts += Tw;
 }
 
@@ -245,9 +257,9 @@ public:
 			// populate the dds record
 			rec.sid = record.stream();
 			rec.hid = record.site();
-			rec.sop = dds::INSERT;
-			rec.ts = record.tstamp();
 			rec.key = record.value();
+			rec.upd = 1;
+			rec.ts = record.tstamp();
 		}
 	}
 
@@ -269,6 +281,54 @@ datasrc dds::wcup_ds(const string& fpath)
 std::mt19937 uniform_generator::rng(1961969);
 
 
+uniform_generator::uniform_generator(stream_id maxsid, source_id maxhid, key_type maxkey)
+:	stream_distribution(1,maxsid), source_distribution(1, maxhid),
+	key_distribution(1, maxkey), now(0)
+{ }
+
+void uniform_generator::set(dds_record& rec) 
+{
+	rec.sid = stream_distribution(rng);
+	rec.hid = source_distribution(rng);
+	rec.key = key_distribution(rng);
+	rec.upd = 1;
+	rec.ts = ++now;
+}
+
+
+
+
+
+uniform_data_source::uniform_data_source(
+	stream_id maxsid, source_id maxhid,	key_type maxkey, timestamp maxt
+	)
+	: gen(maxsid, maxhid, maxkey), maxtime(maxt)
+{
+	dsm.set_size(maxtime);
+	dsm.set_ts_range(1, maxtime);
+	dsm.set_key_range(1, maxkey);
+
+	typedef boost::counting_iterator<stream_id> sid_iter;
+	dsm.set_stream_range(sid_iter(1), sid_iter(maxsid+1));
+
+	typedef boost::counting_iterator<source_id> hid_iter;
+	dsm.set_source_range(hid_iter(1), hid_iter(maxhid+1));
+
+	dsm.set_valid();
+
+	advance();
+}
+
+void uniform_data_source::advance()
+{
+	if(isvalid) {
+		if(gen.now < maxtime) {
+			gen.set(rec);
+		} else {
+			isvalid = false;
+		}
+	}
+}
 
 
 
@@ -279,6 +339,7 @@ void buffered_dataset::analyze(ds_metadata& meta) const
 	for(auto& rec : *this) {
 		meta.collect(rec);
 	}
+	meta.set_valid();
 }
 
 void buffered_dataset::load(datasrc src) 
@@ -333,4 +394,184 @@ materialized_data_source::materialized_data_source(datasrc src)
 	dataset.load(src);
 	set_buffer(&dataset);
 }
+
+
+/*-----------------------------------------
+
+	HDF5 sources
+
+ -------------------------------------------*/
+
+using namespace H5;
+using std::vector;
+using binc::print;
+using binc::elements_of;
+
+
+struct hdf5_data_source : data_source
+{
+	CompType dds_record_type;
+
+	DataSet dset;	
+	DataSpace dspc;
+	hsize_t total_length;
+
+	buffered_dataset buffer;
+	DataSpace mspace;
+	hsize_t buffer_size;
+
+	hsize_t curpos;
+	buffered_dataset::iterator currec;
+
+	hdf5_data_source(DataSet _dset) : dset(_dset)
+	{
+		// Check it and load it 
+		
+		// Create the dds_record type
+		dds_record_type = CompType(sizeof(dds_record));
+		dds_record_type.insertMember("sid", 
+			offsetof(dds_record, sid), H5::PredType::NATIVE_INT16 );
+		dds_record_type.insertMember("hid", 
+			offsetof(dds_record, hid), H5::PredType::NATIVE_INT16 );
+		dds_record_type.insertMember("key", 
+			offsetof(dds_record, key), H5::PredType::NATIVE_INT32 );
+		dds_record_type.insertMember("upd", 
+			offsetof(dds_record, upd), H5::PredType::NATIVE_INT32 );
+		dds_record_type.insertMember("ts", 
+			offsetof(dds_record, ts), H5::PredType::NATIVE_INT32 );
+
+		//
+		//  Start with the metadata
+		//
+		dspc = dset.getSpace();
+
+		if( dspc.getSimpleExtentNdims()!=1 ) 
+			throw std::runtime_error("HDF5 dataset has wrong dimension");
+		dspc.getSimpleExtentDims( &total_length );
+		dsm.set_size(total_length);
+
+		//
+		// Attribute access
+		//
+		vector<timestamp> ts_range = 
+			get_array<timestamp>(dset.openAttribute("ts_range"));
+		if(ts_range.size()!=2) {
+			print("ts_range size=",ts_range.size(), " contents=", elements_of(ts_range));
+			throw std::runtime_error("expected array of size 2 from attribute 'ts_range'");
+		}
+
+		vector<key_type> key_range = 
+			get_array<timestamp>(dset.openAttribute("key_range"));
+		if(key_range.size()!=2)
+			throw std::runtime_error("expected array of size 2 from attribute 'key_range'");
+
+		vector<stream_id> sids = 
+			get_array<stream_id>(dset.openAttribute("stream_ids"));
+
+		vector<source_id> hids = 
+			get_array<source_id>(dset.openAttribute("source_ids"));
+
+		dsm.set_ts_range( ts_range[0], ts_range[1] );
+		dsm.set_key_range( key_range[0], key_range[1] );
+		dsm.set_stream_range( sids.begin(), sids.end() );
+		dsm.set_source_range( hids.begin(), hids.end() );
+
+		dsm.set_valid();
+
+		//
+		// Prepare for iteration
+		//
+
+ 		// 16 Mbytes per read
+		resize_buffer(1<<20);
+
+		// position at start of dataset
+		curpos = 0;
+
+		advance();
+	}
+
+	void resize_buffer(hsize_t bsize)
+	{
+		// update this for easy access
+		buffer_size = bsize;
+
+		// resize the buffer as required.
+		// note: the above invalidates currec iterator, so reset it!
+		buffer.resize(bsize);
+		currec = buffer.end();
+
+		// resize the mspace DataSpace to match new buffer
+		mspace.setExtentSimple(1, &bsize);
+		mspace.selectAll();
+	}
+
+	void fill_buffer()
+	{	
+		// the file space
+		dspc.selectHyperslab(H5S_SELECT_SET, &buffer_size, &curpos);
+
+		// move data
+		dset.read(buffer.data(), dds_record_type, mspace, dspc);
+
+		// advance 
+		curpos += buffer_size;
+	}
+
+
+	void advance() override 
+	{
+		if(! isvalid) return;
+
+		if(currec==buffer.end()) 
+		{
+			// try to read in next slab
+			if(curpos == total_length) {
+				isvalid = false;
+				resize_buffer(0);
+				return;
+			}
+
+			// let us read the next slab!
+			if(total_length-curpos < buffer.size())
+				resize_buffer(total_length-curpos);
+
+			fill_buffer();
+			currec = buffer.begin();
+		}
+
+		rec = *currec;
+		++currec;
+	}
+
+};
+
+
+datasrc dds::hdf5_ds(const string& fname, const string& dsetname)
+{
+	return datasrc( new hdf5_data_source(
+		H5File(fname, H5F_ACC_RDONLY).openDataSet(dsetname)
+		));	
+}
+
+
+datasrc dds::hdf5_ds(const string& fname)
+{
+	return hdf5_ds(fname, string("ddstream"));	
+}
+
+
+datasrc dds::hdf5_ds(int locid, const string& dsetname)
+{
+	return datasrc( new hdf5_data_source(Group(locid).openDataSet(dsetname))  );
+}
+
+
+datasrc dds::hdf5_ds(int dsetid)
+{
+	return dds::datasrc( new hdf5_data_source(DataSet(dsetid)) );
+}
+
+
+
 
