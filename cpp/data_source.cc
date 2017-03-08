@@ -396,6 +396,48 @@ materialized_data_source::materialized_data_source(datasrc src)
 }
 
 
+
+//
+//
+//
+
+
+
+cascade_data_source::cascade_data_source(std::initializer_list<datasrc> src)
+: sources(src)
+{ 
+	init();
+}
+
+void cascade_data_source::init()
+{
+	for(auto&& ds : sources) {
+		if(! ds->analyzed())
+			throw std::runtime_error("non-analyzed data source in cascade");
+		dsm.merge(ds->metadata());
+	}
+	advance();
+}
+
+void cascade_data_source::advance()
+{
+	if(! isvalid) return;
+
+	// make sure 
+	while(!sources.empty()) {
+		if(sources.front()->valid()) {
+			rec = sources.front()->get();
+			sources.front()->advance();
+		} else {
+			sources.pop_front();
+		}
+	}
+	
+	isvalid = false;
+}
+
+
+
 /*-----------------------------------------
 
 	HDF5 sources
@@ -571,7 +613,5 @@ datasrc dds::hdf5_ds(int dsetid)
 {
 	return dds::datasrc( new hdf5_data_source(DataSet(dsetid)) );
 }
-
-
 
 

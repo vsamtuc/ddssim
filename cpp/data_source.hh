@@ -3,6 +3,7 @@
 
 #include <string>
 #include <queue>
+#include <list>
 #include <vector>
 #include <type_traits>
 #include <random>
@@ -514,6 +515,26 @@ datasrc hdf5_ds(int locid, const std::string& dsetname);
    Load the dataset with the given dataset id.
  */
 datasrc hdf5_ds(int dsetid);
+
+
+
+struct cascade_data_source : data_source
+{
+protected:
+	std::list<datasrc> sources;
+	void init();
+public:
+	cascade_data_source(std::initializer_list<datasrc> src);
+
+	template<typename Iter>
+	cascade_data_source(Iter iter1, Iter iter2) 
+	: sources(iter1, iter2)
+	{
+		init();
+	}
+
+	void advance();
+};
 
 
 

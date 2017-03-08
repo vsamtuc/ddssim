@@ -124,14 +124,7 @@ struct dds_record
 	static const dds_record zero; 
 };
 
-inline dds_record make_record(stream_id sid, source_id hid, 
-	timestamp ts, key_type key, counter_type upd=1)
-{
-	//return dds_record { sid, hid, key, upd, ts};
-	dds_record rec;
-	rec.sid = sid; rec.hid=hid; rec.key=key; rec.upd = upd; rec.ts=ts;
-	return rec;
-}
+
 
 inline bool before(const dds_record& r1, const dds_record& r2)
 {
@@ -184,7 +177,7 @@ protected:
 	set<source_id> hids;
 
 	size_t scount=0;
-	timestamp ts=0, te=0;
+	timestamp ts=MAX_TS, te=MIN_TS;
 	key_type kmin = MAX_KEY, kmax=MIN_KEY;
 public:
 
@@ -234,7 +227,12 @@ public:
 		std::copy(from, to, std::inserter(hids, hids.end()));
 	}
 
+	void merge(const ds_metadata& other);
+
 };
+
+
+
 
 
 /*-----------------------------------

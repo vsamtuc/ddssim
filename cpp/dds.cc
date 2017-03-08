@@ -34,7 +34,7 @@ bool dds::operator==(const basic_query& q1, const basic_query& q2)
 			case qtype::SELFJOIN:
 				return 
 					query_cast<qtype::SELFJOIN>(q1).param
-					==
+ 					==
 					query_cast<qtype::SELFJOIN>(q2).param;
 			case qtype::JOIN:
 				return 
@@ -82,3 +82,23 @@ ostream& dds::operator<<(ostream& s, const basic_query& q)
 			throw std::runtime_error("unhandled");
 	}	
 }
+
+
+void ds_metadata::merge(const ds_metadata& other)
+{
+	using std::min;
+	using std::max;
+	isvalid = isvalid || other.isvalid;
+	scount += other.scount;
+
+	kmin = min(kmin, other.kmin);
+	kmax = max(kmax, other.kmax);
+
+	ts = min(ts, other.ts);
+	te = max(te, other.te);
+
+	sids.insert(other.sids.begin(), other.sids.end());
+	hids.insert(other.hids.begin(), other.hids.end());
+}
+
+
