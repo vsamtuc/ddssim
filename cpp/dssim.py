@@ -175,7 +175,25 @@ def query_approximation_error():
 	in query estimates.
 	"""
 	store = latest_store()
-	
+	gm2 = store.timeseries.gm2_
+	tods = store.timeseries.tods_
+	agms = store.timeseries.agms_selfjoin_0
+	err_gm2 = abs((gm2-agms)/agms)
+	err_tods = abs((tods-agms)/agms)
+	df = pd.DataFrame({'err_gm2':err_gm2, 'err_tods':err_tods})
+	df.plot(logy=True)
+
+
+class plot_wrapper:
+	def __init__(self,plotfn):
+		self.plotfn = plotfn
+	def __repr__(self):
+		return self.plotfn()
+
+show_traffic_by_message_type = plot_wrapper(traffic_by_message_type)
+show_query_approximation_error = plot_wrapper(query_approximation_error)
+
+
 
 
 

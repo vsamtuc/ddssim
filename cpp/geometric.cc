@@ -135,7 +135,7 @@ void coordinator::finish_round()
 	}
 	newE /= (double)k;
 
-#if 1
+#if 0
 
 //#define VALIDATE_INVARIANTS
 #ifdef VALIDATE_INVARIANTS
