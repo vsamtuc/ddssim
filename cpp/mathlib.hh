@@ -303,7 +303,6 @@ inline double dot_inc(double& olddot, const delta_vector& dx)
 
 
 
-
 /*************************************************
  *
  *  Order statistics (quantiles)
@@ -363,6 +362,19 @@ double norm_L2_inc(double& S, const delta_vector& dv);
   */
 double norm_Linf(const Vec& v);
 
+
+//
+// Some useful functions
+//
+
+template <typename T>
+inline T sq(const T& x) { return x*x; }
+
+template <typename T>
+inline T cb(const T& x) { return x*x*x; }
+
+template <typename T> 
+inline int sgn(T val) { return (T(0) < val) - (val < T(0)); }
 
 
 /**

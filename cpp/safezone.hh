@@ -242,6 +242,215 @@ private:
 };
 
 
+/*
+	Two-way join queries (inner product)
+ */
+
+
+/**
+	Return the nearest point to the hyperbola.
+
+	Given point \f$ (p,q) \f$, and \f$T \geq 0 \f$, 
+	this method returns a value \f$\xi\f$, such that the distance
+	to the curve \f$y(x) = \sqrt{x^2+T}\f$ is minimum.
+
+	The method used to find the root is classic bisection (aka binary search),
+	for finding the root of function
+	\f[  g(x) = 2 - p/x - q/y(x)  \f]
+
+	The accuracy \f$ epsilon >0 \f$ is relative: if \f$x_r\f$ is returned, then
+	the actuall value will lie in
+	an interval of size \f$ x_r (1\pm \epsilon/2)\f$.
+
+	Accuracy is set to \f$\epsilon = 10^{-13}\f$ by default. This is close to the accuracy
+	of IEEE 754 `double`.
+
+	This method converges in about 40 iterations on average.
+  */
+double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon=1.E-13 );
+
+
+/**
+	A safe zone for the problem \f$x^2 - y^2 \geq T\f$ in 2 dimensions.
+	
+	The reference point for this safezone is given as \f$(\xi, \psi)\f$, and
+	must satisfy the condition \f$\xi^2 - \psi^2 \geq T\f$. 
+
+	When \f$T=0\f$, the function expects \f$ \xi \neq 0\f$. That is, a safe zone
+	cannot have non-empty interior.
+  */
+struct square_difference_2d_safe_zone : safezone_base
+{
+	double T;			// threshold
+	int xihat;			// cached for case T>0
+	double u, v;		// cached for case T<=0
+
+	square_difference_2d_safe_zone() {}
+
+	square_difference_2d_safe_zone(double xi, double psi, double _T)
+	: T(_T), xihat(sgn(xi))
+	{
+		if(sq(xi)-sq(psi) < T)
+			throw std::invalid_argument("the reference point is non-admissible");
+		if(T==0 and xi==0) 
+			throw std::invalid_argument("the safe zone has empty interior");
+
+		// cache the conic safe zone, if applicable
+		if(T<0) {
+			u = hyberbola_nearest_neighbor(xi, fabs(psi), -T);
+			v = sqrt(sq(u)-T);
+			// eikonalize
+			double norm_u_v = sqrt(sq(u)+sq(v));
+			assert(norm_u_v > 0);
+			u /= norm_u_v;
+			v /= norm_u_v;
+			T /= norm_u_v;
+		}
+	}
+
+	double operator()(double x, double y) const {
+		if(T>0) {
+			// compute the signed distance function of the set $\{ x >= \sqrt{y^2+T} \}$.
+			double x_xihat = x*xihat;
+
+			int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
+
+			double v = hyberbola_nearest_neighbor(y, x_xihat, T);
+			double u = sqrt(sq(v)+T);
+
+			return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
+		} 
+		else {
+			return u*x - v*fabs(y) - T;
+		} 
+	}
+};
+
+
+
+/**
+	A safe zone function for the inner product of two vectors.
+
+	The function computes the safezone for a constraint of the form
+	\f[  \pm X_1 X_2 \geq T  \f]
+	Thus, this kind of constraint can express both upper and lower bounds on the
+	product.
+
+  */
+struct inner_product_safe_zone
+{
+	bool minus;
+	double T;
+	Vec xihat;
+
+	square_difference_2d_safe_zone sqdiff;
+
+	/**
+		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
+		for condition
+		\f[	(-1)^\text{minus} X_1 X_2 \geq T. \f]
+
+	  */
+	inner_product_safe_zone(const Vec& E1, const Vec& E2, bool _minus, double _T)
+	: minus(_minus), T(_T)
+	{
+		assert(E1.size()==E2.size());
+
+		Vec xi = E1+E2;
+		Vec psi = E1-E2;
+		if(minus) xi.swap(psi);
+
+		double norm_xi = norm_L2(xi);
+		double norm_psi = norm_L2(psi);
+
+		sqdiff = square_difference_2d_safe_zone(norm_xi, norm_psi, 4.*T);
+
+		if(norm_xi>0)
+			xihat = xi/norm_xi;
+		else
+			xihat = Vec(0.0, E1.size());
+	}
+
+	double operator()(const Vec& X1, const Vec& X2) const
+	{
+		Vec x = X1+X2;
+		Vec y = X1-X2;
+		if(minus) x.swap(y);
+
+		double x2 = dot(x, xihat);
+		double y2 = norm_L2(y);
+
+		return sqdiff(x2, y2) / sqrt(2);
+	}
+
+};
+
+
+
+
+struct twoway_join_query;
+
+struct twoway_join_agms_safezone_lower_bound
+{
+
+};
+
+struct twoway_join_agms_safezone_upper_bound
+{
+
+};
+
+
+
+struct twoway_join_agms_safezone : safezone_base
+{
+
+	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
+	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
+
+	struct incremental_state
+	{
+		selfjoin_agms_safezone_lower_bound::incremental_state lower;
+		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
+	};
+
+	twoway_join_agms_safezone();
+
+	twoway_join_agms_safezone(const sketch& E, double Tlow, double Thigh);
+
+	twoway_join_agms_safezone(twoway_join_query& q);
+	twoway_join_agms_safezone& operator=(twoway_join_agms_safezone&&)=default;
+
+	// from-scratch computation
+	double operator()(const sketch& X);
+
+	double with_inc(incremental_state& incstate, const sketch& X);
+
+	double inc(incremental_state& incstate, const delta_vector& DX);
+
+
+};
+
+
+struct twoway_join_query
+{
+	double beta;
+	double epsilon;
+	sketch E1, E2;
+
+
+	double Qest;
+	double Tlow;
+	double Thigh;
+
+	twoway_join_agms_safezone safe_zone;
+	double zeta_E;
+
+	twoway_join_query(double _beta, projection _proj);
+	void update_estimate1(const sketch&);
+	void update_estimate2(const sketch&);
+
+};
 
 
 } // end namespace dds
