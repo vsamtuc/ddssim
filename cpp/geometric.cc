@@ -7,6 +7,7 @@ using namespace dds;
 using namespace dds::gm2;
 
 using binc::print;
+using binc::elements_of;
 
 /*********************************************
 	node
@@ -19,7 +20,7 @@ void node::update_stream()
 	U.update(CTX.stream_record().key, CTX.stream_record().upd);
 	update_count++;
 
-	zeta = szone(U);
+	zeta = szone(U, zeta_l, zeta_u);
 	if(zeta<minzeta) minzeta = zeta;
 
 	// if(fabs(zeta-last_zeta)>=szone.threshold) {
@@ -45,6 +46,7 @@ void coordinator::start_round()
 {
 	// compute current parameters from query
 	bitweight.assign(k, 0);
+	total_bitweight.assign(k,0);
 	updates.assign(k, 0);	
 	msgs.assign(k, 0);
 
@@ -76,16 +78,27 @@ void coordinator::start_round()
 }	
 
 
+void coordinator::start_subround(double total_zeta)
+{
+	bit_budget = k;
+	bitweight.assign(k,0);
+	for(auto p : proxy) {
+		p.second->reset_bitweight(total_zeta/(2.0*k));
+	}	
+}
+
+
 // remote call on host violation
 oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 {
-	const int MAX_LEVEL = 4;
+	const int MAX_LEVEL = 30;
 	node* n = ctx.value;
 
 	assert(delta_bits>0);
 	size_t nid = node_index[n];
 
 	bitweight[nid] += delta_bits;
+	total_bitweight[nid] += delta_bits;
 	msgs[nid]++;
 
 	bit_budget -= delta_bits;
@@ -98,18 +111,15 @@ oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 
 			double total_zeta = 0.0;
 			for(auto p : proxy) {
-				total_zeta += p.second->get_zeta();				
+				total_zeta += p.second->get_zeta();
 			}
 
-			if(total_zeta < query.zeta_E/(1<<MAX_LEVEL)) {
+			if(total_zeta < query.zeta_E * 0.05 ) {
 				// we are done!
-				finish_round();				
+				//assert(total_zeta<0);
+				finish_subrounds(total_zeta);
 			} else {
-				bit_budget = k;
-				bitweight.assign(k,0);
-				for(auto p : proxy) {
-					p.second->reset_bitweight(total_zeta/(2.0*k));
-				}
+				start_subround(total_zeta);
 			}
 
 
@@ -119,6 +129,57 @@ oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 	}
 
 }
+
+void coordinator::rebalance(node_proxy* n1, node_proxy* n2, double total_zeta)
+{
+	sketch Ubal(query.E.proj);
+	compressed_sketch csk1 = n1->get_drift();
+	compressed_sketch csk2 = n2->get_drift();
+
+	Ubal = (csk1.sk+csk2.sk)/2;
+	compressed_sketch skbal { Ubal, csk1.updates + csk2.updates };
+	total_zeta += n1->set_drift(skbal);
+	total_zeta += n2->set_drift(skbal);
+	
+	print("           Rebalancing");
+	start_subround(total_zeta);
+}
+
+void coordinator::finish_subrounds(double total_zeta)
+{
+	if(! in_naive_mode && proxy.size()>1) {
+		// attempt to rebalance
+		double minh = INFINITY;
+		double maxh = -INFINITY;
+
+		node_proxy *node_minh = nullptr, *node_maxh = nullptr;
+		
+		for(auto p : proxy) {
+			double h = p.second->get_zeta_lu();
+			if(minh>h) {
+				minh = h;
+				node_minh = p.second;
+			} else if (maxh<h) {
+				maxh = h;
+				node_maxh = p.second;
+			}
+		}
+
+		assert(minh<=maxh);
+		assert(node_minh && node_maxh);
+		
+		if(minh*maxh < 0) {
+			double g = min(-minh, maxh);
+
+			if(g > 0.1*query.zeta_E) {
+				rebalance(node_minh, node_maxh, total_zeta);
+				return;
+			}
+		}
+	}
+	finish_round();
+}
+
 
 
 // initialize a new round
@@ -135,8 +196,20 @@ void coordinator::finish_round()
 	}
 	newE /= (double)k;
 
-#if 0
+#if 1
+	trace_round(newE);
+#endif
 
+	// new round
+	query.update_estimate(newE);
+	start_round();
+}
+
+
+
+
+void coordinator::trace_round(sketch& newE)
+{
 //#define VALIDATE_INVARIANTS
 #ifdef VALIDATE_INVARIANTS
 
@@ -205,7 +278,7 @@ void coordinator::finish_round()
 
 	// report
 	static int skipper = 0;
-	skipper = (skipper+1)%50;
+	skipper = (skipper+1)%100;
 
 	if( !in_naive_mode || skipper==0 ) {
 		// check the value of the next E wrt this safe zone
@@ -232,15 +305,13 @@ void coordinator::finish_round()
 			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
 			"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
 			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
-		emit(RESULTS);
+		print("            : c[",bit_level,"]=", elements_of(total_bitweight));
+		//emit(RESULTS);
 	}
-
-#endif
-
-	// new round
-	query.update_estimate(newE);
-	start_round();
+	
 }
+
+
 
 
 void coordinator::warmup()

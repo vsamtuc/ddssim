@@ -206,12 +206,21 @@ struct selfjoin_agms_safezone : safezone_base
 	selfjoin_agms_safezone(selfjoin_query& q);
 	selfjoin_agms_safezone& operator=(selfjoin_agms_safezone&&)=default;
 
-	// from-scratch computation
+
+	// from-scratch computation, storing upper and lower bounds into
+	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
 	double operator()(const sketch& X);
+	double operator()(const sketch& X, double& zeta_l, double& zeta_u);
 
+	// from-scratch computation with inc state, storing upper and lower bounds into
+	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
 	double with_inc(incremental_state& incstate, const sketch& X);
+	double with_inc(incremental_state& incstate, const sketch& X, double& zeta_l, double& zeta_u);
 
+	// incremental computation, storing upper and lower bounds into
+	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
 	double inc(incremental_state& incstate, const delta_vector& DX);
+	double inc(incremental_state& incstate, const delta_vector& DX, double& zeta_l, double& zeta_u);
 };
 
 

@@ -181,7 +181,7 @@ selfjoin_agms_safezone_lower_bound::selfjoin_agms_safezone_lower_bound(const ske
 				Vec tmp = Ehat[slice(d*L,L,1)];
 				Ehat[slice(d*L,L,1)] = tmp/dest[d];
 			}
-			// else, if dest[d]==0, the Ehat[slice(d)] == 0! leave it
+			// else, if dest[d]==0, then Ehat[slice(d)] == 0! leave it
 		}
 
 	}
@@ -229,16 +229,34 @@ double selfjoin_agms_safezone::operator()(const sketch& X)
 {
 	return min(lower_bound(X), upper_bound(X));
 }
+double selfjoin_agms_safezone::operator()(const sketch& X, double& zeta_l, double& zeta_u) 
+{
+	zeta_l = lower_bound(X);
+	zeta_u = upper_bound(X);
+	return min(zeta_l, zeta_u);
+}
 
 
-double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X) {
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X)
+{
 	return min(lower_bound.with_inc(incstate.lower, X), 
 		upper_bound.with_inc(incstate.upper, X));
+}
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X,
+					double& zeta_l, double& zeta_u)
+{
+	return min( (zeta_l = lower_bound.with_inc(incstate.lower, X)), 
+		    (zeta_u = upper_bound.with_inc(incstate.upper, X)) );
 }
 
 double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vector& DX) {
 	return min(lower_bound.inc(incstate.lower, DX), 
 		upper_bound.inc(incstate.upper, DX));
+}
+double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vector& DX,
+				   double& zeta_l, double& zeta_u) {
+	return min( (zeta_l = lower_bound.inc(incstate.lower, DX)),
+		    (zeta_u = upper_bound.inc(incstate.upper, DX)) );
 }
 
 

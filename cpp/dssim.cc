@@ -31,7 +31,7 @@ void execute()
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(10000);
-	//D.hash_sources(4);
+	//D.hash_sources(1);
 	D.hash_streams(1);
 	D.set_time_window(4*3600);
 	//D.create();
@@ -60,8 +60,8 @@ void execute()
 		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		// }
 	}
-	tods::network* tmeth = new tods::network(proj, 0.025 );
-	components.push_back(tmeth);
+	//tods::network* tmeth = new tods::network(proj, 0.025 );
+	//components.push_back(tmeth);
 	components.push_back(new gm2::network(0, proj, 0.1 ));
 
 	/* Create output files */
@@ -85,6 +85,7 @@ void execute()
 	R.watch(network_comm_results);
 
 	network_host_traffic.bind(&h5f);
+	network_host_traffic.bind(sto);
 	R.watch(network_host_traffic);
 
 	network_interfaces.bind(&h5f);

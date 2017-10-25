@@ -95,8 +95,9 @@ public:
 			TS_ASSERT(sz.valid());
 			TS_ASSERT_EQUALS(sz.szone, & net.hub->query.safe_zone);
 			TS_ASSERT_EQUALS(sz.Eglobal, & net.hub->query.E);
-			sz.prepare_inc(V);
-			TS_ASSERT_EQUALS(sz(W), w);
+			double zeta_l, zeta_u;
+			sz.prepare_inc(V, zeta_l, zeta_u);
+			TS_ASSERT_EQUALS(sz(W, zeta_l, zeta_u), w);
 			TS_ASSERT_EQUALS(sz.zeta_E, net.hub->query.zeta_E);
 		}
 

@@ -8,7 +8,7 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=1
+DEBUG=0
 endif
 
 INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial

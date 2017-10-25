@@ -266,28 +266,28 @@ struct safezone
 	inline bool full() const { return szone!=nullptr; }
 	inline bool valid() const { return full() || naive(); }
 
-	double prepare_inc(const isketch& U)
+	double prepare_inc(const isketch& U, double& zeta_l, double& zeta_u)
 	{
 		if(full()) {
 			sketch X = (*Eglobal)+U;
-			return szone->with_inc(incstate, X);
+			return szone->with_inc(incstate, X, zeta_l, zeta_u);
 		} else if(naive()) {
-			return zeta_E - norm_L2_with_inc(incstate_naive, U);
+			return zeta_l = zeta_u = zeta_E - norm_L2_with_inc(incstate_naive, U);
 		} else {
 			assert(!valid());
 			return NAN;
 		}
 	}
 
-	double operator()(const isketch& U)
+	double operator()(const isketch& U, double& zeta_l, double& zeta_u)
 	{
 		if(full()) {
 			delta_vector DX = U.delta;
 			DX += *Eglobal;
-			return szone->inc(incstate, DX);
+			return szone->inc(incstate, DX, zeta_l, zeta_u);
 		}
 		else if(naive()) {
-			return zeta_E - norm_L2_inc(incstate_naive, U.delta);
+			return zeta_l = zeta_u = zeta_E - norm_L2_inc(incstate_naive, U.delta);
 		} else {
 			assert(! valid());
 			return NAN;			
@@ -397,7 +397,7 @@ struct coordinator : process
 
 	// protocol related
 	vector<bool> has_naive;
-	vector<int> bitweight;
+	vector<int> bitweight, total_bitweight;
 	vector<size_t> updates;
 	vector<size_t> msgs;
 
@@ -421,7 +421,16 @@ struct coordinator : process
 	// initialize a new round
 	void start_round();
 	void finish_round();
+	
+	// initialize a new subround
+	void start_subround(double total_zeta);
+	void finish_subrounds(double total_zeta);
+	void rebalance(node_proxy* n1, node_proxy* n2, double total_zeta);
+	
+	// this is used to trace the execution of rounds, for debugging or tuning
+	void trace_round(sketch& newE);
 
+	
 	// remote call on host violation
 	oneway threshold_crossed(sender<node> ctx, int delta_bitw);
 };
@@ -443,7 +452,8 @@ struct node : local_site
 	safezone szone;	// pointer to the safezone (shared among objects)
 
 	double minzeta; 		// minimum value of zeta so far
-	double zeta;			// current zeta
+	double zeta_l, zeta_u;          // zetas of lower and upper bounds
+	double zeta;			// current zeta = min(zeta_l, zeta_u)
 
 	double zeta_0;			// start value for discretization, equal to zeta at last reset_bitweight()
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
@@ -472,19 +482,28 @@ struct node : local_site
 
 	oneway reset(const safezone& newsz) { 
 		// reset the safezone object
+		szone = newsz;
+
+		// reset the drift vector
 		(sketch&)U = 0.0;
 		update_count = 0;
+		zeta = minzeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		assert(zeta==szone.zeta_E);
 
-		szone = newsz;
-		szone.prepare_inc(U);
-		zeta = minzeta = szone.zeta_E;
+		// reset for the first subround
 		reset_bitweight(szone.zeta_E/2);
 	}
 
+	
 	double get_zeta() {
 		return zeta;
 	}
 
+	double get_zeta_lu() {
+		return zeta_l - zeta_u;
+	}
+
+	// called at the start a new subrounds
 	oneway reset_bitweight(double Z)
 	{
 		zeta_0 = zeta;
@@ -495,6 +514,16 @@ struct node : local_site
 	compressed_sketch get_drift() {
 		return compressed_sketch { U, update_count };
 	}
+
+	double set_drift(compressed_sketch newU) {
+		(sketch&)U = newU.sk;
+		update_count = newU.updates;
+		double old_zeta = zeta;
+		zeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		return zeta-old_zeta;
+	}
+
+
 };
 
 struct node_proxy : remote_proxy<node>
@@ -502,7 +531,9 @@ struct node_proxy : remote_proxy<node>
 	REMOTE_METHOD(node, reset);
 	REMOTE_METHOD(node, reset_bitweight);
 	REMOTE_METHOD(node, get_drift);
+	REMOTE_METHOD(node, set_drift);
 	REMOTE_METHOD(node, get_zeta);
+	REMOTE_METHOD(node, get_zeta_lu);
 	node_proxy(process* p) : remote_proxy<node>(p) {}
 };
 
