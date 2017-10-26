@@ -103,7 +103,7 @@ struct coordinator : process
 	// used during rebalancing
 
 	set<node_proxy*> B;			// initialized by local_violation(), 
-								// updated by rebalancing algo
+						// updated by rebalancing algo
 
 	set<node_proxy*> Bcompl;	// complement of B, updated by rebalancing algo
 
@@ -112,6 +112,8 @@ struct coordinator : process
 
 	bool Ubal_admissible;		// contains zeta(Ubal)>0
 
+	size_t round_total_B;           // total size of B over round
+  
 
 	// This method performs the actual rebalancing and returns the delta_zeta
 	// of the rebalanced nodes.
@@ -119,6 +121,7 @@ struct coordinator : process
 
 	// Returns a rebalancing set two nodes, or empty.
 	void rebalance_random(node_proxy* lvnode);
+	void rebalance_random_limits(node_proxy* lvnode);
 	
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning

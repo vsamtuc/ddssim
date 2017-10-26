@@ -183,7 +183,7 @@ void dataset::create_warmup_time(timestamp wtime, bool cool)
 	if(cool) {
 		// the new duration is equal to the current minus wtime
 		size_t newend = src->metadata().maxtime() - wtime;
-		src = filtered_ds(src, max_length(newend));
+		src = filtered_ds(src, max_timestamp(newend));
 	}
 
 	src = materialize(src);

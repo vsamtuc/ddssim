@@ -52,7 +52,7 @@ void coordinator::start_round()
 {
 	// compute current parameters from query
 
-	if(query.zeta_E < k*sqrt(query.E.width())) {
+	if(0 && query.zeta_E < k*sqrt(query.E.width())) {
 		if(!in_naive_mode)
 			print("SWITCHING TO NAIVE MODE stream_count=",CTX.stream_count());
 		in_naive_mode = true;
@@ -71,6 +71,8 @@ void coordinator::start_round()
 		else
 			p.second->reset(safezone(query.zeta_E));
 	}
+
+	round_total_B = 0;
 }	
 
 
@@ -87,7 +89,7 @@ oneway coordinator::local_violation(sender<node> ctx)
 	if(! in_naive_mode && k>1) {
 		// attempt to rebalance		
 		// get rebalancing set
-		rebalance_random(& proxy[n]);
+		rebalance_random_limits(& proxy[n]);
 	} else {
 		B.clear();
 		Bcompl.clear();
@@ -161,6 +163,89 @@ void coordinator::rebalance_random(node_proxy* lvnode)
 	}
 }
 
+/*
+  In order to reduce the cost of over-rebalancing, we impose 
+  ad-hoc limits to 
+  (a) the size of the rebalance set be up to ceil(k+2/2)
+  k  max|B|
+  2  2
+  3  3
+  4  3
+  5  4
+  6  4
+  ...
+
+  (b) \sum |B|  over a round to be <= k
+  ... 
+ */
+void coordinator::rebalance_random_limits(node_proxy* lvnode)
+{
+	B.clear();
+	Bcompl.clear();
+
+	B.insert(lvnode);
+	compressed_sketch csk = lvnode->get_drift();
+	Ubal = csk.sk;
+	Ubal_updates = csk.updates;
+	Ubal_admissible = false;
+	assert(query.safe_zone(query.E + Ubal) <= 0.0);
+
+	// find a balancing set
+	vector<node_proxy*> nodes;
+	nodes.reserve(k);
+	for(auto p : proxy) {
+		node_proxy* n = p.second;
+		if(B.find(n) == B.end())
+			nodes.push_back(n);
+	}
+	assert(nodes.size()==k-1);
+
+	// permute the order
+	random_shuffle(nodes.begin(), nodes.end());
+	assert(nodes.size()==k-1);
+	assert(B.size()==1);
+	assert(Bcompl.empty());
+
+	double zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
+	//
+	// The loop computes a rebalancing set B of minimum size, trying
+	// in order each of the nodes in the random order selected.
+	//
+	for(auto n : nodes) {
+		if(Ubal_admissible) {
+			Bcompl.insert(n);
+		} else {
+			B.insert(n);
+			compressed_sketch csk = n->get_drift();
+			Ubal += csk.sk;
+			Ubal_updates += csk.updates;
+			zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
+			Ubal_admissible =  (zbal>0.0) ? true : false;
+		}
+	}
+	assert(B.size()+Bcompl.size() == k);
+
+	// check conditions for finishing round
+	bool fin = Bcompl.empty();
+
+	// (a) check limit on |B|
+	fin = fin ||  B.size() > (k+3)/2;
+
+	// (b) check limit on  sum|B|
+	fin = fin ||  (round_total_B + B.size()) > k;
+	
+	if(! fin) {
+		//print("       GM Rebalancing ",B.size()," sites");
+		assert(Ubal_admissible);
+		assert(zbal > 0.0);
+		assert(B.size()>1);
+		rebalance();
+	} else {
+		//print("       GM Rebalancing failed, finishing round");
+		finish_round();
+	}
+}
+
 
 void coordinator::rebalance()
 {
@@ -174,8 +259,11 @@ void coordinator::rebalance()
 		n->set_drift(skbal);
 	}	
 
+	round_total_B += B.size();
+	
 	for(auto n : node_ptr)
 		assert(n->zeta > 0);
+
 }
 
 

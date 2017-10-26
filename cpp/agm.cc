@@ -60,7 +60,7 @@ void coordinator::start_round()
 	bit_level = 1;
 	bit_budget = k;
 
-	if(query.zeta_E < k*sqrt(query.E.width())) {
+	if(0 && query.zeta_E < k*sqrt(query.E.width())) {
 		if(!in_naive_mode)
 			print("SWITCHING TO NAIVE MODE stream_count=",CTX.stream_count());
 		in_naive_mode = true;

@@ -61,7 +61,7 @@ void execute()
 		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		// }
 	}
-	components.push_back(new tods::network(proj, 0.025 ));
+	//components.push_back(new tods::network(proj, 0.025 ));
 	components.push_back(new agm::network(0, proj, 0.1 ));
 	components.push_back(new gm::network(0, proj, 0.1 ));
 
