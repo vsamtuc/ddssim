@@ -27,7 +27,7 @@ struct coord_stream_state
 
 	coord_stream_state(stream_id _sid, projection proj)
 	: 	sid(_sid), Etot(proj), 
-		curest_series("tods_", "%.10g", [&](){ return dot_est(Etot); })
+		curest_series("tods_qest", "%.10g", [&](){ return dot_est(Etot); })
 	{ 
 		CTX.timeseries.add(curest_series); 
 	}

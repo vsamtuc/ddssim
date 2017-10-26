@@ -16,6 +16,7 @@
 #include <typeindex>
 #include <stdexcept>
 #include <algorithm>
+#include <map>
 
 #include "dds.hh"
 
@@ -539,12 +540,25 @@ class process : public host
 public:
 	using host::host;
 
+	/**
+		This callback is called after network initialization.
+
+		This callback exists so that
+		the process can establish connections and perform overall
+		configuration.
+
+		Subclasses should override this method to customize behaviour.
+		The default implementation does nothing.
+	  */
 	virtual void setup_connections() { }
 };
 
 
 /**
    A local site accepts the input from streams.
+
+   This is a base class for classes implementing hosts that 
+   process stream records.
    */
 class local_site : public process
 {
@@ -558,8 +572,16 @@ public:
 		set_addr(_sid);
 	}
 
+	/**
+	  Return the \c source_id of the stream accepted
+	  */
 	inline source_id site_id() const { return sid; }
 
+	/**
+	   The handler called when a new stream record is available.
+
+	   Subclasses should override this method to customize behaviour.
+	  */
 	virtual void handle(const dds_record& rec) {}
 };
 
@@ -572,7 +594,18 @@ public:
 
 	Nodes in a star network are local sites.
 
-	This class is a mixin
+	This class is a mixin. A concrete class \c mynetwork is defined
+	as 
+	\code[c++]
+     class mynetwork 
+       : public star_network<mynetwork, myhub, mysite>, // all 3 types are incomplete
+       public reactive
+     { ... };
+	\endcode
+
+	@tparam Net  the concrete network class composed by this mixin
+	@tparam Hub  the node type for the hub node (aka. coordinator)
+	@tparam Site the node type for local sites
   */
 template <typename Net, typename Hub, typename Site>
 struct star_network : public basic_network
@@ -738,16 +771,34 @@ struct proxy_method;
 template <typename Dest, typename Response, typename...Args>
 struct remote_method;
 
+
+/**
+	Base class for implementing remote proxies.
+
+	To define a proxy on class \c C, a user should define a sublclass
+	\c class C_proxy : remote_proxy<C> 
+
+	Each remote proxy is associated with two objects:
+	- its _owner_ is an object of any class which is a subclass of host
+	- its _destination_ is an object of a subclass of \c Process
+
+	@tparam Process the base class for proxied objects.
+  */
 template <typename Process>
 class remote_proxy : public rpc_proxy
 {
 public:
 	typedef Process proxied_type;
 
+	/**
+		Construt a proxy object for the given owner.
+	  */
 	inline remote_proxy(process* owner) 
 	: rpc_proxy(owner->net()->decl_interface(typeid(Process)), owner)
 	{ }
 
+	/**
+	  */
 	inline void operator<<=(Process* dest) {
 		_r_connect(dest);
 	}
@@ -913,6 +964,50 @@ msgwrapper<T> wrap(T* p) { return msgwrapper<T>(p); }
   */
 template <typename T>
 msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
+
+
+
+/**
+	A proxy map is a map container for mapping 	
+ */
+template <typename ProxyType, typename ProxiedType = typename ProxyType::proxied_type>
+class proxy_map
+{
+public:
+	typedef  ProxiedType  proxied_type;
+	typedef ProxyType  proxy_type;
+
+	process* owner;
+
+	proxy_map() {}
+
+	proxy_map(process* _owner) : owner(_owner) {  }
+
+	proxy_type& operator[](proxied_type* proc) {
+		return * pmap[proc];
+	}
+
+	void add(proxied_type* proc) {
+		if(pmap.find(proc)!=pmap.end()) return;
+		pmap[proc] = new proxy_type(owner);
+		* pmap[proc] <<= (proc);
+	}
+
+	template <typename StarNet>
+	void add_sites(const StarNet* net) {
+		for(auto&& i : net->sites) 
+			add(i.second);
+	}
+
+	auto begin() const { return pmap.begin(); }
+	auto end() const { return pmap.end(); }
+
+	size_t size() const { return pmap.size(); }
+
+private:
+	std::map<proxied_type*, proxy_type*> pmap;
+
+};
 
 
 

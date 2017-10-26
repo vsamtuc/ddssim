@@ -3,10 +3,10 @@
 
 #include "results.hh"
 #include "binc.hh"
-#include "geometric.hh"
+#include "agm.hh"
 
 using namespace dds;
-using namespace dds::gm2;
+using namespace dds::agm;
 
 using binc::print;
 using binc::elements_of;
@@ -310,18 +310,19 @@ void coordinator::trace_round(sketch& newE)
 		// check the value of the next E wrt this safe zone
 		double norm_dE = norm_L2(newE);
 
-		print("Finish round: round updates=",round_updates.sum()," naive=",in_naive_mode, 
+		print("AGM Finish round: round updates=",round_updates.sum()," naive=",in_naive_mode, 
 			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
 			"||dE||=", norm_dE, norm_dE/query.zeta_E, 
 			"zeta_total=", zeta_total/k, zeta_total/(k*query.zeta_E), 
 			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
 			//"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
-			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
+			" QEst=", query.Qest,
+   			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
 
 		// print the bit level
-		print("            : c[",bit_level,"]=", elements_of(total_bitweight));
+		print("               : c[",bit_level,"]=", elements_of(total_bitweight));
 		// print elements
-		print("            : S= ",elements_of(round_updates));
+		print("               : S= ",elements_of(round_updates));
 
 		// compute the bits w.r.t. the ball, i.e., for node i, 
 		// compute  ||U[i]+E||/(zeta(E)/2)
@@ -364,7 +365,7 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
 	in_naive_mode(true), k(proxy.size()),
-	Qest_series("gm2_qest", "%.10g", [&]() { return query.Qest;} )
+	Qest_series("agm_qest", "%.10g", [&]() { return query.Qest;} )
 {  
 }
 
@@ -379,11 +380,11 @@ coordinator::~coordinator()
 *********************************************/
 
 
-gm2::network::network(stream_id _sid, const projection& _proj, double _beta)
+agm::network::network(stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
-	set_name("GM2");
+	set_name("AGM");
 	
 	setup(proj, beta);
 	on(START_STREAM, [&]() { 
@@ -397,14 +398,14 @@ gm2::network::network(stream_id _sid, const projection& _proj, double _beta)
 	});
 }
 
-void gm2::network::process_record()
+void agm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
 		sites[rec.hid]->update_stream();		
 }
 
-void gm2::network::process_init()
+void agm::network::process_init()
 {
 	// let the coordinator initialize the nodes
 	CTX.timeseries.add(hub->Qest_series);
@@ -413,7 +414,7 @@ void gm2::network::process_init()
 }
 
 
-void gm2::network::output_results()
+void agm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 

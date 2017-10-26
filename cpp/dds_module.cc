@@ -6,7 +6,7 @@
 #include "method.hh"
 #include "accurate.hh"
 #include "tods.hh"
-#include "geometric.hh"
+#include "agm.hh"
 #include "results.hh"
 #include "binc.hh"
 

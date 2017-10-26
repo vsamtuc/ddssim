@@ -12,7 +12,8 @@
 #include "output.hh"
 #include "results.hh"
 #include "tods.hh"
-#include "geometric.hh"
+#include "agm.hh"
+#include "gm.hh"
 
 using namespace dds;
 
@@ -31,7 +32,7 @@ void execute()
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(10000);
-	//D.hash_sources(2);
+	//D.hash_sources(4);
 	D.hash_streams(1);
 	D.set_time_window(4*3600);
 	//D.create();
@@ -60,9 +61,9 @@ void execute()
 		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
 		// }
 	}
-	//tods::network* tmeth = new tods::network(proj, 0.025 );
-	//components.push_back(tmeth);
-	components.push_back(new gm2::network(0, proj, 0.1 ));
+	components.push_back(new tods::network(proj, 0.025 ));
+	components.push_back(new agm::network(0, proj, 0.1 ));
+	components.push_back(new gm::network(0, proj, 0.1 ));
 
 	/* Create output files */
 	reporter R;

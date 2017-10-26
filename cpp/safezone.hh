@@ -462,6 +462,98 @@ struct twoway_join_query
 };
 
 
+
+
+/**
+	This class wraps safezone functions. It serves as part of the protocol.
+
+	Semantics: if `valid()` returns false, the system is in "promiscuous mode"
+	i.e., every update is forwarded to the coordinator immediately.
+
+	Else, there are two options: if a valid safezone function is given, then
+	it is used. Else, the naive function is used:
+	\f[  \zeta(X) = \zeta_{E} - \| U \|  \f]
+	where \f$ u \f$ is the current drift vector.
+  */
+struct safezone
+{
+	selfjoin_agms_safezone* szone; // the safezone function, if any
+	selfjoin_agms_safezone::incremental_state incstate; // cached here for convenience
+	double incstate_naive;
+
+	sketch* Eglobal;		// implementation detail, also used to compute the byte size
+	size_t updates;			// number of updates, determines the size of the global sketch
+	double zeta_E;			// This is acquired by calling the safezone 
+
+	// invalid
+	safezone() : szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(-1) {};
+
+	// valid safezone
+	safezone(selfjoin_agms_safezone* sz, sketch* E, size_t upd, double zE)
+	: szone(sz), Eglobal(E), updates(upd), zeta_E(zE)
+	{
+		assert(sz && sz->isvalid);
+		assert(zE>0);
+	}
+
+	// must be valid, i.e. zE>0
+	safezone(double zE) 
+	:  szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(zE)
+	{
+		assert(zE>0);
+	}
+
+	// We take these to be non-movable!
+	safezone(safezone&&)=delete;
+	safezone& operator=(safezone&&)=delete;
+
+	// Copyable
+	safezone& operator=(const safezone&) = default;
+
+	inline bool naive() const { return szone==nullptr && zeta_E>0; }
+	inline bool full() const { return szone!=nullptr; }
+	inline bool valid() const { return full() || naive(); }
+
+	double prepare_inc(const isketch& U, double& zeta_l, double& zeta_u)
+	{
+		if(full()) {
+			sketch X = (*Eglobal)+U;
+			return szone->with_inc(incstate, X, zeta_l, zeta_u);
+		} else if(naive()) {
+			return zeta_l = zeta_u = zeta_E - norm_L2_with_inc(incstate_naive, U);
+		} else {
+			assert(!valid());
+			return NAN;
+		}
+	}
+
+	double operator()(const isketch& U, double& zeta_l, double& zeta_u)
+	{
+		if(full()) {
+			delta_vector DX = U.delta;
+			DX += *Eglobal;
+			return szone->inc(incstate, DX, zeta_l, zeta_u);
+		}
+		else if(naive()) {
+			return zeta_l = zeta_u = zeta_E - norm_L2_inc(incstate_naive, U.delta);
+		} else {
+			assert(! valid());
+			return NAN;			
+		}
+	}
+
+	size_t byte_size() const {
+		if(!valid()) 
+			return 1;
+		else if(szone==nullptr)
+			return sizeof(zeta_E);
+		else
+			return compressed_sketch{*Eglobal, updates}.byte_size();
+	}
+};
+
+
+
 } // end namespace dds
 
 
