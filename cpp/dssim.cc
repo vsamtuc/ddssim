@@ -31,7 +31,7 @@ void execute()
 	dataset D;
 	D.load(wcup);
 	//D.set_max_length(10000);
-	//D.hash_sources(1);
+	//D.hash_sources(2);
 	D.hash_streams(1);
 	D.set_time_window(4*3600);
 	//D.create();

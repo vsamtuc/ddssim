@@ -214,7 +214,8 @@ void basic_network::reserve_addresses(host_addr a)
 
 
 basic_network::~basic_network()
-{ }
+{ 
+}
 
 
 

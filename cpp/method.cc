@@ -35,6 +35,9 @@ void context::close_result_files()
 	result_files.clear();
 }
 
+void context::clear()
+{
+}
 
 void context::run()
 {

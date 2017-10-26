@@ -1,4 +1,6 @@
 
+#include <algorithm>
+
 #include "results.hh"
 #include "binc.hh"
 #include "geometric.hh"
@@ -17,8 +19,9 @@ void node::update_stream()
 {
 	assert(CTX.stream_record().hid == site_id());
 
-	U.update(CTX.stream_record().key, CTX.stream_record().upd);
+	U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
 	update_count++;
+	round_local_updates++;
 
 	zeta = szone(U, zeta_l, zeta_u);
 	if(zeta<minzeta) minzeta = zeta;
@@ -30,6 +33,12 @@ void node::update_stream()
 		bitweight = bwnew;
 		coord.threshold_crossed(this, dbw);
 	}
+}
+
+
+void node::setup_connections()
+{
+	num_sites = coord.proc()->k;
 }
 
 
@@ -47,13 +56,11 @@ void coordinator::start_round()
 	// compute current parameters from query
 	bitweight.assign(k, 0);
 	total_bitweight.assign(k,0);
-	updates.assign(k, 0);	
-	msgs.assign(k, 0);
 
 	bit_level = 1;
 	bit_budget = k;
 
-	if(query.zeta_E < sqrt(query.E.width())) {
+	if(query.zeta_E < k*sqrt(query.E.width())) {
 		if(!in_naive_mode)
 			print("SWITCHING TO NAIVE MODE stream_count=",CTX.stream_count());
 		in_naive_mode = true;
@@ -91,7 +98,7 @@ void coordinator::start_subround(double total_zeta)
 // remote call on host violation
 oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 {
-	const int MAX_LEVEL = 30;
+	const int MAX_LEVEL = 300;
 	node* n = ctx.value;
 
 	assert(delta_bits>0);
@@ -99,7 +106,6 @@ oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 
 	bitweight[nid] += delta_bits;
 	total_bitweight[nid] += delta_bits;
-	msgs[nid]++;
 
 	bit_budget -= delta_bits;
 
@@ -130,51 +136,120 @@ oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 
 }
 
-void coordinator::rebalance(node_proxy* n1, node_proxy* n2, double total_zeta)
+double coordinator::rebalance(const set<node_proxy*> B)
 {
-	sketch Ubal(query.E.proj);
-	compressed_sketch csk1 = n1->get_drift();
-	compressed_sketch csk2 = n2->get_drift();
+	assert(B.size());
 
-	Ubal = (csk1.sk+csk2.sk)/2;
-	compressed_sketch skbal { Ubal, csk1.updates + csk2.updates };
-	total_zeta += n1->set_drift(skbal);
-	total_zeta += n2->set_drift(skbal);
+	sketch Ubal(query.E.proj);
+	size_t upd = 0;
+
+	for(auto n : B) {
+		compressed_sketch csk = n->get_drift();
+		Ubal += csk.sk;
+		upd += csk.updates;
+	}
+	Ubal /= B.size();
+
+	compressed_sketch skbal { Ubal, upd };
+
+	double delta_zeta = 0.0;
+	for(auto n : B) {
+		delta_zeta += n->set_drift(skbal);
+	}
 	
-	print("           Rebalancing");
-	start_subround(total_zeta);
+	print("           Rebalancing ",B.size(),", gained ", delta_zeta,
+	      " %=", (delta_zeta)/query.zeta_E );
+
+	return delta_zeta;
 }
+
+
+set<node_proxy*> coordinator::rebalance_pairs()
+{
+	vector< node_double > hvalue = compute_hvalue();
+
+	auto Cmp = [](const node_double& a, const node_double& b) -> bool {
+		return get<1>(a)<get<1>(b);
+	};
+
+	using std::min_element;
+	using std::max_element;
+	auto nmin = min_element(hvalue.begin(), hvalue.end(), Cmp);
+	auto nmax = max_element(hvalue.begin(), hvalue.end(), Cmp);
+
+	double minh = get<1>(*nmin);
+	double maxh = get<1>(*nmax);
+
+	set<node_proxy*> B;
+
+	if(  minh*maxh < 0) {
+		double g = min(-minh, maxh);
+
+		if(g > 0.1*query.zeta_E) {
+			B.insert(get<0>(*nmin));
+			B.insert(get<0>(*nmax));
+		} else {
+			print("       No rebalancing, max gain=",g,
+			      " with g/zeta_E=", g/query.zeta_E, " zeta_E=",query.zeta_E);
+		}
+	}
+	return B;
+}
+
+
+set<node_proxy*> coordinator::rebalance_light()
+{
+	set<node_proxy*> B;
+
+	// Compute new E
+	sketch newU(query.E.proj);
+	for(auto ni : node_ptr) {
+		newU += ni->U;
+	}
+	newU /= k;
+
+	sketch Enext = query.E + newU;
+	double zeta_Enext = query.safe_zone(Enext);
+
+	if(zeta_Enext > 0.05 * query.zeta_E)
+		for(auto p : proxy) B.insert(p.second);
+
+	return B;
+}
+
+
+vector<node_double> coordinator::compute_hvalue()
+{
+	vector<node_double> hvalue;
+	hvalue.reserve(k);
+
+	for(auto p : proxy) {
+		double h = p.second->get_zeta_lu();
+		hvalue.push_back(make_tuple(p.second, h));
+	}
+
+	return hvalue;
+}
+
 
 void coordinator::finish_subrounds(double total_zeta)
 {
-	if(! in_naive_mode && proxy.size()>1) {
-		// attempt to rebalance
-		double minh = INFINITY;
-		double maxh = -INFINITY;
+	/* 
+		In this function, we try to rebalance.
+	 */
 
-		node_proxy *node_minh = nullptr, *node_maxh = nullptr;
-		
-		for(auto p : proxy) {
-			double h = p.second->get_zeta_lu();
-			if(minh>h) {
-				minh = h;
-				node_minh = p.second;
-			} else if (maxh<h) {
-				maxh = h;
-				node_maxh = p.second;
-			}
-		}
+	if(! in_naive_mode && k>1) {
+		// attempt to rebalance		
+		// get rebalancing set
+		set<node_proxy*> B;
+		// B = rebalance_pairs();
+		// B = rebalance_light();
 
-		assert(minh<=maxh);
-		assert(node_minh && node_maxh);
-		
-		if(minh*maxh < 0) {
-			double g = min(-minh, maxh);
-
-			if(g > 0.1*query.zeta_E) {
-				rebalance(node_minh, node_maxh, total_zeta);
-				return;
-			}
+		if(B.size()>1) {
+			// rebalance
+			double delta_zeta = rebalance(B);
+			start_subround(total_zeta + delta_zeta);
+			return;
 		}
 	}
 	finish_round();
@@ -186,13 +261,11 @@ void coordinator::finish_subrounds(double total_zeta)
 void coordinator::finish_round()
 {
 	// collect all data
-	round_updates = 0;
 	sketch newE(query.E.proj);
 	for(auto p : proxy) {
 		compressed_sketch csk = p.second->get_drift();
 		newE += csk.sk;
 		total_updates += csk.updates;
-		round_updates += csk.updates;
 	}
 	newE /= (double)k;
 
@@ -210,102 +283,51 @@ void coordinator::finish_round()
 
 void coordinator::trace_round(sketch& newE)
 {
-//#define VALIDATE_INVARIANTS
-#ifdef VALIDATE_INVARIANTS
-
-	//
-	// validation
-	//
-	bool invariants_ok = true;
-
-	// Check accuracy of incremental vs direct execution
-	for(auto nptr : node_ptr) {
-		// Check that the incremental and direct zetas match
-		double node_zeta = nptr->zeta;
-		double node_zeta_from_scratch = (has_naive[node_index[nptr]])? (query.zeta_E - norm_L2(nptr->U)) :
-														query.safe_zone(query.E + nptr->U);
-		if(fabs(node_zeta_from_scratch - node_zeta)>1.0E-6) {
-			invariants_ok = false;
-			print("*** PROBLEM: Too big a diversion in the incremental and direct zetas, node=", nptr->site_id());
-		}
-		if(has_naive[node_index[nptr]] != in_naive_mode) {
-			invariants_ok = false;
-			print("*** PROBLEM: node is marked naive, coord not in naive mode, node=", nptr->site_id());
-		}
-		if(has_naive[node_index[nptr]] != (nptr->szone.szone==nullptr)) {
-			invariants_ok = false;
-			print("*** PROBLEM: node marked naive != node.safezone.szone!=null, node=", nptr->site_id());
-		}
-	}		
-
-	sketch Enext = query.E + newE;
-	double zeta_Enext = query.safe_zone(Enext);
-
-	double zeta_total=0.0;
-	double minzeta_total=0.0;
-	double minzeta_min = INFINITY;
-	for(auto ni : node_ptr) {
-		zeta_total += ni->zeta;
-		minzeta_total += ni->minzeta;
-		minzeta_min = min(minzeta_min, ni->minzeta);
-	}
-
-	if(zeta_Enext + 1E-6 < zeta_total/k ) {    // check that we didn't screw up!
-		// recompute zetas from the source!
-		print("*** PROBLEM: zeta_E(X)=",zeta_Enext," < (1/sum(X_i))=", zeta_total/k);
-		invariants_ok=false;
-	}
-	if(!invariants_ok) {
-		print("Finish round: updates=",total_updates," naive=",in_naive_mode, 
-			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E, 
-			"zeta_total=", zeta_total, zeta_total/(k*query.zeta_E), "minzeta_total=", minzeta_total, minzeta_total/(k*query.zeta_E),
-
-			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
-		print("network dump: stream_count=",CTX.stream_count(),"cur_rec=",CTX.stream_record());
-		for(auto nptr : node_ptr) {
-			double node_zeta = nptr->zeta;
-			double node_zeta_from_scratch = query.safe_zone(query.E + nptr->U);
-			print("hid=",nptr->site_id(),"naive=",has_naive[node_index[nptr]],
-				"node.zeta=",node_zeta,"from-scratch=",node_zeta_from_scratch, 
-				"naive_z=", query.zeta_E - norm_L2(nptr->U),
-				"error=",relative_error(node_zeta_from_scratch,node_zeta), 
-				"minzeta=",nptr->minzeta," bitweight=",nptr->bitweight,"updates=",nptr->update_count);
-		}
-
-		assert(false);
-	}  
-#endif
 
 	// report
 	static int skipper = 0;
-	skipper = (skipper+1)%100;
+	skipper = (skipper+1)%1;
 
 	if( !in_naive_mode || skipper==0 ) {
-		// check the value of the next E wrt this safe zone
 
-#ifndef VALIDATE_INVARIANTS
 		sketch Enext = query.E + newE;
 		double zeta_Enext = query.safe_zone(Enext);
 
 		double zeta_total=0.0;
 		double minzeta_total=0.0;
 		double minzeta_min = INFINITY;
-		for(auto ni : node_ptr) {
+		valarray<size_t> round_updates((size_t)0, k);
+
+		for(size_t i=0; i<k; i++) 
+		{
+			auto ni = node_ptr[i];
 			zeta_total += ni->zeta;
 			minzeta_total += ni->minzeta;
 			minzeta_min = min(minzeta_min, ni->minzeta);
+			round_updates[i] += ni->round_local_updates;
 		}
-#endif
+
+		// check the value of the next E wrt this safe zone
 		double norm_dE = norm_L2(newE);
 
-		print("Finish round: round updates=",round_updates," naive=",in_naive_mode, 
+		print("Finish round: round updates=",round_updates.sum()," naive=",in_naive_mode, 
 			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
 			"||dE||=", norm_dE, norm_dE/query.zeta_E, 
 			"zeta_total=", zeta_total/k, zeta_total/(k*query.zeta_E), 
 			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
-			"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
+			//"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
 			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
+
+		// print the bit level
 		print("            : c[",bit_level,"]=", elements_of(total_bitweight));
+		// print elements
+		print("            : S= ",elements_of(round_updates));
+
+		// compute the bits w.r.t. the ball, i.e., for node i, 
+		// compute  ||U[i]+E||/(zeta(E)/2)
+		// BUT! Note that U[i] is the rebalanced thingy
+
+
 		//emit(RESULTS);
 	}
 	
@@ -322,7 +344,8 @@ void coordinator::warmup()
 		if(rec.sid == net()->sid) 
 			dE.update(rec.key, rec.upd);
 	}
-	query.update_estimate(dE/k);
+	//query.update_estimate(dE/k);
+	query.update_estimate(dE);
 }
 
 
@@ -341,11 +364,13 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
 	in_naive_mode(true), k(proxy.size()),
-	Qest_series("gm2_", "%.10g", [&]() { return k*k*query.Qest;} )
+	Qest_series("gm2_qest", "%.10g", [&]() { return query.Qest;} )
 {  
-	CTX.timeseries.add(Qest_series);
 }
 
+coordinator::~coordinator()
+{
+}
 
 /*********************************************
 
@@ -382,6 +407,7 @@ void gm2::network::process_record()
 void gm2::network::process_init()
 {
 	// let the coordinator initialize the nodes
+	CTX.timeseries.add(hub->Qest_series);
 	hub->warmup();
 	hub->start_round();
 }

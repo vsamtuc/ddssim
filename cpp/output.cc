@@ -6,6 +6,7 @@
 #include "method.hh"
 #include "output.hh"
 #include "hdf5_util.hh"
+#include "binc.hh"
 
 using namespace dds;
 
@@ -157,7 +158,7 @@ void output_table::add(basic_column& col)
 	if(col._table)
 		throw std::runtime_error("column already added to a table");
 	if(colnames.find(col.name())!=colnames.end())
-		throw std::runtime_error("a column by this name already exists");
+		throw std::runtime_error(binc::sprint("a column by this name already exists:",col.name()));
 	col._table = this;
 	col._index = columns.size();
 	columns.push_back(&col);

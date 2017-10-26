@@ -17,6 +17,8 @@ using std::cout;
 using std::endl;
 using namespace agms;
 
+#if 0
+
 namespace dds {  namespace gm {
 
 
@@ -197,6 +199,7 @@ inline node::node(network* _net, source_id _sid, const projection& _proj)
 
 } }  // end namespace dds::gm
 
+#endif
 
 /***************************************************************************************
  ***************************************************************************************
@@ -376,6 +379,8 @@ struct node_proxy;
 
 using std::vector;
 
+typedef tuple<node_proxy*,double>  node_double;
+
 
 struct coordinator : process
 {
@@ -398,18 +403,15 @@ struct coordinator : process
 	// protocol related
 	vector<bool> has_naive;
 	vector<int> bitweight, total_bitweight;
-	vector<size_t> updates;
-	vector<size_t> msgs;
 
-	const double P = 0.5;
 	int bit_budget;
 	int bit_level;
-	size_t round_updates;
 
 	// report the series 
 	computed<double> Qest_series;
 
 	coordinator(network* nw, const projection& proj, double beta); 
+	~coordinator();
 
 	inline network* net() { return static_cast<network*>(host::net()); }
 
@@ -425,9 +427,26 @@ struct coordinator : process
 	// initialize a new subround
 	void start_subround(double total_zeta);
 	void finish_subrounds(double total_zeta);
-	void rebalance(node_proxy* n1, node_proxy* n2, double total_zeta);
+
+	//
+	// rebalancing
+	//
+
+	// This method performs the actual rebalancing and returns the delta_zeta
+	// of the rebalanced nodes.
+	double rebalance(const set<node_proxy*> B);
+
+	// Returns a rebalancing set two nodes, or empty.
+	set<node_proxy*> rebalance_pairs();
+	// Returns a rebalancing set of high-h, low stream traffic nodes
+	set<node_proxy*> rebalance_light();
 	
+	// used in rebalancing heuristics: return the vector of zeta_lu for each node
+	vector<node_double> compute_hvalue();
+
+	//
 	// this is used to trace the execution of rounds, for debugging or tuning
+	//
 	void trace_round(sketch& newE);
 
 	
@@ -449,6 +468,8 @@ struct coord_proxy : remote_proxy<coordinator>
 
 struct node : local_site
 {
+	int num_sites;				// number of sites
+
 	safezone szone;	// pointer to the safezone (shared among objects)
 
 	double minzeta; 		// minimum value of zeta so far
@@ -459,9 +480,10 @@ struct node : local_site
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
 	int bitweight;			// equal to number of bits sent since last reset_bitweight()
 
-
 	isketch U;				// drift vector
 	size_t update_count;	// number of updates in drift vector
+
+	size_t round_local_updates; // number of local stream updates since last reset
 
 	coord_proxy coord;
 
@@ -473,6 +495,7 @@ struct node : local_site
 		coord <<= net->hub;
 	}
 
+	void setup_connections() override;
 
 	void update_stream();
 
@@ -492,6 +515,9 @@ struct node : local_site
 
 		// reset for the first subround
 		reset_bitweight(szone.zeta_E/2);
+
+		// reset round statistics
+		round_local_updates = 0;
 	}
 
 	
