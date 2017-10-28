@@ -81,6 +81,17 @@ struct coordinator : process
 	// report the series 
 	computed<double> Qest_series;
 
+	// statistics
+	size_t num_rounds;       // number of rounds
+	size_t num_subrounds;    // number of subrounds
+	size_t sz_sent;          // safe zones sent
+	size_t round_sz_sent;    // safezones sent in curren
+
+
+	// source models
+	Vec alpha, beta, gamma;
+	vector<bool> md;  // the model's output;
+	
 	coordinator(network* nw, const projection& proj, double beta); 
 	~coordinator();
 
@@ -91,13 +102,20 @@ struct coordinator : process
 	// load the warmup dataset
 	void warmup();
 
-	// initialize a new round
-	void start_round();
-	void finish_round();
+	//
+	// State transitions (except for threshold)
+	//
+
+	// remote call on host violation
+	oneway threshold_crossed(sender<node> ctx, int delta_bitw);
+
+	void start_round();   // initialize a new round
+	void finish_round();  // finish current round and start new one
 	
-	// initialize a new subround
-	void start_subround(double total_zeta);
-	void finish_subrounds(double total_zeta);
+	
+	void start_subround(double total_zeta);    // initialize a new subround
+	void finish_subround();                    // finish the subround
+	void finish_subrounds(double total_zeta);  // try to rebalance (optional)
 
 	//
 	// rebalancing
@@ -115,14 +133,19 @@ struct coordinator : process
 	// used in rebalancing heuristics: return the vector of zeta_lu for each node
 	vector<node_double> compute_hvalue();
 
+	// 
+	// model routines
+	//
+	void compute_model();
+	void print_model();
+
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning
 	//
 	void trace_round(sketch& newE);
-
+	// this is used to print the state of nodes
+	void print_state();
 	
-	// remote call on host violation
-	oneway threshold_crossed(sender<node> ctx, int delta_bitw);
 };
 
 
@@ -154,6 +177,7 @@ struct node : local_site
 	isketch U;				// drift vector
 	size_t update_count;	// number of updates in drift vector
 
+	sketch dS;				// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
 
 	coord_proxy coord;
@@ -161,6 +185,7 @@ struct node : local_site
 	node(network* net, source_id hid, const projection& proj, double beta)
 	: local_site(net, hid), 
 		U(proj), update_count(0),
+		dS(proj), round_local_updates(0),
 		coord( this )
 	{ 
 		coord <<= net->hub;
@@ -188,10 +213,25 @@ struct node : local_site
 		reset_bitweight(szone.zeta_E/2);
 
 		// reset round statistics
+		dS = 0.0;
 		round_local_updates = 0;
 	}
 
-	
+// Called to upgrade the safezone from naive to full
+	int set_safezone(const safezone& newsz) {
+		// reset the safezone object
+		szone = newsz;
+		double newzeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		assert(newzeta >= zeta);
+		zeta = newzeta;
+
+		// reset the bit count
+		int delta_bitweight = floor((zeta_0-zeta)/zeta_quantum) - bitweight;
+		bitweight += delta_bitweight;
+		assert(delta_bitweight <= 0);
+		return delta_bitweight;
+	}
+		
 	double get_zeta() {
 		return zeta;
 	}
@@ -226,6 +266,7 @@ struct node : local_site
 struct node_proxy : remote_proxy<node>
 {
 	REMOTE_METHOD(node, reset);
+	REMOTE_METHOD(node, set_safezone);
 	REMOTE_METHOD(node, reset_bitweight);
 	REMOTE_METHOD(node, get_drift);
 	REMOTE_METHOD(node, set_drift);

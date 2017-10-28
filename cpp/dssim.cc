@@ -34,9 +34,9 @@ void execute()
 	//D.set_max_length(10000);
 	//D.hash_sources(4);
 	D.hash_streams(1);
-	D.set_time_window(4*3600);
+	D.set_time_window(2*3600);
 	//D.create();
-	D.create_warmup_time(4*3600, true);
+	D.create_warmup_time(2*3600, true);
 
 	/* Create components */
 
@@ -63,7 +63,7 @@ void execute()
 	}
 	//components.push_back(new tods::network(proj, 0.025 ));
 	components.push_back(new agm::network(0, proj, 0.1 ));
-	components.push_back(new gm::network(0, proj, 0.1 ));
+	//components.push_back(new gm::network(0, proj, 0.1 ));
 
 	/* Create output files */
 	reporter R;

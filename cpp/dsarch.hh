@@ -968,7 +968,10 @@ msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
 
 
 /**
-	A proxy map is a map container for mapping 	
+	A proxy map is a map container for mapping host objects to their proxies.
+
+	Ecah site maintaining a set of proxies on an equal nuber of objects, can
+	use a proxy map store pointers to its proxies.
  */
 template <typename ProxyType, typename ProxiedType = typename ProxyType::proxied_type>
 class proxy_map
