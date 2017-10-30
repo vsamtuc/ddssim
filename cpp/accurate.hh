@@ -141,14 +141,6 @@ extern factory<agms_sketch_updater, stream_id, agms::projection>
 	agms_sketch_updater_factory;
 
 
-template <>
-inline agms_sketch_updater* 
-inject<agms_sketch_updater, stream_id, agms::projection>(stream_id sid, 
-	agms::projection proj)
-{
-	return agms_sketch_updater_factory(sid, proj);
-}
-
 
 /*
 	Base for AGMS query estimators

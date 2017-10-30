@@ -27,6 +27,13 @@ output_file* context::open(const string& path, open_mode mode)
 	return of;
 }
 
+output_file* context::open_hdf5(const string& path, open_mode mode) 
+{
+	output_file* of = new output_hdf5(path, mode);
+	result_files.push_back(of);
+	return of;
+}
+
 void context::close_result_files()
 {
 	for(auto f : result_files) {

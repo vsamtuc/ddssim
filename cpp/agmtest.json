@@ -1,0 +1,49 @@
+{
+    "components" : [
+	{
+	    "type": "agm",
+	    "stream": 0,
+	    "projection": {
+		"depth": 7,
+		"width":1500,
+		"epsilon": 0.05
+	    },
+	    "beta": 0.1
+	}
+    ],
+
+    "dataset" : {
+	//"driver": "hdf5",
+	//"file" : "/src/datasets/wc_day46.h5",
+	//"dataset" : "wc_day46_1",
+	"file" : "/src/datasets/wc_day46",
+	"hash_streams": 1,
+	"set_max_length": 10000000,
+	//"hash_sources": 4,
+	"time_window": 14400,    // 4*3600
+	// create with warmup. Omit to create without warmup
+	"warmup_time": 14400,
+	"cooldown": true
+    },
+
+
+    // Output configuration
+    "files" : {
+	"sto" : "stdout:",
+	"h5f" : "hdf5:wc_results.h5",
+	"wcout" : "file:wc_tseries.dat?open_mode=truncate"
+    },
+
+    "bind" : {
+	"timeseries" : ["wcout", "h5f"],
+	"network_comm_results": ["sto", "h5f"],
+	"network_host_traffic": ["h5f", "sto"],
+	"network_interfaces" : ["h5f"]
+    },
+
+    "sample" : {
+	"timeseries": 1000
+    }
+
+    
+}

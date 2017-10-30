@@ -184,18 +184,9 @@ void execute_generated()
 
 
 
-using libconfig::Config;
-
-Config cfg;
-
-
 
 int main(int argc, char** argv)
 {
-	if(argc>1) {
-		cfg.readFile(argv[1]);
-	}
-
 
 	execute();
 	//execute_generated();

@@ -40,6 +40,8 @@ struct context : basic_control
 	output_file* open(FILE* f, bool owner = false);
 	output_file* open(const string& path, 
 		open_mode mode = default_open_mode);
+	output_file* open_hdf5(const string& path, 
+		open_mode mode = default_open_mode);
 
 	buffered_dataset warmup;	
 
@@ -47,7 +49,7 @@ struct context : basic_control
 	void clear();
 
 	/// Must be default-constructible!
-	context() {}
+	context() : timeseries("timeseries"), query_estimate("query_estimate") {}
 
 	/// Start the simulation
 	void run();
@@ -209,6 +211,7 @@ public:
 					on(END_STREAM, [&]() { otab.epilog(); });
 					break;				
 			}
+			_watched.insert(&otab);
 		}
 	}
 
@@ -323,6 +326,7 @@ class basic_factory {
 public:
 	virtual void clear()=0;
 	virtual ~basic_factory();
+
 };
 
 
@@ -343,6 +347,7 @@ struct factory : basic_factory
 
 	std::unordered_map<index_type, T*, hasher > registry;
 
+  
 	inline T* operator()(Args... args) {
 		index_type key(args...);
 		auto f = registry.find(key);
@@ -392,9 +397,6 @@ struct factory<T> : basic_factory
 	}
 };
 
-
-template <typename T, typename ...Args>
-T* inject(Args...args);
 
 
 /**

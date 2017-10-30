@@ -229,7 +229,7 @@ public:
 	{
 		using namespace H5;
 		// this is just to use fill_columns
-		dummy_table dummy("dummy_table");
+		dummy_table dummy("dummy_table2");
 
 		DataSpace dspc = dataset.getSpace();
 		TS_ASSERT_EQUALS(dspc.getSimpleExtentNdims(), 1);

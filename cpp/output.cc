@@ -107,9 +107,31 @@ void basic_column::set(const string&)
 //
 //-------------------------------------
 
+static std::unordered_map<string, output_table*> __table_registry;
+static std::unordered_set<output_table*> __all_tables;
+
+output_table* output_table::get(const string& name)
+{
+	auto iter = __table_registry.find(name);
+	return (iter!=__table_registry.end()) ? iter->second : nullptr;
+}
+
+
+const std::unordered_set<output_table*> all()
+{
+	return __all_tables;
+}
+
+
 output_table::output_table(const string& _name, table_flavor _f)
 : named(_name), en(true), _locked(false), _dirty(false), _flavor(_f)
-{ 
+{
+	if(_name.empty())
+		throw std::runtime_error("Table cannot have empty name");
+	if(__table_registry.count(_name)>0)
+		throw std::runtime_error("A table of name `"+_name+"' is already registered");
+	__table_registry[_name] = this;
+	__all_tables.insert(this);	
 }
 
 
@@ -120,6 +142,8 @@ output_table::~output_table()
 		if(c) c->_table = 0;
 	}
 	output_binding::unbind_all(files);
+	__table_registry.erase(this->name());
+	__all_tables.erase(this);
 }
 
 
@@ -254,11 +278,6 @@ time_series::time_series(const string& _name)
 : output_table(_name, table_flavor::TIMESERIES), 
 	now("time", "%d", std::bind(&context::now, &CTX)) 
 { add(now); }
-
-time_series::time_series() 
-: time_series("timeseries") 
-{}
-
 
 
 output_file::output_file()
@@ -605,8 +624,8 @@ output_hdf5::output_hdf5(const H5::H5File& _file, open_mode _mode)
 {  }
 
 
-output_hdf5::output_hdf5(const string& h5file)
-: output_hdf5(H5::H5File(h5file, H5F_ACC_TRUNC), open_mode::truncate)
+output_hdf5::output_hdf5(const string& h5file, open_mode mode)
+: output_hdf5(H5::H5File(h5file, H5F_ACC_TRUNC), mode)
 { }
 
 

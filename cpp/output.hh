@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <algorithm>
 #include <typeinfo>
@@ -312,6 +313,10 @@ enum class table_flavor {
 	for this table. However, they should be careful to initialize
 	every column of the table. 
 
+	Output tables must have a unique, non-empty name. This name should
+	probably conform to the 'identifier' convention, as it will be used
+	in output formats. This is enforced by the library at creation time.
+
   */
 class output_table : public named
 {
@@ -331,12 +336,25 @@ protected:
 
 	void _cleanup();
 	friend struct output_binding;
-public:
+	/**
+	   \brief Construct an output table with given name and flavor.
+	   
+	   This method should probably not be used, instead construct
+	   \c result_table or \c time_series objects directly.
+	*/
 	output_table(const string& _name, table_flavor _f);
 	virtual ~output_table();
 
+public:
+
+	/**
+	   \brief Add a column to this table.
+	 */
 	void add(basic_column& col);
 
+	/**
+	   \brief Remove a column to this table.
+	 */
 	void remove(basic_column& col);
 
 	output_binding* bind(output_file* f) { 
@@ -385,6 +403,13 @@ public:
 	void prolog();    // calls files to e.g. print a header
 	void emit_row();  // a new table row is ready
 	void epilog();    // calls files to e.g. print a footer
+
+	// static members
+
+	typedef std::unordered_set<output_table*> registry;
+	
+	static output_table* get(const string&);
+	static const registry& all();
 };
 
 
@@ -407,7 +432,6 @@ public:
 class time_series : public output_table
 {
 public:
-	time_series();
 	time_series(const string& _name);
 
 	computed<dds::timestamp> now;
@@ -604,7 +628,7 @@ public:
 		Create a new HDF5 file (truncating it if needed) 
 		and place the output in the root group.
 	  */
-	output_hdf5(const string& h5file);
+	output_hdf5(const string& h5file, open_mode mode=default_open_mode);
 
 	virtual void output_prolog(output_table&);
 	virtual void output_row(output_table&);

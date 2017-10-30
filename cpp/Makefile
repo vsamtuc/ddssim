@@ -13,7 +13,7 @@ endif
 
 INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
 LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
-	-lhdf5_serial -ldl -lbz2 -llz -laec -lsz -lz -lm
+	-lhdf5_serial -ldl -lbz2 -llz -laec -lsz -lz -lm -ljsoncpp
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 -Og
@@ -36,11 +36,12 @@ endif
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc agm.cc gm.cc
+	tods.cc  safezone.cc agm.cc gm.cc\
+	cfgfile.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	mathlib_tests.hh exec_tests.hh output_tests.hh \
-	tods_tests.hh szone_tests.hh gm_tests.hh 
+	tods_tests.hh szone_tests.hh gm_tests.hh method_tests.hh
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
@@ -56,7 +57,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 .PRECIOUS: unit_tests
 .PHONY: all ddslib test clean distclean doc pyapi
 
-all: ddslib dssim $(TEST_SOURCES:.cc=) test #pyapi
+all: ddslib agmexp dssim $(TEST_SOURCES:.cc=) test #pyapi
 
 ddslib: libdds.a 
 
@@ -67,7 +68,10 @@ libdds.a: $(DDS_OBJ)
 	ranlib $@
 
 dssim: dssim.o libdds.a
-	$(CXX) -o $@ $< -L. -ldds -lconfig++ $(LIB)
+	$(CXX) -o $@ $< -L. -ldds $(LIB)
+
+agmexp: agmexp.o libdds.a
+	$(CXX) -o $@ $< -L. -ldds $(LIB)
 
 dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
