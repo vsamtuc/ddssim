@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
-#include <libconfig.h++>
 
 #include <typeinfo>
 
