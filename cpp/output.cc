@@ -365,11 +365,19 @@ void output_c_file::output_prolog(output_table& table)
 		throw std::runtime_error("incompatible flavor");
 	}
 
-	for(size_t col=0;col < table.size(); col++) {
-		if(col) fputs(",", file());
-		fputs(table[col]->name().c_str(), file());
+	/*
+		Logic for prolog:
+		When the file is seekable
+	 */
+
+	long int fpos = ftell(file());
+	if(fpos == -1 || fpos == 0) {
+		for(size_t col=0;col < table.size(); col++) {
+			if(col) fputs(",", file());
+			fputs(table[col]->name().c_str(), file());
+		}
+		fputs("\n", file());			
 	}
-	fputs("\n", file());	
 }
 
 void output_c_file::output_row(output_table& table)

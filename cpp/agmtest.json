@@ -30,14 +30,15 @@
     // Output configuration
     "files" : {
 	"sto" : "stdout:",
+	"comm" : "file:wc_comm.dat?open_mode=append",
 	"h5f" : "hdf5:wc_results.h5",
 	"wcout" : "file:wc_tseries.dat?open_mode=truncate"
     },
 
     "bind" : {
 	"timeseries" : ["wcout", "h5f"],
-	"network_comm_results": ["sto", "h5f"],
-	"network_host_traffic": ["h5f", "sto"],
+	"network_comm_results": ["comm", "h5f"],
+	"network_host_traffic": ["h5f"],
 	"network_interfaces" : ["h5f"]
     },
 

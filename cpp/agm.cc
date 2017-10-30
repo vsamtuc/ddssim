@@ -11,6 +11,8 @@ using namespace dds::agm;
 using binc::print;
 using binc::elements_of;
 
+//#define TRACE_RUN
+
 /*********************************************
 	node
 *********************************************/
@@ -325,7 +327,7 @@ void coordinator::finish_round()
 	compute_model();
 
 
-#if 1
+#ifdef TRACE_RUN
 	trace_round(newE);
 #endif
 
@@ -398,6 +400,7 @@ void coordinator::compute_model()
 
 		// cost of shipping updates
 		double c_updates = sum_small_gamma/invtau + D*idx_gamma;
+#ifdef TRACE_RUN
 		if(c_updates > 1/invtau + 1E-6) {
 			print("Invariant error: c_updates=",c_updates, "invtau=",invtau,"1/invtau=", 1/invtau);
 			print("n=",n,"sum_small_gamma=", sum_small_gamma,"theta=",theta[I[n-1]]);
@@ -405,7 +408,7 @@ void coordinator::compute_model()
 			print_model();
 			assert(false);
 		}
-
+#endif
 		// total gain 
 		double gain = 1./invtau - c_updates - n*D;
 
@@ -423,9 +426,11 @@ void coordinator::compute_model()
 		md[I[i]] = true;
 
 	// finito
+#ifdef TRACE_RUN
 	print("        Model   tau=", 1/invtau, " gain=", max_gain, " sz_tosend=",argmax_gain, " D=",D);
 	print("      md=",elements_of(md));
 	//print_model();
+#endif
 }
 
 
@@ -629,4 +634,14 @@ void agm::network::output_results()
 
 	network_host_traffic.output_results(this);
 	network_interfaces.output_results(this);
+
+	//gm_comm_results.dset_name =
+	
+	gm_comm_results.max_error = beta;
+	gm_comm_results.sites = sites.size();
+	gm_comm_results.streams = 1;
+	gm_comm_results.rounds = 0;
+	gm_comm_results.fill_columns(this);
+	gm_comm_results.emit_row();
+
 }

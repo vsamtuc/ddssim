@@ -35,9 +35,37 @@ struct network_comm_results_t : result_table
 	column<double> traffic_pct  {this, "traffic_pct", "%.10g" };
 
 	network_comm_results_t() : result_table("network_comm_results") {}
+	network_comm_results_t(const string& name) : result_table(name) {}
 	void fill_columns(basic_network* nw);
 };
 extern network_comm_results_t network_comm_results;
+
+
+struct gm_comm_results_t : result_table
+{
+	column<string> dset_name        {this, "dset_name", 16, "%s" };
+	column<size_t> dset_window      {this, "dset_window", "%zu" };
+	column<size_t> dset_warmup      {this, "dset_warmup", "%zu" };	
+
+	column<string> protocol   	{this, "protocol", 32, "%s" };
+	column<double> max_error 	{this, "max_error", "%.8g" };
+	column<size_t> statevec_size    {this, "statevec_size", "%zu" };
+	
+	column<size_t> sites     	{this, "sites", "%zu" };
+	column<size_t> streams   	{this, "streams", "%zu" };
+	
+	column<size_t> rounds	        {this, "rounds", "%zu" };
+	column<size_t> total_msg 	{this, "total_msg", "%zu" };
+	column<size_t> total_bytes 	{this, "total_bytes", "%zu" };
+	column<double> traffic_pct      {this, "traffic_pct", "%.10g" };	
+
+	gm_comm_results_t() : result_table("gm_comm_results") {}
+	gm_comm_results_t(const string& name) : result_table(name) {}
+	void fill_columns(basic_network* nw);
+
+};
+extern gm_comm_results_t gm_comm_results;
+
 
 
 struct network_host_traffic_t : result_table
