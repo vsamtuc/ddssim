@@ -34,8 +34,9 @@ void execute()
 	//D.hash_sources(4);
 	D.hash_streams(1);
 	D.set_time_window(2*3600);
-	//D.create();
-	D.create_warmup_time(2*3600, true);
+	D.warmup_time(2*3600, true);
+	D.create();
+
 
 	/* Create components */
 

@@ -79,6 +79,25 @@ void dataset::hash_streams(stream_id h) { _streams = h; }
 void dataset::hash_sources(source_id s) { _sources = s; }
 void dataset::set_time_window(timestamp Tw) { _time_window = Tw; }
 
+void dataset::warmup_size(size_t wsize, bool cool)
+{
+	using boost::none;
+	if(_cool != none)
+		throw std::runtime_error("A warmup has already been specified for the dataset");
+	_warmup_size = wsize;
+	_cool = cool;
+}
+
+void dataset::warmup_time(timestamp wtime, bool cool)
+{
+	using boost::none;
+	if(_cool != none)
+		throw std::runtime_error("A warmup has already been specified for the dataset");
+	_warmup_time = wtime;
+	_cool = cool;	
+}
+
+
 datasrc dataset::apply_filters()
 {
 	using boost::none;
@@ -115,7 +134,19 @@ datasrc dataset::apply_filters()
 }
 
 
-void dataset::create() 
+void dataset::create()
+{
+	using boost::none;
+	if(_warmup_size != none)
+		create_warmup(_warmup_size.value(), _cool.value());
+	else if(_warmup_time != none)
+		create_warmup_time(_warmup_time.value(), _cool.value());
+	else
+		create_no_warmup();
+}
+
+
+void dataset::create_no_warmup() 
 {
 	apply_filters();
 	CTX.data_feed(src);

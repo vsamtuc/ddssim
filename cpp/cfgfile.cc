@@ -32,25 +32,44 @@ using binc::print;
 using binc::elements_of;
 
 
-void dds::prepare_dataset(Value& cfg, dataset& D)
+static datasrc proc_datasrc(Value& jdset)
 {
-	Json::Value jdset = cfg["dataset"];
-	
 	string HOME(getenv("HOME"));
 	string fname = HOME+jdset["file"].asString();
 
 	string driver = jdset.get("driver", "wcup").asString();
-	datasrc wcup;
+	datasrc ds;
 	if(driver=="wcup")
-		wcup = wcup_ds(fname);
+		ds = wcup_ds(fname);
 	else if(driver=="hdf5") {
 		string dsetname = jdset.get("dataset","dsstream").asString();
-		wcup = hdf5_ds(fname, dsetname);
+		ds = hdf5_ds(fname, dsetname);
 	} else
 		throw std::runtime_error("Error: unknown data source driver:" + driver);
+	return ds;
+}
 
+
+void dds::prepare_dataset(Value& cfg, dataset& D)
+{
+	Json::Value jdset = cfg["dataset"];
 	
-	D.load(wcup);
+	if(jdset.isNull())
+		return;
+
+	set<string> kwords {
+		"driver", "file", "dataset", 
+		"set_max_length", "hash_sources", "hash_streams", "time_window",
+		"warmup_time", "warmup_size", "cooldown"
+	};
+	for(auto member: jdset.getMemberNames()) {
+		if(kwords.count(member)==0)
+			throw std::runtime_error("Unknown keyword `"+member+"' in dataset section of config");
+	}	
+
+	datasrc ds = proc_datasrc(jdset);
+	
+	D.load(ds);
 
 	{
 		Json::Value js = jdset["set_max_length"];
@@ -68,18 +87,26 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 			D.hash_streams(js.asInt());
 	}
 	{
-		Json::Value js = jdset["tine_window"];
+		Json::Value js = jdset["time_window"];
 		if(!js.isNull())
 			D.hash_sources(js.asInt());
 	}
-	if( ! jdset["warmup_time"].isNull() ) {
-		size_t warmup_time = jdset["warmup_time"].asUInt();
-		bool cool = jdset.get("cooldown",true).asBool();
-		
-		D.create_warmup_time(warmup_time, cool);
-	} else {
-		D.create();
+	{
+		Json::Value js = jdset["warmup_time"];
+		if(!js.isNull()) {
+			bool cool = jdset.get("cooldown",true).asBool();
+			D.warmup_time(js.asInt(), cool);
+		}
 	}
+	{
+		Json::Value js = jdset["warmup_size"];
+		if(!js.isNull()) {
+			bool cool = jdset.get("cooldown",true).asBool();
+			D.warmup_size(js.asInt(), cool);
+		}
+	}
+
+	D.create();
 }
 
 

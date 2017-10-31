@@ -3,7 +3,7 @@
 ##PBS -l nodes=44
 ##PBS -l nodes=wn042.grid.tuc.gr:ppn=2
 ##PBS -l nodes=wn002.grid.tuc.gr:ppn=2+wn038.grid.tuc.gr:ppn=2+wn017.grid.tuc.gr:ppn=2+wn020.grid.tuc.gr:ppn=2
-#PBS -q quzo
+##PBS -q quzo
 ##PBS -m abe -M vsam@softnet.tuc.gr
 #PBS -k oe
 

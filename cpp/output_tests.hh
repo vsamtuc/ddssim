@@ -16,6 +16,36 @@ using binc::print;
 using namespace dds;
 
 
+struct table_mixin1
+{
+	column<size_t>  foo  { "foo", "%zu" };
+	column<string>  bar  { "bar", 32, "%s" };
+	table_mixin1(result_table* host) {
+		host->add({& foo, &bar});
+	}
+};
+
+struct table_mixin2 
+{
+	column<size_t>  bla  { "bla", "%zu" };
+	column<string>  baz  { "baz", 32, "%s" };
+	table_mixin2(result_table* host) {
+		host->add({& bla, &baz});		
+	}
+};
+
+
+struct myresults  : result_table, table_mixin1, table_mixin2 
+{
+	column<string> mystring  { "mystring", 20, "%s" };
+
+	myresults() : result_table("myresults"), 
+		table_mixin1(this), table_mixin2(this) 
+	{
+		add({ &mystring });
+	}
+};
+
 
 class OutputTestSuite : public CxxTest::TestSuite
 {
@@ -475,6 +505,43 @@ public:
 		TS_ASSERT_EQUALS(double_foo.value(), -165353.);
 	}
 
+	void fill_mixin1(table_mixin1& tm1)
+	{
+		tm1.foo = 10;
+		tm1.bar = "Ho ho ho";
+	}
+
+
+	void test_myresults()
+	{
+		myresults table;
+		using namespace std::string_literals;
+
+		TS_ASSERT_EQUALS(table.flavor(), table_flavor::RESULTS);
+		TS_ASSERT_EQUALS(table.foo.table(), &table);
+
+		TS_ASSERT_EQUALS(table.size(), 5);
+
+		output_mem_file f;
+		table.bind(&f);
+
+		table.prolog();
+		table.foo =1;
+		table.bar = "Hello"s;
+		table.bla = 2;
+		table.baz = "world"s; 
+		table.mystring = "My string";
+		table.emit_row();
+		fill_mixin1(table);
+		table.emit_row();
+		table.epilog();
+
+		TS_ASSERT_EQUALS(f.str(),
+			"foo,bar,bla,baz,mystring\n"
+			"1,Hello,2,world,My string\n"
+			"10,Ho ho ho,2,world,My string\n"
+			);
+	}
 
 
 };
