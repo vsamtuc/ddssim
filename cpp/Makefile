@@ -45,7 +45,7 @@ UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
-CXX_SOURCES= $(DDS_SOURCES) dssim.cc dds_module.cc
+CXX_SOURCES= $(DDS_SOURCES) dssim.cc agmexp.cc dds_module.cc
 
 DDS_OBJ= $(DDS_SOURCES:.cc=.o)
 CXX_OBJ= $(CXX_SOURCES:.cc=.o)
