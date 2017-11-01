@@ -6,6 +6,7 @@
 
 #include <boost/format.hpp>
 #include <boost/endian/conversion.hpp>
+#include <boost/filesystem/path.hpp>
 
 #include "data_source.hh"
 #include "hdf5_util.hh"
@@ -22,7 +23,10 @@ time_window_source::time_window_source(datasrc _sub, dds::timestamp _w)
 		set_metadata(sub->metadata());
 
 		// double the size
-		dsm.set_size( dsm.size() );
+		dsm.set_size( 2*dsm.size() );
+
+		// set the window
+		dsm.set_window(Tw);
 
 		// adjust the limits
 		dsm.set_ts_range( 
@@ -222,7 +226,7 @@ public:
 
 
 template <typename FileRecord>
-class file_data_source : public data_source
+class file_data_source : public rewindable_data_source
 {
 protected:
 	string filepath;
@@ -233,6 +237,8 @@ public:
 	: filepath(fpath), fstream(0)
 	{
 		fstream = fopen(filepath.c_str(), mode);
+		boost::filesystem::path path(fpath);
+		dsm.set_name(path.leaf().string());
 		if(! fstream) {
 			throw cio_error(__FUNCTION__, 0, errno);			
 		}
@@ -261,6 +267,13 @@ public:
 			rec.upd = 1;
 			rec.ts = record.tstamp();
 		}
+	}
+
+	void rewind()
+	{
+		std::rewind(fstream);
+		isvalid = true;
+		advance();		
 	}
 
 };
@@ -304,6 +317,7 @@ uniform_data_source::uniform_data_source(
 	)
 	: gen(maxsid, maxhid, maxkey), maxtime(maxt)
 {
+	dsm.set_name("<random_uniform>");
 	dsm.set_size(maxtime);
 	dsm.set_ts_range(1, maxtime);
 	dsm.set_key_range(1, maxkey);
@@ -356,9 +370,7 @@ void buffered_data_source::set_buffer(buffered_dataset* buf)
 {
 	buffer = buf;
 	buffer->analyze(dsm);
-	from = buffer->begin();
-	to = buffer->end();
-	advance();	
+	rewind();
 }
 
 buffered_data_source::buffered_data_source(buffered_dataset& dset)
@@ -376,6 +388,14 @@ buffered_data_source::buffered_data_source(buffered_dataset& dset,
 	advance();
 }
 
+void buffered_data_source::rewind()
+{
+	from = buffer->begin();
+	to = buffer->end();
+	isvalid = true;
+	advance();	
+}
+
 
 void buffered_data_source::advance()
 {
@@ -391,6 +411,7 @@ void buffered_data_source::advance()
 
 materialized_data_source::materialized_data_source(datasrc src)
 {
+	dsm = src->metadata();
 	dataset.load(src);
 	set_buffer(&dataset);
 }
@@ -406,6 +427,7 @@ materialized_data_source::materialized_data_source(datasrc src)
 cascade_data_source::cascade_data_source(std::initializer_list<datasrc> src)
 : sources(src)
 { 
+	dsm.set_name("<cascaded>");
 	init();
 }
 
@@ -450,7 +472,7 @@ using binc::print;
 using binc::elements_of;
 
 
-struct hdf5_data_source : data_source
+struct hdf5_data_source : rewindable_data_source
 {
 	CompType dds_record_type;
 
@@ -520,9 +542,18 @@ struct hdf5_data_source : data_source
 
 		dsm.set_valid();
 
+		// start iteration
+		rewind();
+	}
+
+
+	void rewind() override
+	{
 		//
 		// Prepare for iteration
 		//
+
+		isvalid = true;
 
  		// 16 Mbytes per read
 		resize_buffer(1<<20);
@@ -530,8 +561,9 @@ struct hdf5_data_source : data_source
 		// position at start of dataset
 		curpos = 0;
 
-		advance();
+		advance();		
 	}
+
 
 	void resize_buffer(hsize_t bsize)
 	{
@@ -591,9 +623,12 @@ struct hdf5_data_source : data_source
 
 datasrc dds::hdf5_ds(const string& fname, const string& dsetname)
 {
-	return datasrc( new hdf5_data_source(
+	auto ds = new hdf5_data_source(
 		H5File(fname, H5F_ACC_RDONLY).openDataSet(dsetname)
-		));	
+		);
+	string dsname = boost::filesystem::path(fname).leaf().string()+":"+dsetname;
+	ds->set_name(dsname);
+	return datasrc( ds );	
 }
 
 

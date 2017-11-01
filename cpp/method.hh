@@ -256,7 +256,11 @@ struct reactive
   */
 class dataset : reactive
 {
+	datasrc base_src;
 	datasrc src;
+
+	boost::optional<string> _name;
+
 
 	boost::optional<size_t> _max_length;
 	boost::optional<stream_id> _streams;
@@ -268,14 +272,18 @@ class dataset : reactive
 	boost::optional<bool> _cool;
 
 	datasrc apply_filters();
-
+	void create_no_warmup();
+	void create_warmup_size(size_t wsize, bool cool);
+	void create_warmup_time(timestamp wtime, bool cool);
+	ds_metadata collect_metadata();
 public:
 	dataset();
 	~dataset();
 
 	void clear();
 	void load(datasrc _src);
-	
+
+	void set_name(const string&);	
 	void set_max_length(size_t n);
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
@@ -285,10 +293,6 @@ public:
 	void warmup_time(timestamp wtime, bool cool);
 
 	void create();
-private:
-	void create_no_warmup();
-	void create_warmup(size_t wsize, bool cool);
-	void create_warmup_time(timestamp wtime, bool cool);
 };
 
 

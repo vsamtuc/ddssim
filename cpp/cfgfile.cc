@@ -42,7 +42,7 @@ static datasrc proc_datasrc(Value& jdset)
 	if(driver=="wcup")
 		ds = wcup_ds(fname);
 	else if(driver=="hdf5") {
-		string dsetname = jdset.get("dataset","dsstream").asString();
+		string dsetname = jdset.get("dataset","ddstream").asString();
 		ds = hdf5_ds(fname, dsetname);
 	} else
 		throw std::runtime_error("Error: unknown data source driver:" + driver);
@@ -89,7 +89,7 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 	{
 		Json::Value js = jdset["time_window"];
 		if(!js.isNull())
-			D.hash_sources(js.asInt());
+			D.set_time_window(js.asInt());
 	}
 	{
 		Json::Value js = jdset["warmup_time"];

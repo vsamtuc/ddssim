@@ -171,6 +171,13 @@ using std::set;
 class ds_metadata
 {
 protected:
+	std::string dsname="<anon>";
+	timestamp dswindow=0;
+	timestamp dswarmup_time=0;
+	size_t dswarmup_size=0;
+	bool dscool_off = false;
+
+
 	bool isvalid = false;
 
 	set<stream_id> sids;
@@ -181,8 +188,30 @@ protected:
 	key_type kmin = MAX_KEY, kmax=MIN_KEY;
 public:
 
+	inline const std::string& name() const { return dsname; }
+	inline void set_name(const std::string& _n) { dsname=_n; }
+
+	inline timestamp window() const { return dswindow; }
+	inline void set_window(timestamp w) { dswindow=w; }
+
+	inline size_t warmup_size() const { return dswarmup_size; }
+	inline void set_warmup_size(size_t w) { dswarmup_size = w; }
+
+	inline timestamp warmup_time() const { return dswarmup_time; }
+	inline void set_warmup_time(timestamp w) { dswarmup_time = w; }
+
+	inline bool cool_off() { return dscool_off; }
+	inline void set_cool_off(bool c) { dscool_off = c; }
+
 	inline bool valid() const { return isvalid; }
 	inline void set_valid(bool v=true) { isvalid=v; }
+
+	inline void prepare_collect()
+	{
+		scount=0;
+		ts=MAX_TS; te=MIN_TS;
+		kmin = MAX_KEY; kmax=MIN_KEY;		
+	}
 
 	inline void collect(const dds_record& rec) {
 		if(scount==0) ts=rec.ts;

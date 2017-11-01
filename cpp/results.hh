@@ -3,11 +3,9 @@
 
 #include "dsarch.hh"
 #include "output.hh"
+#include "method.hh"
 
 namespace dds {
-
-
-
 
 
 
@@ -25,49 +23,118 @@ struct local_stream_stats_t : result_table
 };
 extern local_stream_stats_t local_stream_stats;
 
+struct comm_results 
+{
+	column<size_t> total_msg 	{"total_msg", "%zu" };
+	column<size_t> total_bytes 	{"total_bytes", "%zu" };
+	column<double> traffic_pct  {"traffic_pct", "%.10g" };
+
+	comm_results(result_table* table) {
+		table->add({&total_msg, &total_bytes, &traffic_pct});
+	}
+
+	void fill(basic_network* nw);
+};
+
+
 /**
 	Communication results for each network
   */
-struct network_comm_results_t : result_table
+struct network_comm_results_t : result_table, comm_results
 {
 	column<string> netname   	{this, "netname", 64, "%s" };
 	column<double> max_error 	{this, "max_error", "%.8g" };
 	column<size_t> sites     	{this, "sites", "%zu" };
 	column<size_t> streams   	{this, "streams", "%zu" };
 	column<size_t> local_viol	{this, "local_viol", "%zu" };
-	column<size_t> total_msg 	{this, "total_msg", "%zu" };
-	column<size_t> total_bytes 	{this, "total_bytes", "%zu" };
-	column<double> traffic_pct  {this, "traffic_pct", "%.10g" };
 
-	network_comm_results_t() : result_table("network_comm_results") {}
-	network_comm_results_t(const string& name) : result_table(name) {}
+	network_comm_results_t() 
+		: result_table("network_comm_results"), comm_results(this) {}
+	network_comm_results_t(const string& name) 
+		: result_table(name), comm_results(this) {}
 	void fill_columns(basic_network* nw);
 };
 extern network_comm_results_t network_comm_results;
 
-
-struct gm_comm_results_t : result_table
+struct dataset_results : private reactive
 {
-	column<string> dset_name        {this, "dset_name", 16, "%s" };
-	column<size_t> dset_window      {this, "dset_window", "%zu" };
-	column<size_t> dset_warmup      {this, "dset_warmup", "%zu" };	
+	column<string> dset_name        {"dset_name", 32, "%s" };
+	column<timestamp> dset_window      {"dset_window", "%d" };
+	column<size_t> dset_warmup      {"dset_warmup", "%zu" };
+	column<size_t> dset_size        {"dset_size", "%zu" };	
+	column<timestamp> dset_duration {"dset_duration", "%ld" };
+	column<size_t> dset_streams		{"dset_streams", "%zu"};
+	column<size_t> dset_hosts		{"dset_hosts", "%zu"};
+	column<size_t> dset_bytes		{"dset_bytes", "%zu"};
 
-	column<string> protocol   	{this, "protocol", 32, "%s" };
-	column<double> max_error 	{this, "max_error", "%.8g" };
-	column<size_t> statevec_size    {this, "statevec_size", "%zu" };
+	dataset_results(result_table* table) {
+		table->add({&dset_name, &dset_window, &dset_warmup,
+			&dset_size, &dset_duration, &dset_streams,
+			&dset_hosts, &dset_bytes
+		 });
+		on(START_STREAM, [&]() { fill(); });
+	}
+
+	void fill() 
+	{ 
+		dset_name = CTX.metadata().name();
+		dset_window = CTX.metadata().window();
+		dset_warmup = CTX.metadata().warmup_time()+CTX.metadata().warmup_size();
+
+		dset_size = CTX.metadata().size();
+		dset_duration = CTX.metadata().duration();
+		dset_streams = CTX.metadata().stream_ids().size();
+		dset_hosts = CTX.metadata().source_ids().size();
+		dset_bytes = CTX.metadata().size() * sizeof(dds_record);
+	}
+};
+
+
+
+struct gm_comm_results_t : result_table, dataset_results, comm_results
+{
+
+	column<string> protocol   	  {this, "protocol", 32, "%s" };
+	column<double> max_error 	  {this, "max_error", "%.8g" };
+	column<size_t> statevec_size  {this, "statevec_size", "%zu" };
 	
-	column<size_t> sites     	{this, "sites", "%zu" };
-	column<size_t> streams   	{this, "streams", "%zu" };
+	column<size_t> sites     	  {this, "sites", "%zu" };
+	column<size_t> sid   	  	  {this, "sid", "%zu" };
 	
-	column<size_t> rounds	        {this, "rounds", "%zu" };
-	column<size_t> total_msg 	{this, "total_msg", "%zu" };
-	column<size_t> total_bytes 	{this, "total_bytes", "%zu" };
-	column<double> traffic_pct      {this, "traffic_pct", "%.10g" };	
+	column<size_t> rounds 			{this, "rounds", "%zu" };
+	column<size_t> subrounds		{this, "subrounds", "%zu" };
+	column<size_t> sz_sent			{this, "sz_sent", "%zu"};
+	column<size_t> total_rbl_size	{this, "total_rbl_size", "%zu"};
 
-	gm_comm_results_t() : result_table("gm_comm_results") {}
-	gm_comm_results_t(const string& name) : result_table(name) {}
-	void fill_columns(basic_network* nw);
+	column<size_t> bytes_get_drift	{this, "bytes_get_drift", "%zu"};
 
+	gm_comm_results_t() 
+		: gm_comm_results_t("gm_comm_results")
+	{}
+	gm_comm_results_t(const string& name) ;
+	
+	template <typename StarNetwork>
+	void fill(StarNetwork* nw)
+	{
+		comm_results::fill(nw);
+		protocol = nw->name();
+		max_error = nw->beta;
+		statevec_size = nw->proj.size();
+		sites = nw->sites.size();
+		sid = nw->sid;
+
+		auto hub = nw->hub;
+		rounds = hub->num_rounds;
+		subrounds = hub->num_subrounds;
+		sz_sent = hub->sz_sent;
+		total_rbl_size = hub->total_rbl_size;
+
+		// number of bytes received by get_drift()
+		bytes_get_drift = chan_frame(nw)
+			.endp(typeid(typename StarNetwork::site_type),"get_drift")
+			.endp_rsp()
+			.sum();
+	}
 };
 extern gm_comm_results_t gm_comm_results;
 

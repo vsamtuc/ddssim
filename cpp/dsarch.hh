@@ -610,6 +610,10 @@ public:
 template <typename Net, typename Hub, typename Site>
 struct star_network : public basic_network
 {
+	typedef Net network_type;
+	typedef Hub hub_type;
+	typedef Site site_type;
+
 	set<source_id> hids;
 	Hub* hub;
 	unordered_map<source_id, Site*> sites;

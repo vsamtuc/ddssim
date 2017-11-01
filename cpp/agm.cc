@@ -64,6 +64,7 @@ void coordinator::start_round()
 	bit_budget = k;
 
 	round_sz_sent = 0;
+	num_rounds++;
 	num_subrounds++;
 	
 #if 0
@@ -86,8 +87,10 @@ void coordinator::start_round()
 
 	for(auto p : proxy) {
 		// based on the above line this is unnecessary
-		if(! has_naive[node_index[p.first]])
+		if(! has_naive[node_index[p.first]]) {
+			sz_sent++;
 			p.second->reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
+		}
 		else
 			p.second->reset(safezone(query.zeta_E));
 	}
@@ -180,9 +183,8 @@ double coordinator::rebalance(const set<node_proxy*> B)
 	for(auto n : B) {
 		delta_zeta += n->set_drift(skbal);
 	}
-	
-	print("           Rebalancing ",B.size(),", gained ", delta_zeta,
-	      " %=", (delta_zeta)/query.zeta_E );
+
+	total_rbl_size += B.size();	
 
 	return delta_zeta;
 }
@@ -572,7 +574,8 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 	
 	num_rounds(0),
 	num_subrounds(0),
-	sz_sent(0)
+	sz_sent(0),
+	total_rbl_size(0)
 {  
 }
 
@@ -635,13 +638,6 @@ void agm::network::output_results()
 	network_host_traffic.output_results(this);
 	network_interfaces.output_results(this);
 
-	//gm_comm_results.dset_name =
-	
-	gm_comm_results.max_error = beta;
-	gm_comm_results.sites = sites.size();
-	gm_comm_results.streams = 1;
-	gm_comm_results.rounds = 0;
-	gm_comm_results.fill_columns(this);
+	gm_comm_results.fill(this);
 	gm_comm_results.emit_row();
-
 }

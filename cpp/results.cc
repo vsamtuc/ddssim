@@ -7,43 +7,41 @@ namespace dds {
 
 local_stream_stats_t local_stream_stats;
 
+
+void comm_results::fill(basic_network* nw)
+{
+	size_t total_msg = 0;
+	size_t total_bytes = 0;
+	for(auto&& c : nw->channels()) {
+		total_msg += c->messages();
+		total_bytes += c->bytes();
+	}
+	this->total_msg = total_msg;
+	this->total_bytes = total_bytes;
+
+	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
+	traffic_pct = total_bytes/stream_bytes;		
+}
+
+
+
+gm_comm_results_t gm_comm_results;
+
+gm_comm_results_t::gm_comm_results_t(const string& name) 
+	: result_table(name),
+		dataset_results(this),
+		comm_results(this)
+{
+}
+
+
+
 network_comm_results_t network_comm_results;
 void network_comm_results_t::fill_columns(basic_network* nw)
 {
 	netname = nw->name();
-
-	size_t total_msg = 0;
-	size_t total_bytes = 0;
-	for(auto&& c : nw->channels()) {
-		total_msg += c->messages();
-		total_bytes += c->bytes();
-	}
-	this->total_msg = total_msg;
-	this->total_bytes = total_bytes;
-
-	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
-	traffic_pct = total_bytes/stream_bytes;	
+	fill(nw);
 }
-
-
-gm_comm_results_t gm_comm_results;
-void gm_comm_results_t::fill_columns(basic_network* nw)
-{
-	protocol = nw->name();
-
-	size_t total_msg = 0;
-	size_t total_bytes = 0;
-	for(auto&& c : nw->channels()) {
-		total_msg += c->messages();
-		total_bytes += c->bytes();
-	}
-	this->total_msg = total_msg;
-	this->total_bytes = total_bytes;
-
-	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
-	traffic_pct = total_bytes/stream_bytes;	
-}
-
 
   
 network_host_traffic_t network_host_traffic;

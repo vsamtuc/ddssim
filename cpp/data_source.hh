@@ -54,6 +54,7 @@ public:
 		iterator() : src(nullptr) {}
 		iterator(data_source* _src) : src(_src) {}
 
+		iterator& operator++() { src->advance(); return *this; }
 		iterator& operator++(int) { src->advance(); return *this; }
 		reference operator*() const { return src->rec; }
 		bool operator==(iterator other) const { 
@@ -94,9 +95,17 @@ public:
 		return ret; 
 	}
 
+	/**
+		Check if this data source is rewindable.
+	  */
+	virtual bool rewindable() const { return false; }
 
 	/// The metadata for this source
 	inline const ds_metadata& metadata() const { return dsm; }
+	inline void set_name(const std::string& _name) { dsm.set_name(_name); }
+	inline void set_warmup_time(timestamp tw) { dsm.set_warmup_time(tw); }
+	inline void set_warmup_size(size_t sw) { dsm.set_warmup_size(sw); }
+	inline void set_cool_off(bool c) { dsm.set_cool_off(c); }
 	inline void set_metadata(const ds_metadata& other) { dsm = other; }
 	inline bool analyzed() const {  return dsm.valid(); }
 
@@ -104,6 +113,27 @@ public:
 	/// Virtual destructor
 	virtual ~data_source() { }
 };
+
+
+/**
+	Rewindable data source.
+
+	A data source that can be reset so that its stream can be replayed.	
+  */
+class rewindable_data_source : public data_source
+{
+public:
+
+	/**
+		Rewind the data source to its initial state
+	  */
+	virtual void rewind()=0;
+
+
+	virtual bool rewindable() const override { return true; }
+
+};
+
 
 
 //------------------------------------
@@ -133,7 +163,6 @@ public:
 
 		advance();
 	}
-
 
 	const Func& function() const { return func; }
 
@@ -240,7 +269,7 @@ struct max_timestamp
 
 
 
-/// A filter to hash source id of stream id by applying modulo
+/// A filter to hash source id or stream id by applying modulo
 struct modulo_attr
 {
 	typedef int16_t intid;
@@ -458,7 +487,7 @@ make_uniform_dataset(stream_id maxsid, source_id maxhid,
 	TODO: make the data source rewindable multiple times,
 	to create a long stream
   */
-class buffered_data_source : public data_source
+class buffered_data_source : public rewindable_data_source
 {
 	buffered_dataset* buffer;
 
@@ -476,6 +505,8 @@ public:
 
 	/// The metadata for this source
 	inline buffered_dataset& dataset() const { return *buffer; }
+
+	void rewind() override;
 
 	void advance() override;
 };
