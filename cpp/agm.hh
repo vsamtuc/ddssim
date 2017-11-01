@@ -181,7 +181,6 @@ struct node : local_site
 
 	sketch dS;				// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
-	size_t update_count;	// number of updates in drift vector
 
 	coord_proxy coord;
 
