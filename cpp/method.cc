@@ -177,7 +177,7 @@ void dataset::create_no_warmup()
 {
 	apply_filters();
 	if(! src->analyzed()) {
-		if(src->rewindable()) {
+		if(base_src->rewindable()) {
 			// analyze and rewind
 			ds_metadata mdata = collect_metadata();
 			// restore
