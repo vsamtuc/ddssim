@@ -4,9 +4,11 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <libgen.h>
+
 #include <boost/format.hpp>
 #include <boost/endian/conversion.hpp>
-#include <boost/filesystem/path.hpp>
+//#include <boost/filesystem/path.hpp>
 
 #include "data_source.hh"
 #include "hdf5_util.hh"
@@ -237,8 +239,9 @@ public:
 	: filepath(fpath), fstream(0)
 	{
 		fstream = fopen(filepath.c_str(), mode);
-		boost::filesystem::path path(fpath);
-		dsm.set_name(path.leaf().string());
+		//boost::filesystem::path path(fpath);
+		string nm = basename((char*) filepath.c_str());
+		dsm.set_name(nm);
 		if(! fstream) {
 			throw cio_error(__FUNCTION__, 0, errno);			
 		}
@@ -626,7 +629,7 @@ datasrc dds::hdf5_ds(const string& fname, const string& dsetname)
 	auto ds = new hdf5_data_source(
 		H5File(fname, H5F_ACC_RDONLY).openDataSet(dsetname)
 		);
-	string dsname = boost::filesystem::path(fname).leaf().string()+":"+dsetname;
+	string dsname = basename((char*) fname.c_str())+(+":"+dsetname);
 	ds->set_name(dsname);
 	return datasrc( ds );	
 }
