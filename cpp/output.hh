@@ -55,6 +55,9 @@ public:
 	basic_column(const basic_column&&)=delete;
 	virtual ~basic_column();
 
+	inline output_table* table() const { return _table; }
+	inline size_t index() const { return _index; }
+
 	inline const char* format() const { return _format.c_str(); }
 	virtual void emit(FILE*) = 0;
 	virtual void copy(void*) = 0;
@@ -511,6 +514,7 @@ public:
 
 	virtual void open(const string& _fpath, 
 			open_mode mode = default_open_mode);
+	virtual void open(FILE* _stream, bool _owner);
 	virtual void close();
 	virtual void flush();
 
@@ -529,6 +533,47 @@ private:
 
 extern output_c_file output_stdout;
 extern output_c_file output_stderr;
+
+/**
+	\brief A text output stream writing to a memory region.
+
+	This is mostly useful for internal purposes, such as
+	debugging.
+ */
+class output_mem_file : public output_c_file
+{
+	struct memstate {
+		char* buffer;
+		size_t len;		
+	};
+	memstate* state;
+public:
+	output_mem_file();
+	~output_mem_file();
+
+	inline output_mem_file& operator=(output_mem_file&& other)
+	{
+		output_c_file::operator=((output_c_file&&)other);
+		state = other.state;
+		other.state = nullptr;
+		return *this;
+	}
+
+	/**
+		\brief Get a pointer to the current contents of the
+		stream.
+
+		Note that this pointer should not be used after more data
+		is added to the stream.
+	*/
+	const char* contents();
+
+	/**
+		Get a copy of the data in the stream.
+	  */
+	string str();
+};
+
 
 /**
  * \brief Progress bar.

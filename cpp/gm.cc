@@ -66,13 +66,17 @@ void coordinator::start_round()
 
 	for(auto p : proxy) {
 		//variation
-		if(!in_naive_mode)
+		//if(!in_naive_mode) {
+			sz_sent ++;
 			p.second->reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
-		else
-			p.second->reset(safezone(query.zeta_E));
+		//}
+		//else
+		//	p.second->reset(safezone(query.zeta_E));
 	}
 
 	round_total_B = 0;
+	num_rounds++;
+	num_subrounds++;
 }	
 
 
@@ -264,6 +268,8 @@ void coordinator::rebalance()
 	for(auto n : node_ptr)
 		assert(n->zeta > 0);
 
+	num_subrounds++; 
+	total_rbl_size += B.size();
 }
 
 
@@ -279,7 +285,7 @@ void coordinator::finish_round()
 	}
 	Ubal /= (double)k;
 
-#if 1
+#if 0
 	trace_round(Ubal);
 #endif
 
@@ -358,9 +364,10 @@ void coordinator::setup_connections()
 coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
-	in_naive_mode(true), k(proxy.size()),
+	in_naive_mode(false), k(proxy.size()),
 	Qest_series("gm_qest", "%.10g", [&]() { return query.Qest;} ),
-	Ubal(proj)
+	Ubal(proj),
+	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
 {  
 }
 
@@ -422,4 +429,7 @@ void gm::network::output_results()
 
 	network_host_traffic.output_results(this);
 	network_interfaces.output_results(this);
+
+	gm_comm_results.fill(this);
+	gm_comm_results.emit_row();
 }

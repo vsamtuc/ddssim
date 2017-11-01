@@ -1,28 +1,39 @@
 {
     "components" : [
-	{
-	    "type": "agm",
-	    "stream": 0,
-	    "projection": {
-		"depth": 7,
-		"width":1500,
-		"epsilon": 0.05
-	    },
-	    "beta": 0.1
-	}
+		{
+		    "type": "agm",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+		    "type": "gm",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		}		
     ],
 
     "dataset" : {
-	//"driver": "hdf5",
+	"driver": "hdf5",
 	//"file" : "/src/datasets/wc_day46.h5",
+	"file" : "/git/ddssim/cpp/wc_day46.h5",
 	//"dataset" : "wc_day46_1",
-	"file" : "/src/datasets/wc_day46",
+	//"file" : "/src/datasets/wc_day46",
 	"hash_streams": 1,
-	"set_max_length": 10000000,
+	//"set_max_length": 10000000,
 	//"hash_sources": 4,
-	"time_window": 14400,    // 4*3600
-	// create with warmup. Omit to create without warmup
-	"warmup_time": 14400,
+	"time_window": 28800,    // 4*3600
+	//create with warmup. Omit to create without warmup
+	"warmup_time": 28800,
 	"cooldown": true
     },
 
@@ -30,14 +41,17 @@
     // Output configuration
     "files" : {
 	"sto" : "stdout:",
+	"gm_comm" : "file:wc_gm_comm.dat?open_mode=append",
+	"comm" : "file:wc_comm.dat?open_mode=append",
 	"h5f" : "hdf5:wc_results.h5",
 	"wcout" : "file:wc_tseries.dat?open_mode=truncate"
     },
 
     "bind" : {
 	"timeseries" : ["wcout", "h5f"],
-	"network_comm_results": ["sto", "h5f"],
-	"network_host_traffic": ["h5f", "sto"],
+	"gm_comm_results": ["sto", "gm_comm"],
+	"network_comm_results": ["comm", "h5f"],
+	"network_host_traffic": ["h5f"],
 	"network_interfaces" : ["h5f"]
     },
 

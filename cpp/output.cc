@@ -206,6 +206,8 @@ void output_table::remove(basic_column& col)
 
 void output_table::emit_row()
 {
+	if(files.empty())
+		return;
 	if(!_locked)
 		throw std::logic_error("prolog() has not been called before emit_row()");
 	// is the table enabled?
@@ -307,6 +309,12 @@ void output_c_file::open(const string& fpath, open_mode mode)
 	owner = true;
 }
 
+void output_c_file::open(FILE* _file, bool _owner)
+{
+	stream = _file;
+	owner = _owner;
+}
+
 void output_c_file::close()
 {
 	if((!stream)) return;
@@ -365,11 +373,19 @@ void output_c_file::output_prolog(output_table& table)
 		throw std::runtime_error("incompatible flavor");
 	}
 
-	for(size_t col=0;col < table.size(); col++) {
-		if(col) fputs(",", file());
-		fputs(table[col]->name().c_str(), file());
+	/*
+		Logic for prolog:
+		When the file is seekable
+	 */
+
+	long int fpos = ftell(file());
+	if(fpos == -1 || fpos == 0) {
+		for(size_t col=0;col < table.size(); col++) {
+			if(col) fputs(",", file());
+			fputs(table[col]->name().c_str(), file());
+		}
+		fputs("\n", file());			
 	}
-	fputs("\n", file());	
 }
 
 void output_c_file::output_row(output_table& table)
@@ -397,6 +413,47 @@ void output_c_file::output_epilog(output_table&)
 
 output_c_file dds::output_stdout(stdout, false);
 output_c_file dds::output_stderr(stderr, false);
+
+
+//-------------------------------------
+//
+// Progress bar
+//
+//-------------------------------------
+
+
+output_mem_file::output_mem_file()
+	: state(0)
+{
+	state = new memstate();
+	state->buffer = nullptr;
+	state->len = 0;
+	FILE* f = open_memstream(&state->buffer, &state->len);
+	open(f, true);
+}
+
+output_mem_file::~output_mem_file()
+{
+	if(stream != nullptr) 
+		close();
+	if(state) {
+		free(state->buffer);
+		delete state;
+	}
+
+}
+
+const char* output_mem_file::contents()
+{
+	fflush(stream);
+	return state->buffer;
+}
+
+string output_mem_file::str()
+{
+	return string(contents());
+}
+
 
 
 //-------------------------------------

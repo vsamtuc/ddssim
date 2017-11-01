@@ -32,25 +32,44 @@ using binc::print;
 using binc::elements_of;
 
 
-void dds::prepare_dataset(Value& cfg, dataset& D)
+static datasrc proc_datasrc(Value& jdset)
 {
-	Json::Value jdset = cfg["dataset"];
-	
 	string HOME(getenv("HOME"));
 	string fname = HOME+jdset["file"].asString();
 
 	string driver = jdset.get("driver", "wcup").asString();
-	datasrc wcup;
+	datasrc ds;
 	if(driver=="wcup")
-		wcup = wcup_ds(fname);
+		ds = wcup_ds(fname);
 	else if(driver=="hdf5") {
-		string dsetname = jdset.get("dataset","dsstream").asString();
-		wcup = hdf5_ds(fname, dsetname);
+		string dsetname = jdset.get("dataset","ddstream").asString();
+		ds = hdf5_ds(fname, dsetname);
 	} else
 		throw std::runtime_error("Error: unknown data source driver:" + driver);
+	return ds;
+}
 
+
+void dds::prepare_dataset(Value& cfg, dataset& D)
+{
+	Json::Value jdset = cfg["dataset"];
 	
-	D.load(wcup);
+	if(jdset.isNull())
+		return;
+
+	set<string> kwords {
+		"driver", "file", "dataset", 
+		"set_max_length", "hash_sources", "hash_streams", "time_window",
+		"warmup_time", "warmup_size", "cooldown"
+	};
+	for(auto member: jdset.getMemberNames()) {
+		if(kwords.count(member)==0)
+			throw std::runtime_error("Unknown keyword `"+member+"' in dataset section of config");
+	}	
+
+	datasrc ds = proc_datasrc(jdset);
+	
+	D.load(ds);
 
 	{
 		Json::Value js = jdset["set_max_length"];
@@ -68,18 +87,26 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 			D.hash_streams(js.asInt());
 	}
 	{
-		Json::Value js = jdset["tine_window"];
+		Json::Value js = jdset["time_window"];
 		if(!js.isNull())
-			D.hash_sources(js.asInt());
+			D.set_time_window(js.asInt());
 	}
-	if( ! jdset["warmup_time"].isNull() ) {
-		size_t warmup_time = jdset["warmup_time"].asUInt();
-		bool cool = jdset.get("cooldown",true).asBool();
-		
-		D.create_warmup_time(warmup_time, cool);
-	} else {
-		D.create();
+	{
+		Json::Value js = jdset["warmup_time"];
+		if(!js.isNull()) {
+			bool cool = jdset.get("cooldown",true).asBool();
+			D.warmup_time(js.asInt(), cool);
+		}
 	}
+	{
+		Json::Value js = jdset["warmup_size"];
+		if(!js.isNull()) {
+			bool cool = jdset.get("cooldown",true).asBool();
+			D.warmup_size(js.asInt(), cool);
+		}
+	}
+
+	D.create();
 }
 
 
@@ -313,90 +340,5 @@ void dds::execute(Value& cfg)
 	CTX.close_result_files();
 	agms_sketch_updater_factory.clear();	
 }
-
-
-
-#if 0
-
-// This is here as documentation, to be removed eventually...
-
-void execute()
-{
-	dataset D;
-	prepare_dataset(cfg, D);
-	
-	/* Create components */
-
-	std::vector<reactive*> components;
-	prepare_components(cfg, components);
-	
-	//for(size_t i=0; i<sids.size(); i++) {
-		// cout << "Treating stream " << sids[i] << endl;
-		// components.push_back(new selfjoin_exact_method(sids[i]));
-		// components.push_back(new selfjoin_agms_method(sids[i], proj));
-		// for(size_t j=i; j>0; j--){
-		// 	components.push_back(new twoway_join_exact_method(sids[j-1],sids[i]));			
-		// 	components.push_back(new 
-		// 		twoway_join_agms_method(sids[j-1], sids[i], 15, 10000));
-		// }
-	//}
-	//components.push_back(new tods::network(proj, 0.025 ));
-	//components.push_back(new agm::network(0, proj, 0.1 ));
-	//components.push_back(new gm::network(0, proj, 0.1 ));
-
-	/* Create output files */
-	reporter R;
-
-	output_file* sto = CTX.open(stdout);
-	
-	/* Bind files to outputs */
-
-	// output_file* lsstats_file = CTX.open("wc_lsstats.dat");
-	// auto lss = new data_source_statistics();
-	// components.push_back(lss);
-	// local_stream_stats.bind(lsstats_file);
-	// R.watch(local_stream_stats);
-
-	output_hdf5 h5f("wc_results.h5");
-
-	network_comm_results.bind(sto);
-	network_comm_results.bind(&h5f);
-	R.watch(network_comm_results);
-
-	network_host_traffic.bind(&h5f);
-	network_host_traffic.bind(sto);
-	R.watch(network_host_traffic);
-
-	network_interfaces.bind(&h5f);
-	R.watch(network_interfaces);
-
-	/* Configure the timeseries reporting */
-	output_file* wcout = 
-		CTX.open("wc_tseries.dat",open_mode::truncate);
-	//CTX.timeseries.bind(sto);
-	CTX.timeseries.bind(wcout);
-	CTX.timeseries.bind(&h5f);
-	R.emit_row(CTX.timeseries, n_times(1000));
-
-	/* Print a progress bar */
-	progress_reporter pbar(stdout, 40, "Progress: ");
-
-	/* Run */
-	using namespace std::chrono;
-	steady_clock::time_point startt = steady_clock::now();
-	CTX.run();
-	steady_clock::time_point endt = steady_clock::now();
-	cout << "Execution time=" 
-		<< duration_cast<milliseconds>(endt-startt).count()/1000.0
-		<< "sec" << endl;
-
-	/* Clean up */
-	for(auto p : components)
-		delete p;
-	CTX.close_result_files();
-	agms_sketch_updater_factory.clear();
-}
-
-#endif
 
 

@@ -103,7 +103,7 @@ struct coordinator : process
 	// used during rebalancing
 
 	set<node_proxy*> B;			// initialized by local_violation(), 
-						// updated by rebalancing algo
+								// updated by rebalancing algo
 
 	set<node_proxy*> Bcompl;	// complement of B, updated by rebalancing algo
 
@@ -130,6 +130,12 @@ struct coordinator : process
 
 	// remote call on host violation
 	oneway local_violation(sender<node> ctx);
+
+	// statistics
+	size_t num_rounds;				 // total number of rounds
+	size_t num_subrounds;			 // total number of subrounds
+	size_t sz_sent;					 // total safe zones sent
+	size_t total_rbl_size; 			 // sum of all rebalance sets
 };
 
 

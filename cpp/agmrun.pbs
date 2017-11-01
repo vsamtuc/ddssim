@@ -1,0 +1,13 @@
+#PBS -N agmrun
+#PBS -l nodes=1
+##PBS -l nodes=44
+##PBS -l nodes=wn042.grid.tuc.gr:ppn=2
+##PBS -l nodes=wn002.grid.tuc.gr:ppn=2+wn038.grid.tuc.gr:ppn=2+wn017.grid.tuc.gr:ppn=2+wn020.grid.tuc.gr:ppn=2
+##PBS -q quzo
+##PBS -m abe -M vsam@softnet.tuc.gr
+#PBS -k oe
+
+cd /home/vsam/git/ddssim/cpp
+/home/vsam/git/ddssim/cpp/agmexp /home/vsam/git/ddssim/cpp/agmtest.json
+pwd
+env

@@ -7,11 +7,9 @@ namespace dds {
 
 local_stream_stats_t local_stream_stats;
 
-network_comm_results_t network_comm_results;
-void network_comm_results_t::fill_columns(basic_network* nw)
-{
-	netname = nw->name();
 
+void comm_results::fill(basic_network* nw)
+{
 	size_t total_msg = 0;
 	size_t total_bytes = 0;
 	for(auto&& c : nw->channels()) {
@@ -22,9 +20,30 @@ void network_comm_results_t::fill_columns(basic_network* nw)
 	this->total_bytes = total_bytes;
 
 	double stream_bytes = sizeof(dds_record)* CTX.stream_count();
-	traffic_pct = total_bytes/stream_bytes;	
+	traffic_pct = total_bytes/stream_bytes;		
 }
 
+
+
+gm_comm_results_t gm_comm_results;
+
+gm_comm_results_t::gm_comm_results_t(const string& name) 
+	: result_table(name),
+		dataset_results(this),
+		comm_results(this)
+{
+}
+
+
+
+network_comm_results_t network_comm_results;
+void network_comm_results_t::fill_columns(basic_network* nw)
+{
+	netname = nw->name();
+	fill(nw);
+}
+
+  
 network_host_traffic_t network_host_traffic;
 void  network_host_traffic_t::output_results(basic_network* nw)
 {

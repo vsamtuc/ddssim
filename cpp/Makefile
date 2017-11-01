@@ -8,12 +8,12 @@
 
 ifndef DEBUG
 # Default: compile for debug
-DEBUG=1
+DEBUG=0
 endif
 
 INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
 LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
-	-lhdf5_serial -ldl -laec -lsz -lz -lm -ljsoncpp
+	-lhdf5_serial -ldl -laec -lsz -lz -lm -ljsoncpp -lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 -Og
@@ -45,7 +45,7 @@ UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 
 TEST_SOURCES= unit_tests.cc data_tests.cc
 
-CXX_SOURCES= $(DDS_SOURCES) dssim.cc dds_module.cc
+CXX_SOURCES= $(DDS_SOURCES) dssim.cc agmexp.cc dds_module.cc
 
 DDS_OBJ= $(DDS_SOURCES:.cc=.o)
 CXX_OBJ= $(CXX_SOURCES:.cc=.o)

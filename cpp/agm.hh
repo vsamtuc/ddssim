@@ -85,6 +85,8 @@ struct coordinator : process
 	size_t num_rounds;       // number of rounds
 	size_t num_subrounds;    // number of subrounds
 	size_t sz_sent;          // safe zones sent
+	size_t total_rbl_size; 	 // total size of rebalance sets
+
 	size_t round_sz_sent;    // safezones sent in curren
 
 
@@ -179,6 +181,7 @@ struct node : local_site
 
 	sketch dS;				// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
+	size_t update_count;	// number of updates in drift vector
 
 	coord_proxy coord;
 
