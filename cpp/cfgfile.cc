@@ -32,6 +32,8 @@ using binc::print;
 using binc::elements_of;
 
 
+
+
 static datasrc proc_datasrc(Value& jdset)
 {
 	string HOME(getenv("HOME"));
@@ -140,18 +142,20 @@ static stream_id get_stream(Value& js)
 
 static void handle_agm(Value& js, vector<reactive*> components)
 {
+	string name = js["name"].asString();
 	stream_id sid = get_stream(js);
 	projection proj = get_projection(js);
 	double beta = get_beta(js);
-	components.push_back(new agm::network(sid, proj, beta ));
+	components.push_back(new agm::network(name,sid, proj, beta ));
 }
 
 static void handle_gm(Value& js, vector<reactive*> components)
 {
+	string name = js["name"].asString();
 	stream_id sid = get_stream(js);
 	projection proj = get_projection(js);
 	double beta = get_beta(js);
-	components.push_back(new gm::network(sid, proj, beta ));
+	components.push_back(new gm::network(name, sid, proj, beta ));
 }
 
 

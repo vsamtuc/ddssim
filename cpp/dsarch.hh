@@ -302,8 +302,11 @@ struct rpc_interface : rpc_obj, named
 /**
 	A collection of rpc interfaces.
   */
-struct rpc_protocol
+struct rpc_protocol : public named
 {
+	rpc_protocol() {}
+	rpc_protocol(const string& name) : named(name) {}
+
 	vector<rpc_interface> ifaces;
 	unordered_map<string, size_t> name_map;
 
@@ -432,6 +435,7 @@ protected:
 	friend class host;
 public:
 
+	/** A default constructor */
 	basic_network();
 	virtual ~basic_network();
 
@@ -493,6 +497,11 @@ public:
 		Returns the RPC table
 	  */
 	const rpc_protocol& rpc() const { return rpctab; }
+
+	/**
+		Set the protocol name
+	  */
+	void set_protocol_name(const string& pname) { rpctab.set_name(pname); }
 
 	/**
 		Create a new RPC channel.

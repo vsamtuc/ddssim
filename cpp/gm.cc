@@ -13,7 +13,7 @@ using binc::elements_of;
 
 
 /*
-	Implements the traditional Gemoetric Method and its variants
+	Implements the traditional Geometric Method and its variants
 */
 
 
@@ -365,7 +365,7 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
 	in_naive_mode(false), k(proxy.size()),
-	Qest_series("gm_qest", "%.10g", [&]() { return query.Qest;} ),
+	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
 	Ubal(proj),
 	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
 {  
@@ -382,11 +382,12 @@ coordinator::~coordinator()
 *********************************************/
 
 
-gm::network::network(stream_id _sid, const projection& _proj, double _beta)
+gm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
-	set_name("GM");
+	set_name(_name);
+	set_protocol_name("GM");
 	
 	setup(proj, beta);
 	on(START_STREAM, [&]() { 
@@ -420,10 +421,6 @@ void gm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 
-	network_comm_results.max_error = beta;
-	network_comm_results.sites = sites.size();
-	network_comm_results.streams = 1;
-	network_comm_results.local_viol = 0;
 	network_comm_results.fill_columns(this);
 	network_comm_results.emit_row();
 

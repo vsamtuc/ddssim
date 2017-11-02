@@ -21,7 +21,7 @@ std::string named::anon(named const * ptr)
 {
 	using namespace std;
 	ostringstream S;
-	S << "<" << boost::core::demangle(typeid(*ptr).name()) << " @ "<< ptr << ">";
+	S << "<" << boost::core::demangle(typeid(*ptr).name()) << "@"<< ptr << ">";
 	return S.str();
 }
 

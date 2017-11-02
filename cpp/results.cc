@@ -5,8 +5,34 @@
 
 namespace dds {
 
-local_stream_stats_t local_stream_stats;
+dataset_results::dataset_results(result_table* table) 
+{
+	table->add({&dset_name, &dset_window, &dset_warmup,
+		&dset_size, &dset_duration, &dset_streams,
+		&dset_hosts, &dset_bytes
+	 });
+	on(START_STREAM, [&]() { fill(); });
+}
 
+void dataset_results::fill() 
+{ 
+	dset_name = CTX.metadata().name();
+	dset_window = CTX.metadata().window();
+	dset_warmup = CTX.metadata().warmup_time()+CTX.metadata().warmup_size();
+
+	dset_size = CTX.metadata().size();
+	dset_duration = CTX.metadata().duration();
+	dset_streams = CTX.metadata().stream_ids().size();
+	dset_hosts = CTX.metadata().source_ids().size();
+	dset_bytes = CTX.metadata().size() * sizeof(dds_record);
+}
+
+
+
+comm_results::comm_results(result_table* table) 
+{
+	table->add({&total_msg, &total_bytes, &traffic_pct});
+}
 
 void comm_results::fill(basic_network* nw)
 {
@@ -24,8 +50,13 @@ void comm_results::fill(basic_network* nw)
 }
 
 
-
+// Global result_table objects
+local_stream_stats_t local_stream_stats;
 gm_comm_results_t gm_comm_results;
+network_comm_results_t network_comm_results;
+network_host_traffic_t network_host_traffic;
+network_interfaces_t network_interfaces;
+
 
 gm_comm_results_t::gm_comm_results_t(const string& name) 
 	: result_table(name),
@@ -36,18 +67,18 @@ gm_comm_results_t::gm_comm_results_t(const string& name)
 
 
 
-network_comm_results_t network_comm_results;
 void network_comm_results_t::fill_columns(basic_network* nw)
 {
 	netname = nw->name();
+	protocol = nw->rpc().name();
 	fill(nw);
 }
 
   
-network_host_traffic_t network_host_traffic;
 void  network_host_traffic_t::output_results(basic_network* nw)
 {
 	netname = nw->name();
+	protocol = nw->rpc().name();
 	for(auto&& c : nw->channels()) {
 		src = c->source()->addr();
 		dst = c->destination()->addr();
@@ -59,10 +90,10 @@ void  network_host_traffic_t::output_results(basic_network* nw)
 }
 
 
-network_interfaces_t network_interfaces;
 void  network_interfaces_t::output_results(basic_network* nw)
 {
 	netname =nw->name();
+	protocol = nw->rpc().name();
 	for(auto&& ifc : nw->rpc().ifaces) {
 		iface = ifc.name();
 		for(auto&& meth : ifc.methods) {

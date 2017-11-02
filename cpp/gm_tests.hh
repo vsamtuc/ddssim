@@ -24,7 +24,7 @@ public:
 		// load a dataset to the coord
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
-		agm::network net(0, projection(5, 400), 0.5);
+		agm::network net("foo",0, projection(5, 400), 0.5);
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);
@@ -54,7 +54,7 @@ public:
 
 		CTX.clear();
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
-		agm::network net(0, proj, 0.5);
+		agm::network net("foo", 0, proj, 0.5);
 
 		net.hub->start_round();
 

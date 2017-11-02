@@ -17,18 +17,15 @@ using namespace dds::tods;
  *
  ************************************/
 
-tods::network::network(const projection& _proj, double _theta, 
+tods::network::network(const string& _name, const projection& _proj, double _theta, 
 	const set<stream_id>& _streams)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	streams(_streams), 
 	proj(_proj), theta(_theta)
 {
-	set_name("TODS");
-}
+	set_name(_name);
+	set_protocol_name("TODS");
 
-tods::network::network(const projection& _proj, double _theta)
-: network(_proj, _theta, CTX.metadata().stream_ids())
-{
 	k = CTX.metadata().source_ids().size();
 
 	setup();
@@ -38,6 +35,10 @@ tods::network::network(const projection& _proj, double _theta)
 	on(START_RECORD, [&](){ process_record(); });
 	on(RESULTS, [&](){ output_results(); });
 }
+
+tods::network::network(const string& _name, const projection& _proj, double _theta)
+: network(_name, _proj, _theta, CTX.metadata().stream_ids())
+{ }
 
 
 void tods::network::process_warmup()
@@ -84,12 +85,6 @@ double tods::network::maximum_error() const
 void tods::network::output_results()
 {
 	network_comm_results.fill_columns(this);
-
-	network_comm_results.max_error = maximum_error();
-	network_comm_results.sites = k;
-	network_comm_results.streams = CTX.metadata().stream_ids().size();
-	network_comm_results.local_viol = 0;
-
 	network_comm_results.emit_row();
 
 	network_host_traffic.output_results(this);
