@@ -552,7 +552,7 @@ void coordinator::warmup()
 
 void coordinator::setup_connections()
 {
-	proxy.add_sites(net());
+	proxy.add_sites(net()->sites);
 	for(auto n : net()->sites) {
 		node_index[n.second] = node_ptr.size();
 		node_ptr.push_back(n.second);
@@ -598,6 +598,7 @@ agm::network::network(const string& _name, stream_id _sid, const projection& _pr
 	set_protocol_name("AGMC");
 	
 	setup(proj, beta);
+
 	on(START_STREAM, [&]() { 
 		process_init(); 
 	} );
@@ -607,7 +608,16 @@ agm::network::network(const string& _name, stream_id _sid, const projection& _pr
 	on(RESULTS, [&](){ 
 		output_results();
 	});
+	on(INIT, [&]() {
+		CTX.timeseries.add(hub->Qest_series);
+	});
+	on(DONE, [&]() { 
+		CTX.timeseries.remove(hub->Qest_series);
+	});
 }
+
+
+
 
 void agm::network::process_record()
 {
@@ -619,7 +629,6 @@ void agm::network::process_record()
 void agm::network::process_init()
 {
 	// let the coordinator initialize the nodes
-	CTX.timeseries.add(hub->Qest_series);
 	hub->warmup();
 	hub->start_round();
 }

@@ -104,9 +104,8 @@ from _dds import (channel, host, host_group, basic_network,
 
 
 import dds.agms
-import dds.tods
-import dds.gm2
 
+from _dds import execute
 
 ##########################################
 #
@@ -117,6 +116,11 @@ import dds.gm2
 #
 ##########################################
 
+def loadcfg(fname):
+	import json, re
+	jstxt = open(fname).read()
+	jstxt = re.sub(r'//.*\n', '\n', jstxt)
+	return json.loads(jstxt)
 
 #############################
 #

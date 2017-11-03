@@ -168,7 +168,11 @@ void basic_control::run()
 
 		} else if(state != End) {
 			empty_handler();			
-		} else break;
+
+		} else {
+			state = Start;
+			break;
+		}
 
 	}
 

@@ -19,5 +19,6 @@ int main(int argc, char** argv)
 	}
 
 	execute(cfg);
+	execute(cfg);
 	return 0;
 }

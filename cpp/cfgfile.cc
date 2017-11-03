@@ -140,7 +140,7 @@ static stream_id get_stream(Value& js)
 }
 
 
-static void handle_agm(Value& js, vector<reactive*> components)
+static void handle_agm(Value& js, vector<reactive*>& components)
 {
 	string name = js["name"].asString();
 	stream_id sid = get_stream(js);
@@ -149,7 +149,7 @@ static void handle_agm(Value& js, vector<reactive*> components)
 	components.push_back(new agm::network(name,sid, proj, beta ));
 }
 
-static void handle_gm(Value& js, vector<reactive*> components)
+static void handle_gm(Value& js, vector<reactive*>& components)
 {
 	string name = js["name"].asString();
 	stream_id sid = get_stream(js);
@@ -342,7 +342,8 @@ void dds::execute(Value& cfg)
 	for(auto p : components)
 		delete p;
 	CTX.close_result_files();
-	agms_sketch_updater_factory.clear();	
+	agms_sketch_updater_factory.clear();
+	CTX.clear();
 }
 
 

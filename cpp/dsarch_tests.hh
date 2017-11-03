@@ -4,22 +4,37 @@
 #include <boost/range/adaptors.hpp>
 
 #include <cxxtest/TestSuite.h>
-class ArchTestSuite;
-#define DSARCH_CXXTEST_RUNNING
 #include "dsarch.hh"
 #include "binc.hh"
-
-
 
 using namespace dds;
 using std::string;
 using binc::print;
 
+/****************************************
+	A simple Echo client-server network
+*****************************************/
+
+struct Echo;
+struct Echo_cli;
+
+struct Echo_network : basic_network
+{
+	Echo_network() 
+	{}
+};
+
+
+
 struct Echo : process
 {
+	Echo_network* nw;
 	int value;
 
-	Echo(basic_network* nw) : process(nw), value(0) {}
+	Echo(Echo_network* _nw) 
+		: process(_nw), nw(_nw), value(0)
+	{
+	}
 
 	// remote methods
 
@@ -81,6 +96,137 @@ struct Echo_cli : process
 	}
 };
 
+/****************************************
+	A p2p scatter-gather network 
+
+	Each peer has a key (an integer).
+	Periodically, when the ksy changes,
+	a peer asks the network for the number
+	of peers with equal key.
+
+	The peer has two proxies: a unicast and 
+	mutlicast.
+
+	The multicast group is used to send out 
+	the inquiry, when a key changes.
+	The unicast group is used to reply to
+	the sender of an inquiry.
+*****************************************/
+
+struct PeerNetwork;
+struct Peer;
+
+struct PeerNetwork : basic_network
+{
+	mcast_group<Peer> peers; // this does not need a full type!
+	PeerNetwork() : basic_network(), peers(this) { }
+};
+
+struct Peer_proxy;
+struct Peer_mcast_proxy;
+
+struct Peer : process
+{
+	PeerNetwork* p2pnet;
+
+	// note how the proxies to this class are
+	// definable, even though the class is not
+	// defined yet!
+	//
+	// The only problem is that the
+	// constructor has to be defined outside the
+	// class
+	Peer_mcast_proxy * peers;
+	proxy_map<Peer_proxy, Peer> peermap;
+
+	// Local state
+	int key;
+	int arity;
+
+	// Remote methods
+	oneway scatter_inquiry(sender<Peer> sender, int x);
+	oneway gather_replies(sender<Peer> replier, int x);
+
+	Peer(PeerNetwork* n, int _key);
+
+	// this is called after the network is constructed
+	void setup_connections() override;
+
+	// This is called externally
+	void change_key(int newkey);
+};
+
+//
+//  The proxies
+//
+
+struct Peer_proxy : remote_proxy<Peer>
+{
+	REMOTE_METHOD(Peer, gather_replies);
+	Peer_proxy(process* owner) : remote_proxy<Peer>(owner) {}
+};
+
+struct Peer_mcast_proxy : multicast_proxy<Peer>
+{
+	MCAST_METHOD(Peer, scatter_inquiry);
+	Peer_mcast_proxy(process* owner) : multicast_proxy<Peer>(owner) {}
+};
+
+//
+//  Peer methods
+//
+Peer::Peer(PeerNetwork* nw, int k) 
+	: process(nw), p2pnet(nw), 
+	  peermap(this),
+	  key(k), arity(1)
+{ 
+	peers = new Peer_mcast_proxy(this);
+	*peers <<= &nw->peers;
+}
+
+void Peer::setup_connections()
+{
+	//peers = new Peer_mcast_proxy(this);
+	//*peers <<= &p2pnet->peers;	
+
+	//peermap = new proxy_map<Peer_proxy, Peer>(this);
+	for(auto p : p2pnet->peers)
+		if(p!=this) 
+			peermap.add(p);
+}
+
+oneway Peer::scatter_inquiry(sender<Peer> who, int what) 
+{
+	if(key==what) {
+		if(who.value!=this)
+			// send reply to other peers, via proxies
+			peermap[who.value].gather_replies(this, key);
+		else
+			// send to myself, but not via a proxy
+			gather_replies(this, key);
+	}
+}
+
+oneway Peer::gather_replies(sender<Peer> who, int x)
+{
+	if(x==key)
+		arity++;
+}
+
+void Peer::change_key(int newkey)
+{
+	key = newkey;
+	arity = 0;
+	// broadcast an inquiry
+	peers->scatter_inquiry(this, key);
+	// the gather messages will have computed the arity by now
+}
+
+
+
+//
+//  Test suite
+//
 
 class ArchTestSuite : public CxxTest::TestSuite
 {
@@ -88,8 +234,7 @@ public:
 
 	void test_network()
 	{
-		using std::unique_ptr;
-		basic_network nw;
+		Echo_network nw;
 
 		Echo* srv { new Echo(&nw) };
 		const size_t Ncli = 5;
@@ -107,7 +252,7 @@ public:
 		TS_ASSERT_EQUALS(nw.decl_interface(typeid(Echo)), Echo_ifc);
 
 		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).num_channels(), 12);
-		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli);
+		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli );
 
 		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).name(), string("Echo"));
 		using namespace std::string_literals;
@@ -137,7 +282,7 @@ public:
 
 	void test_rpc_channels()
 	{
-		basic_network nw;
+		Echo_network nw;
 
 		Echo* srv = new Echo(&nw);
 		Echo_cli* cli = new Echo_cli(&nw);
@@ -151,15 +296,15 @@ public:
 		chan_frame chan(nw);
 
 		TS_ASSERT_EQUALS(chan.size(), 
-			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels()
+			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels() 
 			);
 
 		TS_ASSERT_EQUALS(chan.count(), 0);
 		TS_ASSERT_EQUALS(chan.sum(), 0);
-		TS_ASSERT_EQUALS(chan.src(srv).size(), 5);
+		TS_ASSERT_EQUALS(chan.src(srv).size(), 5 );
 		TS_ASSERT_EQUALS(chan.dst(srv).size(), 7);
 
-		TS_ASSERT_EQUALS(chan.endp_req().size(), 7);
+		TS_ASSERT_EQUALS(chan.endp_req().size(), 7 );
 		TS_ASSERT_EQUALS(chan.endp_rsp().size(), 5);
 
 		TS_ASSERT_EQUALS(cli->proxy._r_proc, srv);
@@ -190,6 +335,23 @@ public:
 		TS_ASSERT_EQUALS(chan.endp_req().count(), 9);
 		TS_ASSERT_EQUALS(chan.endp_rsp().count(), 5);
 	}
+
+
+
+	void test_multicast()
+	{
+		PeerNetwork p2p;
+
+		// Create the network with 4 peers
+		for(int i=1; i<=4; i++)
+			p2p.peers.join(new Peer(&p2p, i));
+
+		// Initialize
+		for(auto p : p2p.peers)
+			p->setup_connections();
+	}
+
+
 
 };
 

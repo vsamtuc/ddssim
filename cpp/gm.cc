@@ -352,7 +352,7 @@ void coordinator::warmup()
 
 void coordinator::setup_connections()
 {
-	proxy.add_sites(net());
+	proxy.add_sites(net()->sites);
 	for(auto n : net()->sites) {
 		node_index[n.second] = node_ptr.size();
 		node_ptr.push_back(n.second);

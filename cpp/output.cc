@@ -181,8 +181,9 @@ void output_table::add(basic_column& col)
 
 	if(col._table)
 		throw std::runtime_error("column already added to a table");
-	if(colnames.find(col.name())!=colnames.end())
+	if(colnames.count(col.name())!=0) {
 		throw std::runtime_error(binc::sprint("a column by this name already exists:",col.name()));
+	}
 	col._table = this;
 	col._index = columns.size();
 	columns.push_back(&col);
@@ -199,6 +200,7 @@ void output_table::remove(basic_column& col)
 	assert(columns[col._index]==&col);
 	columns[col._index] = nullptr;
 	colnames.erase(col.name());
+	assert(colnames.find(col.name())==colnames.end());
 	col._table = nullptr;
 	_dirty = true;
 }

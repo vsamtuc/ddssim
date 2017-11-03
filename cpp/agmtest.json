@@ -31,12 +31,12 @@
 		//"dataset" : "wc_day46_1",
 		//"file" : "/src/datasets/wc_day46",
 		"hash_streams": 1,
-		"set_max_length": 10000000,
+		"set_max_length": 100//,
 		//"hash_sources": 4,
-		"time_window": 28800,    // 4*3600
+		//"time_window": 28800,    // 4*3600
 		//create with warmup. Omit to create without warmup
-		"warmup_time": 28800,
-		"cooldown": true
+		//"warmup_time": 28800,
+		//"cooldown": true
     },
 
 

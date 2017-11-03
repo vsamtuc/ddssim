@@ -9,8 +9,10 @@
 #include "agm.hh"
 #include "results.hh"
 #include "binc.hh"
+#include "cfgfile.hh"
 
 #include <boost/python.hpp>
+#include <jsoncpp/json/json.h>
 
 using binc::print;
 
@@ -222,6 +224,18 @@ namespace { // Avoid cluttering the global namespace.
 	}
 
 
+	/// Wrappers for functions in dds::execute, which take a string as argument and turns it into a
+	/// javascript object.
+
+	void __execute_wrapper(const std::string& str)
+	{
+		// make obj into a Json::Value object
+		Json::Reader reader;
+		Json::Value js;
+		if(! reader.parse(str, js))
+			throw std::runtime_error(reader.getFormattedErrorMessages().c_str());
+		dds::execute(js);
+	}
 
 
 } // namespace anonymous
@@ -629,7 +643,7 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def(init<FILE*, bool>())
 		.def(init<>())
 		.def("open", 
-			(void (dds::output_c_file::*)(const std::string&))  
+			(void (dds::output_c_file::*)(const std::string&, dds::open_mode))
 				&dds::output_c_file::open)
 		.add_property("owner", 
 			&dds::output_c_file::is_owner,
@@ -1053,38 +1067,19 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 
     /**********************************************
      *
-     *  tods.hh
-     *
-     **********************************************/
-
-	class_< dds::tods::network, bases<dds::reactive>, boost::noncopyable>
-		("tods_network", init<const projection&, double>())
-		.def(init<agms::depth_type, agms::index_type, double>())
-		.def("maximum_error", &dds::tods::network::maximum_error)
-		;		
-
-    /**********************************************
-     *
-     *  geometric.hh
-     *
-     **********************************************/
-
-	class_< dds::gm2::network, bases<dds::reactive>, boost::noncopyable >
-		("gm2_network", init<dds::stream_id, const agms::projection&, double>())
-		.def(init<dds::stream_id, agms::depth_type, agms::index_type, double>())
-		;
-
-
-    /**********************************************
-     *
      *  safezone.hh
      *
      **********************************************/
 
+
+
 	class_< dds::selfjoin_agms_safezone, boost::noncopyable >
 		("selfjoin_agms_safezone", 
 			init<const agms::sketch&, double, double>())
-		.def("__call__", & dds::selfjoin_agms_safezone::operator())
+		.def("__call__", 
+			// cast to select the overload
+			(double (dds::selfjoin_agms_safezone::*)(const agms::sketch&) )
+			& dds::selfjoin_agms_safezone::operator())
 		;
 
 	class_< dds::selfjoin_query, boost::noncopyable >
@@ -1099,6 +1094,15 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def_readonly("E", &dds::selfjoin_query::E)
 		.def_readonly("safe_zone", &dds::selfjoin_query::safe_zone)
 		;
+
+
+    /**********************************************
+     *
+     *  cfgfile.hh
+     *
+     **********************************************/
+
+	def("execute", &__execute_wrapper);
 
 }
 
