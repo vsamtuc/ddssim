@@ -152,9 +152,8 @@ struct context : basic_control
 	// managed files for results
 	fileset_t result_files;
 
-	output_file* open(FILE* f, bool owner = false);
-	output_file* open(const string& path, 
-		open_mode mode = default_open_mode);
+	output_file* open(FILE* f, bool owner, text_format fmt);
+	output_file* open(const string& path, open_mode mode, text_format fmt);
 	output_file* open_hdf5(const string& path, 
 		open_mode mode = default_open_mode);
 

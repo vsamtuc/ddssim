@@ -14,16 +14,16 @@ basic_factory::~basic_factory()
 	
 }
 
-output_file* context::open(FILE* f, bool owner) 
+output_file* context::open(FILE* f, bool owner, text_format fmt) 
 {
-	output_file* of = new output_c_file(f, owner);
+	output_file* of = new output_c_file(f, owner, fmt);
 	result_files.push_back(of);
 	return of;
 }
 
-output_file* context::open(const string& path, open_mode mode) 
+output_file* context::open(const string& path, open_mode mode, text_format fmt) 
 {
-	output_file* of = new output_c_file(path, mode);
+	output_file* of = new output_c_file(path, mode, fmt);
 	result_files.push_back(of);
 	return of;
 }

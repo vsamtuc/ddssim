@@ -129,71 +129,49 @@ struct Peer : process
 {
 	PeerNetwork* p2pnet;
 
-	// note how the proxies to this class are
+	// note how the proxy map to this class is
 	// definable, even though the class is not
 	// defined yet!
 	//
 	// The only problem is that the
-	// constructor has to be defined outside the
+	// constructor and methods have to be defined outside the
 	// class
-	Peer_mcast_proxy * peers;
 	proxy_map<Peer_proxy, Peer> peermap;
 
 	// Local state
 	int key;
 	int arity;
 
+	Peer(PeerNetwork* nw, int k) 
+	: process(nw), p2pnet(nw), peermap(this),
+	  key(k), arity(1)
+	{ }
+
+
 	// Remote methods
 	oneway scatter_inquiry(sender<Peer> sender, int x);
 	oneway gather_replies(sender<Peer> replier, int x);
-
-	Peer(PeerNetwork* n, int _key);
-
-	// this is called after the network is constructed
-	void setup_connections() override;
 
 	// This is called externally
 	void change_key(int newkey);
 };
 
 //
-//  The proxies
+//  The proxy
 //
 
 struct Peer_proxy : remote_proxy<Peer>
 {
 	REMOTE_METHOD(Peer, gather_replies);
+	REMOTE_METHOD(Peer, scatter_inquiry);
 	Peer_proxy(process* owner) : remote_proxy<Peer>(owner) {}
 };
 
-struct Peer_mcast_proxy : multicast_proxy<Peer>
-{
-	MCAST_METHOD(Peer, scatter_inquiry);
-	Peer_mcast_proxy(process* owner) : multicast_proxy<Peer>(owner) {}
-};
 
 //
 //  Peer methods
 //
-Peer::Peer(PeerNetwork* nw, int k) 
-	: process(nw), p2pnet(nw), 
-	  peermap(this),
-	  key(k), arity(1)
-{ 
-	peers = new Peer_mcast_proxy(this);
-	*peers <<= &nw->peers;
-}
 
-void Peer::setup_connections()
-{
-	//peers = new Peer_mcast_proxy(this);
-	//*peers <<= &p2pnet->peers;	
-
-	//peermap = new proxy_map<Peer_proxy, Peer>(this);
-	for(auto p : p2pnet->peers)
-		if(p!=this) 
-			peermap.add(p);
-}
 
 oneway Peer::scatter_inquiry(sender<Peer> who, int what) 
 {
@@ -218,7 +196,7 @@ void Peer::change_key(int newkey)
 	key = newkey;
 	arity = 0;
 	// broadcast an inquiry
-	peers->scatter_inquiry(this, key);
+	peermap[p2pnet->peers].scatter_inquiry(this, key);
 	// the gather messages will have computed the arity by now
 }
 
@@ -299,8 +277,8 @@ public:
 			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels() 
 			);
 
-		TS_ASSERT_EQUALS(chan.count(), 0);
-		TS_ASSERT_EQUALS(chan.sum(), 0);
+		TS_ASSERT_EQUALS(chan.msgs(), 0);
+		TS_ASSERT_EQUALS(chan.bytes(), 0);
 		TS_ASSERT_EQUALS(chan.src(srv).size(), 5 );
 		TS_ASSERT_EQUALS(chan.dst(srv).size(), 7);
 
@@ -316,13 +294,13 @@ public:
 		//  srv-> send_int(10) returning Acknoledge<int>(11)
 		//  srv-> echo("Hi")  returning "Echoing Hi"
 
-		TS_ASSERT_EQUALS(chan.src(srv).count(), 2);
-		TS_ASSERT_EQUALS(chan.dst(srv).count(), 3);
-		TS_ASSERT_EQUALS(chan.count(), 5);
+		TS_ASSERT_EQUALS(chan.src(srv).msgs(), 2);
+		TS_ASSERT_EQUALS(chan.dst(srv).msgs(), 3);
+		TS_ASSERT_EQUALS(chan.msgs(), 5);
 
-		TS_ASSERT_EQUALS(chan.src(srv).sum(), sizeof(int)+10);
-		TS_ASSERT_EQUALS(chan.dst(srv).sum(), sizeof(int)+2);
-		TS_ASSERT_EQUALS(chan.sum(), 2*sizeof(int) + 12);
+		TS_ASSERT_EQUALS(chan.src(srv).bytes(), sizeof(int)+10);
+		TS_ASSERT_EQUALS(chan.dst(srv).bytes(), sizeof(int)+2);
+		TS_ASSERT_EQUALS(chan.bytes(), 2*sizeof(int) + 12);
 
 
 		TS_ASSERT_EQUALS( cli->get_int(), 10);
@@ -332,8 +310,8 @@ public:
 		cli->proxy.say_bye("bye");
 		cli->proxy.finish();
 
-		TS_ASSERT_EQUALS(chan.endp_req().count(), 9);
-		TS_ASSERT_EQUALS(chan.endp_rsp().count(), 5);
+		TS_ASSERT_EQUALS(chan.endp_req().msgs(), 9);
+		TS_ASSERT_EQUALS(chan.endp_rsp().msgs(), 5);
 	}
 
 
@@ -343,12 +321,41 @@ public:
 		PeerNetwork p2p;
 
 		// Create the network with 4 peers
-		for(int i=1; i<=4; i++)
-			p2p.peers.join(new Peer(&p2p, i));
+		vector<Peer*> P;
+		for(int i=0; i<4; i++) {
+			auto p = new Peer(&p2p, i);
+			p->set_addr(i);
+			P.push_back(p);
+			p2p.peers.join(p);
+		}
 
-		// Initialize
-		for(auto p : p2p.peers)
-			p->setup_connections();
+		P[0]->change_key(1);
+		TS_ASSERT_EQUALS(P[0]->arity, 2);
+		TS_ASSERT_EQUALS(P[1]->arity, 1);
+		TS_ASSERT_EQUALS(P[2]->arity, 1);
+		TS_ASSERT_EQUALS(P[3]->arity, 1);
+
+		chan_frame cf(&p2p);
+
+		// There are only 4 channels, two for each of the
+		// constructed proxies: a multicast proxy 0->-2  and a 
+		// unicast proxy 1->0
+		TS_ASSERT_EQUALS(cf.size(), 4);
+		TS_ASSERT_EQUALS(cf.unicast().msgs(), 1);
+		TS_ASSERT_EQUALS(cf.multicast().msgs(), 1);
+
+		P[0]->change_key(2);
+		P[1]->change_key(2);
+		P[2]->change_key(2);
+		TS_ASSERT_EQUALS(P[0]->arity, 2);
+		TS_ASSERT_EQUALS(P[1]->arity, 3);
+		TS_ASSERT_EQUALS(P[2]->arity, 3);
+		TS_ASSERT_EQUALS(P[3]->arity, 1);
+
+		cf = chan_frame(&p2p);
+		TS_ASSERT_EQUALS(cf.unicast().msgs(), 6);
+		TS_ASSERT_EQUALS(cf.multicast().msgs(), 4);
+		TS_ASSERT_EQUALS(cf.multicast().recv_msgs(), 12);
 	}
 
 

@@ -272,6 +272,14 @@ public:
 	  */
 	void run();
 
+	/**
+		Reset the controller.
+
+		The current run is terminated and the controller returns to a state
+		when a new run can be started.
+	  */
+	void initialize();
+
 	/** 
 		Add a new ECA rule.
 		This is done by passing the action object pointer

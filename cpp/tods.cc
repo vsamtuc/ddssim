@@ -54,7 +54,7 @@ void tods::network::process_warmup()
 		coord_stream_state* cstate= hub->stream_state[sid];
 
 		for(auto&& h : sites) {
-			node_stream_state* nss = h.second->stream_state[sid];
+			node_stream_state* nss = h->stream_state[sid];
 
 			cstate->Etot += nss->dE;
 			nss->flush();

@@ -118,7 +118,7 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 		bytes_get_drift = chan_frame(nw)
 			.endp(typeid(typename StarNetwork::site_type),"get_drift")
 			.endp_rsp()
-			.sum();
+			.bytes();
 	}
 };
 extern gm_comm_results_t gm_comm_results;

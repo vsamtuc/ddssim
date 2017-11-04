@@ -201,6 +201,21 @@ static open_mode proc_open_mode(const map<string, string>& vars)
 	return omode;
 }
 
+static text_format proc_format(const map<string, string>& vars)
+{
+	text_format fmt = default_text_format;
+	if(vars.count("text_format")) {
+		string om = vars.at("text_format");
+		if(om=="csvrel")
+			fmt = text_format::csvrel;
+		else if (om=="csvtab")
+			fmt = text_format::csvtab;
+		else
+			throw std::runtime_error("Illegal value in URL: text_format="+om);
+	}
+	return fmt;
+}
+
 
 
 #define RE_FNAME "[a-zA-X0-9 _.-]+"
@@ -251,7 +266,7 @@ static output_file* process_output_file(const string& url)
 	parse_url(url, purl);
 	
 	if(purl.type == "file")
-		return CTX.open(purl.path, proc_open_mode(purl.vars));
+		return CTX.open(purl.path, proc_open_mode(purl.vars),proc_format(purl.vars));
 	else if (purl.type == "hdf5")
 		return CTX.open_hdf5(purl.path, proc_open_mode(purl.vars));
 	else if (purl.type == "stdout")
@@ -315,6 +330,9 @@ output_file_map dds::prepare_output(Json::Value& jsctx, reporter& R)
 
 void dds::execute(Value& cfg)
 {
+	/* Reset the context */
+	CTX.initialize();
+
 	/* Create dataset */
 	dataset D;
 	prepare_dataset(cfg, D);

@@ -46,8 +46,9 @@ struct myresults  : result_table, table_mixin1, table_mixin2
 	}
 };
 
+namespace dds { class OutputTestSuite; }
 
-class OutputTestSuite : public CxxTest::TestSuite
+class dds::OutputTestSuite : public CxxTest::TestSuite
 {
 public:
 
@@ -83,7 +84,7 @@ public:
 		char* buf = NULL;
 		size_t len = 0;
 		FILE* mf = open_memstream(&buf, &len);
-		output_file* f = new output_c_file(mf);
+		output_file* f = new output_c_file(mf, false, text_format::csvtab);
 		f->bind(tab);
 
 		tab.prolog();
@@ -111,8 +112,8 @@ public:
 	{
 		output_c_file* fset[2];
 
-		fset[0] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
-		fset[1] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
+		fset[0] = new output_c_file(fmemopen(NULL, 8192, "w+"),true, text_format::csvtab);
+		fset[1] = new output_c_file(fmemopen(NULL, 8192, "w+"),true, text_format::csvtab);
 
 		silly_table tab("SILLY");
 
@@ -522,7 +523,7 @@ public:
 
 		TS_ASSERT_EQUALS(table.size(), 5);
 
-		output_mem_file f;
+		output_mem_file f(text_format::csvtab);
 		table.bind(&f);
 
 		table.prolog();

@@ -28,18 +28,15 @@ public:
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);
-		TS_ASSERT_EQUALS( net.hub->proxy.size(), 10);
 
-		for(auto p : net.hub->proxy) {
-			node_proxy *np = p.second;
-			TS_ASSERT_EQUALS(np->proc(), p.first)
+		for(auto p : net.sites) {
+			node_proxy *np = & net.hub->proxy[p];
+			TS_ASSERT_EQUALS(np->proc(), p);
 			TS_ASSERT_EQUALS(np->_r_owner, net.hub);
-			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p.first]] , p.first);
+			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p]] , p);
 		}
 
-		for(auto _n : net.sites) {
-			agm::node* n = _n.second;
-
+		for(auto n : net.sites) {
 			TS_ASSERT_EQUALS(n->coord._r_owner, n);
 			TS_ASSERT_EQUALS(n->coord.proc(), net.hub);
 		}
@@ -67,7 +64,7 @@ public:
 		double w = net.hub->query.safe_zone(W);
 
 		for(auto _s : net.sites) {
-			safezone& sz = _s.second->szone;
+			safezone& sz = _s->szone;
 
 			TS_ASSERT(sz.valid());
 			TS_ASSERT_EQUALS(sz.szone, & net.hub->query.safe_zone);

@@ -129,6 +129,23 @@ void broadcast_channel::transmit(size_t msg_size)
 }
 
 
+string channel::repr() const {
+	ostringstream ss;
+	ss << "[chan " << src->addr() << "->" << dst->addr() << " traffic:"
+		<< msgs << "," << byts << "]";
+	ss.flush();
+	return ss.str();
+}
+
+string broadcast_channel::repr() const {
+	ostringstream ss;
+	ss << "[chan " << src->addr() << "->" << dst->addr() << " traffic:"
+		<< msgs << "(" << rxmsgs <<  ")," << byts << "(" << rxbyts << ")]";
+	ss.flush();
+	return ss.str();
+}
+
+
 //-------------------
 //
 //  basic network
@@ -212,7 +229,7 @@ basic_network::basic_network()
 bool basic_network::assign_address(host* h, host_addr a)
 {
 	if(h->_addr != unknown_addr)
-		throw std::invalid_argument("host already has an address assignd");
+		return h->_addr == a;
 
 	if(a==unknown_addr) {
 		// assign a default address
@@ -255,7 +272,11 @@ void basic_network::reserve_addresses(host_addr a)
 	}
 }
 
-
+host* basic_network::by_addr(host_addr a) const
+{
+	auto it = addr_map.find(a);
+	return it==addr_map.end() ? nullptr : it->second;
+}
 
 basic_network::~basic_network()
 {	

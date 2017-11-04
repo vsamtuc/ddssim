@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <boost/range/adaptors.hpp>
 
 #include "results.hh"
 #include "binc.hh"
@@ -85,14 +86,14 @@ void coordinator::start_round()
 	//has_naive.assign(k, in_naive_mode);
 	has_naive.assign(k, true);
 
-	for(auto p : proxy) {
+	for(auto n : node_ptr) {
 		// based on the above line this is unnecessary
-		if(! has_naive[node_index[p.first]]) {
+		if(! has_naive[node_index[n]]) {
 			sz_sent++;
-			p.second->reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
+			proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
 		}
 		else
-			p.second->reset(safezone(query.zeta_E));
+			proxy[n].reset(safezone(query.zeta_E));
 	}
 }	
 
@@ -102,8 +103,8 @@ void coordinator::start_subround(double total_zeta)
 	num_subrounds++;
 	bit_budget = k;
 	bitweight.assign(k,0);
-	for(auto p : proxy) {
-		p.second->reset_bitweight(total_zeta/(2.0*k));
+	for(auto n : node_ptr) {
+		proxy[n].reset_bitweight(total_zeta/(2.0*k));
 	}	
 }
 
@@ -143,8 +144,8 @@ void coordinator::finish_subround()
 		bit_level++;
 
 		double total_zeta = 0.0;
-		for(auto p : proxy) {
-			total_zeta += p.second->get_zeta();
+		for(auto n : node_ptr) {
+			total_zeta += proxy[n].get_zeta();
 		}
 
 		if(total_zeta < query.zeta_E * 0.05 ) {
@@ -238,7 +239,7 @@ set<node_proxy*> coordinator::rebalance_light()
 	double zeta_Enext = query.safe_zone(Enext);
 
 	if(zeta_Enext > 0.05 * query.zeta_E)
-		for(auto p : proxy) B.insert(p.second);
+		for(auto n : node_ptr) B.insert(& proxy[n]);
 
 	return B;
 }
@@ -249,9 +250,9 @@ vector<node_double> coordinator::compute_hvalue()
 	vector<node_double> hvalue;
 	hvalue.reserve(k);
 
-	for(auto p : proxy) {
-		double h = p.second->get_zeta_lu();
-		hvalue.push_back(make_tuple(p.second, h));
+	for(auto n : node_ptr) {
+		double h = proxy[n].get_zeta_lu();
+		hvalue.push_back(make_tuple(& proxy[n], h));
 	}
 
 	return hvalue;
@@ -288,8 +289,8 @@ void coordinator::finish_round()
 {
 	// collect all data
 	sketch newE(query.E.proj);
-	for(auto p : proxy) {
-		compressed_sketch csk = p.second->get_drift();
+	for(auto n : node_ptr) {
+		compressed_sketch csk = proxy[n].get_drift();
 		newE += csk.sk;
 		total_updates += csk.updates;
 	}
@@ -552,12 +553,13 @@ void coordinator::warmup()
 
 void coordinator::setup_connections()
 {
+	using boost::adaptors::map_values;
 	proxy.add_sites(net()->sites);
 	for(auto n : net()->sites) {
-		node_index[n.second] = node_ptr.size();
-		node_ptr.push_back(n.second);
+		node_index[n] = node_ptr.size();
+		node_ptr.push_back(n);
 	}
-	k = proxy.size();
+	k = node_ptr.size();
 
 	alpha.resize(k,0.0);
 	beta.resize(k,0.0);
@@ -569,7 +571,7 @@ void coordinator::setup_connections()
 coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
-	in_naive_mode(true), k(proxy.size()),
+	in_naive_mode(true), k(0),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
 	
 	num_rounds(0),
@@ -623,7 +625,7 @@ void agm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
-		sites[rec.hid]->update_stream();		
+		source_site(rec.hid)->update_stream();		
 }
 
 void agm::network::process_init()

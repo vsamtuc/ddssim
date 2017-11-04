@@ -170,13 +170,27 @@ void basic_control::run()
 			empty_handler();			
 
 		} else {
-			state = Start;
 			break;
 		}
 
 	}
-
 }
+
+
+void basic_control::initialize()
+{
+	data_feed(nullptr);
+	event_queue.clear();
+	action_queue.clear();
+	current_action = nullptr;
+	purge_current = false;
+
+	state = Start;
+	_recno = 0;
+	_step = 0;
+	_now = MAX_TS;
+}
+
 
 // used for an invalid data source
 namespace {
