@@ -265,15 +265,16 @@ class dataset : reactive
 	boost::optional<stream_id> _streams;
 	boost::optional<source_id> _sources;
 	boost::optional<timestamp> _time_window;
+	boost::optional<size_t> _fixed_window;
+	bool _wflush;
 
 	boost::optional<size_t> _warmup_size;
 	boost::optional<timestamp> _warmup_time;
-	boost::optional<bool> _cool;
 
 	datasrc apply_filters();
 	void create_no_warmup();
-	void create_warmup_size(size_t wsize, bool cool);
-	void create_warmup_time(timestamp wtime, bool cool);
+	void create_warmup_size(size_t wsize);
+	void create_warmup_time(timestamp wtime);
 	ds_metadata collect_metadata();
 public:
 	dataset();
@@ -286,10 +287,11 @@ public:
 	void set_max_length(size_t n);
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
-	void set_time_window(timestamp Tw);
+	void set_time_window(timestamp Tw, bool flush);
+	void set_fixed_window(size_t W, bool flush);
 
-	void warmup_size(size_t wsize, bool cool);
-	void warmup_time(timestamp wtime, bool cool);
+	void warmup_size(size_t wsize);
+	void warmup_time(timestamp wtime);
 
 	void create();
 };

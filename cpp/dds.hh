@@ -175,8 +175,6 @@ protected:
 	timestamp dswindow=0;
 	timestamp dswarmup_time=0;
 	size_t dswarmup_size=0;
-	bool dscool_off = false;
-
 
 	bool isvalid = false;
 
@@ -199,9 +197,6 @@ public:
 
 	inline timestamp warmup_time() const { return dswarmup_time; }
 	inline void set_warmup_time(timestamp w) { dswarmup_time = w; }
-
-	inline bool cool_off() { return dscool_off; }
-	inline void set_cool_off(bool c) { dscool_off = c; }
 
 	inline bool valid() const { return isvalid; }
 	inline void set_valid(bool v=true) { isvalid=v; }

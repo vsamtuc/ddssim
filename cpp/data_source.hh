@@ -2,7 +2,7 @@
 #define _DATA_SOURCE_HH_
 
 #include <string>
-#include <queue>
+#include <deque>
 #include <list>
 #include <vector>
 #include <type_traits>
@@ -21,8 +21,36 @@ using boost::shared_ptr;
 using boost::dynamic_pointer_cast;
 using boost::static_pointer_cast;
 
+
 class data_source;
+
+/**
+	Shared pointed to data source objects.
+
+  */
 typedef shared_ptr<data_source> datasrc;
+
+
+/**
+	A main-memory store of stream records.
+	
+	TODO: spillover to disk
+ */
+class buffered_dataset : public std::vector<dds::dds_record>
+{
+public:
+	using std::vector<dds::dds_record>::vector;
+
+	/// Return a metadata object for the buffered data
+	void analyze(ds_metadata &) const;
+
+	/// Load all data from a data source
+	void load(datasrc src);
+
+};
+
+
+
 
 /**
 	A data source is an object providing the data of a stream.
@@ -63,7 +91,14 @@ public:
 		bool operator!=(iterator other) const { return !(*this == other); }
 	};
 
+	/**
+		Return an input iterator to the (current) beginning of the source.
+	  */
 	inline iterator begin() { return iterator(this); }
+
+	/**
+		Return an input iterator to the end of the source.
+	  */
 	inline iterator end() { return iterator(nullptr); }
 
 	inline data_source() : isvalid(true) {}
@@ -72,8 +107,8 @@ public:
 		: isvalid(true), rec(_rec) {}
 
 	/**
-		When this method returns true, the method \c get_record()
-		returns the next valid dds_record.
+		When this method returns true, the method \c get()
+		returns a valid dds_record.
 	  */
 	inline bool valid() const { return isvalid; }
 	inline operator bool() const { return valid(); }
@@ -82,13 +117,30 @@ public:
 		Return the current valid record or throw an expection.
 	  */
 	inline const dds_record& get() const { return rec; }
+
+	/**
+		Return the current valid record or throw an expection.
+	  */
 	inline const dds_record& operator*() const { return get(); }
 
 	/**
 		Advance the data source to the next record
 	  */
 	virtual void advance() {}
+
+
+	/**
+		Advance the data source and return next record
+
+		This is a _dangerous_ operation, since advancing the
+		data source may invalidate the source.
+	  */
 	inline const dds_record& operator++() { advance(); return get(); }
+
+	/**
+		Return the current record and then update the data source.
+
+	  */
 	inline dds_record operator++(int) { 
 		dds_record ret = get();
 		advance(); 
@@ -99,15 +151,27 @@ public:
 		Check if this data source is rewindable.
 	  */
 	virtual bool rewindable() const { return false; }
+	virtual void rewind() { throw std::runtime_error("Data source is not rewindable"); }
+
+	//------------------------------------
+	//
+	//  Warmup creation
+	//
+	//------------------------------------
+
+
+	virtual void warmup_time(timestamp wtime, buffered_dataset* buf);
+	virtual void warmup_size(size_t wsize, buffered_dataset* buf);
+
 
 	/// The metadata for this source
 	inline const ds_metadata& metadata() const { return dsm; }
 	inline void set_name(const std::string& _name) { dsm.set_name(_name); }
 	inline void set_warmup_time(timestamp tw) { dsm.set_warmup_time(tw); }
 	inline void set_warmup_size(size_t sw) { dsm.set_warmup_size(sw); }
-	inline void set_cool_off(bool c) { dsm.set_cool_off(c); }
 	inline void set_metadata(const ds_metadata& other) { dsm = other; }
 	inline bool analyzed() const {  return dsm.valid(); }
+
 
 
 	/// Virtual destructor
@@ -123,12 +187,6 @@ public:
 class rewindable_data_source : public data_source
 {
 public:
-
-	/**
-		Rewind the data source to its initial state
-	  */
-	virtual void rewind()=0;
-
 
 	virtual bool rewindable() const override { return true; }
 
@@ -166,6 +224,19 @@ public:
 
 	const Func& function() const { return func; }
 
+	bool rewindable() const override
+	{
+		return func.rewindable() && sub->rewindable();
+	}
+
+	void rewind() override
+	{
+		func.rewind();
+		sub->rewind();
+		isvalid = true;
+		advance();
+	}
+
 	void advance() { 
 		if(isvalid){
 		 	if(sub->valid()) {
@@ -196,36 +267,6 @@ inline auto filtered_ds(datasrc ds, const Func& func)
 
 
 
-/**
-	A functional that calls one functional after the other.
-  */
-template <typename F1, typename F2>
-struct function_sequence
-{
-	F1 f1;
-	F2 f2;
-	function_sequence(const F1& _f1, const F2& _f2) : f1(_f1), f2(_f2) {}
-	inline bool operator()(dds::dds_record& rec) {
-		return f1(rec) && f2(rec);
-	}
-};
-
-template <>
-struct function_sequence<void, void> 
-{
-	inline bool operator()(dds::dds_record& rec) const { return true; }	
-};
-
-const function_sequence<void, void>  FSEQ;
-
-/// Construct a function sequence
-template <typename F1, typename F2, typename F>
-auto operator|(const function_sequence<F1,F2>& fs, const F& f) {
-	typedef function_sequence<F1,F2> FS;
-	return function_sequence<FS,F>(fs,f);
-}
-
-
 /// A maximum_length filter
 struct max_length 
 {
@@ -243,9 +284,11 @@ struct max_length
 
 	void operator()(ds_metadata& dsm) {
 		// We cannot know the new end-time
-		using std::min;
 		dsm.set_valid(false);
 	}
+
+	bool rewindable() const { return true; }
+	void rewind() { count=0; }
 };
 
 
@@ -261,10 +304,12 @@ struct max_timestamp
 	}
 
 	void operator()(ds_metadata& dsm) {
-		// We cannot know the new end-time
-		using std::min;
+		// We cannot know the new size
 		dsm.set_valid(false);
 	}
+
+	bool rewindable() const { return true; }
+	void rewind() { }
 };
 
 
@@ -302,6 +347,9 @@ struct modulo_attr
 		else
 			dsm.set_source_range(newids.begin(), newids.end());
 	}
+
+	bool rewindable() const { return true; }
+	void rewind() { }
 };
 
 
@@ -315,7 +363,9 @@ struct modulo_attr
 
 
 /**
-	A time window is a window filter that removes
+	\brief A time-based sliding window
+
+	A time window is a sliding window filter that removes
 	records after an expiration interval Tw.
   */
 class time_window_source : public data_source
@@ -323,24 +373,70 @@ class time_window_source : public data_source
 	void advance_from_sub();
 	void advance_from_window();
 protected:
-	typedef std::queue<dds::dds_record> Window;
+	typedef std::deque<dds::dds_record> Window;
 
 	datasrc sub;
 	dds::timestamp Tw;
 	Window window;
+	bool flush;
 
 public:	
 
-	time_window_source(datasrc _sub, timestamp _w);
+	time_window_source(datasrc _sub, timestamp _w, bool _flush);
 	inline auto delay() const { return Tw; }
+	bool flush_window() const { return flush; }
 	void advance();
+
+	bool rewindable() const override { return sub->rewindable(); }
+	void rewind() override;
 };
 
 
-inline datasrc time_window(datasrc ds, timestamp Tw)
+inline datasrc time_window(datasrc ds, timestamp Tw, bool flush)
 {
-	return datasrc(new time_window_source(ds, Tw));
+	return datasrc(new time_window_source(ds, Tw, flush));
 }
+
+
+
+/**
+	\brief A fixed-size sliding window
+
+	A fixed window is a sliding window filter that removes
+	records after seeing W additional records forward.
+  */
+class fixed_window_source : public data_source
+{
+	void advance_from_sub();
+	void advance_from_window();
+protected:
+	typedef std::deque<dds::dds_record> Window;
+
+	datasrc sub;
+	size_t W;
+	Window window;
+	timestamp tflush;
+	bool flush;
+
+public:	
+
+	fixed_window_source(datasrc _sub, size_t W, bool _flush);
+	inline auto window_size() const { return W; }
+	bool flush_window() const { return flush; }
+	void advance();
+
+	bool rewindable() const override { return sub->rewindable(); }
+	void rewind() override;
+};
+
+
+inline datasrc fixed_window(datasrc ds, size_t W, bool flush)
+{
+	return datasrc(new fixed_window_source(ds, W, flush));
+}
+
+
+
 
 
 //------------------------------------
@@ -425,25 +521,6 @@ inline datasrc uniform_datasrc(stream_id maxsid, source_id maxhid,
 //
 //------------------------------------
 
-
-
-/**
-	A main-memory store of stream records.
-	
-	TODO: spillover to disk
- */
-class buffered_dataset : public std::vector<dds::dds_record>
-{
-public:
-	using std::vector<dds::dds_record>::vector;
-
-	/// Return a metadata object for the buffered data
-	void analyze(ds_metadata &) const;
-
-	/// Load all data from a data source
-	void load(datasrc src);
-
-};
 
 
 /**

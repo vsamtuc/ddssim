@@ -22,6 +22,7 @@
 using namespace dds;
 
 using std::vector;
+using std::initializer_list;
 
 using Json::Value;
 using agms::projection;
@@ -30,6 +31,14 @@ using agms::index_type;
 
 using binc::print;
 using binc::elements_of;
+
+
+
+//----------------------------------------------
+//
+//  Processing the "dataset" section
+//
+//----------------------------------------------
 
 
 
@@ -61,8 +70,9 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 
 	set<string> kwords {
 		"driver", "file", "dataset", 
-		"set_max_length", "hash_sources", "hash_streams", "time_window",
-		"warmup_time", "warmup_size", "cooldown"
+		"set_max_length", "hash_sources", "hash_streams", 
+		"time_window", "fixed_window", "flush_window",
+		"warmup_time", "warmup_size"
 	};
 	for(auto member: jdset.getMemberNames()) {
 		if(kwords.count(member)==0)
@@ -90,26 +100,38 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 	}
 	{
 		Json::Value js = jdset["time_window"];
+		bool flush = jdset.get("flush_window",false).asBool();
 		if(!js.isNull())
-			D.set_time_window(js.asInt());
+			D.set_time_window(js.asInt(), flush);
+	}
+	{
+		Json::Value js = jdset["fixed_window"];
+		bool flush = jdset.get("flush_window",false).asBool();
+		if(!js.isNull())
+			D.set_fixed_window(js.asInt(), flush);
 	}
 	{
 		Json::Value js = jdset["warmup_time"];
 		if(!js.isNull()) {
-			bool cool = jdset.get("cooldown",true).asBool();
-			D.warmup_time(js.asInt(), cool);
+			D.warmup_time(js.asInt());
 		}
 	}
 	{
 		Json::Value js = jdset["warmup_size"];
 		if(!js.isNull()) {
-			bool cool = jdset.get("cooldown",true).asBool();
-			D.warmup_size(js.asInt(), cool);
+			D.warmup_size(js.asInt());
 		}
 	}
 
 	D.create();
 }
+
+
+//----------------------------------------------
+//
+//  Processing the "components" section
+//
+//----------------------------------------------
 
 
 
@@ -119,8 +141,7 @@ static projection get_projection(Value& js)
 
 	depth_type d = jp["depth"].asInt();
 	index_type w = jp["width"].asInt();
-
-	assert(d!=0 && w!=0);
+	assert(d>0 && w>0);
 	
 	projection proj(d,w);
 
@@ -182,40 +203,60 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 		else
 			throw std::runtime_error("Error: component type '"+type+"' is unknown");
 	}
-
 }
 
+//------------------------------------
+//
+//  Processing the "files" section
+//
+//------------------------------------
 
-static open_mode proc_open_mode(const map<string, string>& vars)
+template <typename T>
+struct enum_processor 
 {
-	open_mode omode = default_open_mode;
-	if(vars.count("open_mode")) {
-		string om = vars.at("open_mode");
-		if(om=="truncate")
-			omode = open_mode::truncate;
-		else if (om=="append")
-			omode = open_mode::append;
-		else
-			throw std::runtime_error("Illegal value in URL: open_mode="+om);
-	}
-	return omode;
-}
+	typedef map<string, T> value_map_t;
+	value_map_t value_map;
 
-static text_format proc_format(const map<string, string>& vars)
-{
-	text_format fmt = default_text_format;
-	if(vars.count("text_format")) {
-		string om = vars.at("text_format");
-		if(om=="csvrel")
-			fmt = text_format::csvrel;
-		else if (om=="csvtab")
-			fmt = text_format::csvtab;
-		else
-			throw std::runtime_error("Illegal value in URL: text_format="+om);
-	}
-	return fmt;
-}
+	string varname;
+	T default_value;
 
+	enum_processor(const string& _vname, T _defval, initializer_list<typename value_map_t::value_type> _init)
+		: value_map(_init), varname(_vname), default_value(_defval)
+	{ }
+
+	T operator()(const map<string, string>& vars) 
+	{
+		T retval = default_value;
+		if(vars.count(varname)) {
+			string om = vars.at(varname);
+			auto iter = value_map.find(om);
+			if(iter==value_map.end()) 
+				throw std::runtime_error("Illegal value in URL: "+varname+"="+om);
+			retval = iter->second;
+
+		}	
+		return retval;
+	}
+};
+
+
+using namespace std::string_literals;
+
+enum_processor<text_format> proc_text_format {
+	"format"s, default_text_format,
+	{
+		{"csvrel"s,  text_format::csvrel},
+		{"csvtab"s, text_format::csvtab}
+	}
+};
+
+enum_processor<open_mode> proc_open_mode {
+	"open_mode"s, default_open_mode,
+	{
+		{"append"s,  open_mode::append},
+		{"truncate"s, open_mode::truncate}
+	}
+};
 
 
 #define RE_FNAME "[a-zA-X0-9 _.-]+"
@@ -256,6 +297,9 @@ void dds::parse_url(const string& url, parsed_url& purl)
 		string vvalue = vmatch[2];
 		if(! vname.empty()) purl.vars[vname] = vvalue; 
 	}
+
+	purl.mode = proc_open_mode(purl.vars);
+	purl.format = proc_text_format(purl.vars);
 }
 
 
@@ -266,9 +310,9 @@ static output_file* process_output_file(const string& url)
 	parse_url(url, purl);
 	
 	if(purl.type == "file")
-		return CTX.open(purl.path, proc_open_mode(purl.vars),proc_format(purl.vars));
+		return CTX.open(purl.path, purl.mode, purl.format);
 	else if (purl.type == "hdf5")
-		return CTX.open_hdf5(purl.path, proc_open_mode(purl.vars));
+		return CTX.open_hdf5(purl.path, purl.mode);
 	else if (purl.type == "stdout")
 		return &output_stdout;
 	else if (purl.type == "stderr")
@@ -326,6 +370,13 @@ output_file_map dds::prepare_output(Json::Value& jsctx, reporter& R)
 	
 	return fmap;
 }
+
+
+//------------------------------------
+//
+//  Execution
+//
+//------------------------------------
 
 
 void dds::execute(Value& cfg)

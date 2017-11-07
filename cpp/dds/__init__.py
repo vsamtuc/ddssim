@@ -102,9 +102,10 @@ from _dds import (channel, host, host_group, basic_network,
 	RPCC_ENDP_MASK, RPCC_METH_MASK, RPCC_RESP_MASK
 	)
 
-
+# 
 import dds.agms
 
+# cfgfile.hh
 from _dds import execute
 
 ##########################################
@@ -117,10 +118,21 @@ from _dds import execute
 ##########################################
 
 def loadcfg(fname):
+	"""
+	This method loads a json jobfile into python objects.
+
+	Note that these files may contain comments, which the json
+	parser in python cannot swallow, thus we first filter the
+	file with a  simple regular expression.
+
+	Unfortunately, this r.e. may fail, if a '//' appears inside
+	a string of the file. Use with caution! 
+	"""
 	import json, re
 	jstxt = open(fname).read()
 	jstxt = re.sub(r'//.*\n', '\n', jstxt)
 	return json.loads(jstxt)
+
 
 #############################
 #
