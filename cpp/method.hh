@@ -415,7 +415,32 @@ struct progress_reporter : reactive, progress_bar
 
 	This is the base class.
   */
-class protocol : public reactive
+class basic_component_type : public named
+{
+protected:
+	static std::map<string, basic_component_type*> ctype_map;
+	basic_component_type(const string& _name) : named(_name) {
+		if(ctype_map.count(_name)>0)
+			throw std::logic_error("Component type called `"+_name+"' already exists");
+		ctype_map[_name] = this;
+	}
+public:
+	virtual reactive* make() = 0;
+};
+
+template <typename C>
+class component_type : public basic_component_type
+{
+
+};
+
+
+/**
+	A protocol is a simulation of a query answering method.
+
+	This is the base class.
+  */
+class query_protocol : public reactive
 {
 public:
 	virtual const basic_query& query() const = 0;

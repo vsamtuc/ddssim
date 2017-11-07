@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstddef>
 #include <algorithm>
+#include <boost/core/demangle.hpp>
 
 #include "method.hh"
 #include "output.hh"
@@ -819,4 +820,29 @@ void output_hdf5::output_epilog(output_table& table)
 		_handler.erase(it);		
 	}
 }
+
+
+//-------------------------------------
+//
+// utilities
+//
+//-------------------------------------
+
+
+basic_enum_repr::basic_enum_repr(const type_info& ti)
+{
+	set_name(boost::core::demangle(ti.name()));
+}
+
+
+enum_repr<text_format> dds::text_format_repr (
+{
+	{text_format::csvtab, "csvtab"},
+	{text_format::csvrel, "csvrel"}
+});
+
+enum_repr<open_mode> dds::open_mode_repr ({
+	{open_mode::truncate, "truncate"},
+	{open_mode::append, "append"}
+});
 

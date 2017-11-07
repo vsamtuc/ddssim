@@ -7,6 +7,7 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
@@ -1207,6 +1208,55 @@ public:
 };
 
 
+/*-----------------------------
+	I/O assistants
+  -----------------------------*/
+
+class basic_enum_repr : public named
+{
+protected:
+	std::map<int, string> extl;
+	std::map<string, int> intl;
+public:
+	explicit basic_enum_repr(const string& ename) : named(ename) {}
+	explicit basic_enum_repr(const std::type_info& ti);
+	inline void add(int val, const string& tag) {
+		extl[val] = tag;
+		intl[tag] = val;
+	}
+	int map(const string& tag) const { return intl.at(tag); }
+	string map(int val) const { return extl.at(val); }
+	bool is_member(int val) const { return extl.count(val); }
+	bool is_member(const string& tag) const { return intl.count(tag); };
+};
+
+template <typename Enum>
+class enum_repr : public basic_enum_repr
+{
+public:
+	typedef std::pair<Enum, const char*> value_type;
+	explicit enum_repr( std::initializer_list< value_type > ilist ) 
+	: basic_enum_repr(typeid(Enum)) 
+	{
+		for(auto&& e : ilist) {
+			Enum val = std::get<0>(e);
+			const string& tag = std::get<1>(e);
+			add(static_cast<int>(val), tag);
+		}
+	}
+
+	inline Enum operator[](const string& tag) const {
+		return static_cast<Enum>(map(tag));
+	}
+	inline const string& operator[](Enum val) const {
+		return map(val);
+	}
+
+};
+
+
+extern enum_repr<text_format> text_format_repr;
+extern enum_repr<open_mode> open_mode_repr;
 
 
 } // end namespace dds

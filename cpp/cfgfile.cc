@@ -214,14 +214,12 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 template <typename T>
 struct enum_processor 
 {
-	typedef map<string, T> value_map_t;
-	value_map_t value_map;
-
 	string varname;
 	T default_value;
+	enum_repr<T>& repr;
 
-	enum_processor(const string& _vname, T _defval, initializer_list<typename value_map_t::value_type> _init)
-		: value_map(_init), varname(_vname), default_value(_defval)
+	enum_processor(const string& _vname, T _defval, enum_repr<T>& _repr)
+		: varname(_vname), default_value(_defval), repr(_repr)
 	{ }
 
 	T operator()(const map<string, string>& vars) 
@@ -229,12 +227,10 @@ struct enum_processor
 		T retval = default_value;
 		if(vars.count(varname)) {
 			string om = vars.at(varname);
-			auto iter = value_map.find(om);
-			if(iter==value_map.end()) 
+			if(! repr.is_member(om))
 				throw std::runtime_error("Illegal value in URL: "+varname+"="+om);
-			retval = iter->second;
-
-		}	
+			retval = repr[om];
+		}
 		return retval;
 	}
 };
@@ -242,21 +238,8 @@ struct enum_processor
 
 using namespace std::string_literals;
 
-enum_processor<text_format> proc_text_format {
-	"format"s, default_text_format,
-	{
-		{"csvrel"s,  text_format::csvrel},
-		{"csvtab"s, text_format::csvtab}
-	}
-};
-
-enum_processor<open_mode> proc_open_mode {
-	"open_mode"s, default_open_mode,
-	{
-		{"append"s,  open_mode::append},
-		{"truncate"s, open_mode::truncate}
-	}
-};
+enum_processor<text_format> proc_text_format("format"s, default_text_format, text_format_repr);
+enum_processor<open_mode> proc_open_mode("open_mode"s, default_open_mode, open_mode_repr);
 
 
 #define RE_FNAME "[a-zA-X0-9 _.-]+"
