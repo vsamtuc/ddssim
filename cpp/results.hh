@@ -8,7 +8,38 @@
 namespace dds {
 
 
+/**
+	Statistics mixin for the metadata of the data source.
+  */
+struct dataset_results : private reactive
+{
+	column<string> dset_name        { "dset_name", 64, "%s" };
+	column<timestamp> dset_window   { "dset_window", "%d" };
+	column<size_t> dset_warmup      { "dset_warmup", "%zu" };
+	column<size_t> dset_size        { "dset_size", "%zu" };	
+	column<timestamp> dset_duration { "dset_duration", "%ld" };
+	column<size_t> dset_streams		{ "dset_streams", "%zu"};
+	column<size_t> dset_hosts		{ "dset_hosts", "%zu"};
+	column<size_t> dset_bytes		{ "dset_bytes", "%zu"};
 
+	dataset_results(result_table* table);
+	void fill();
+};
+
+
+struct comm_results 
+{
+	column<size_t> total_msg 	{"total_msg", "%zu" };
+	column<size_t> total_bytes 	{"total_bytes", "%zu" };
+	column<double> traffic_pct  {"traffic_pct", "%.10g" };
+
+	comm_results(result_table* table);
+	void fill(basic_network* nw);
+};
+
+
+
+	
 /**
 	Statistics for each local stream.
 
@@ -23,19 +54,6 @@ struct local_stream_stats_t : result_table
 };
 extern local_stream_stats_t local_stream_stats;
 
-struct comm_results 
-{
-	column<size_t> total_msg 	{"total_msg", "%zu" };
-	column<size_t> total_bytes 	{"total_bytes", "%zu" };
-	column<double> traffic_pct  {"traffic_pct", "%.10g" };
-
-	comm_results(result_table* table) {
-		table->add({&total_msg, &total_bytes, &traffic_pct});
-	}
-
-	void fill(basic_network* nw);
-};
-
 
 /**
 	Communication results for each network
@@ -43,10 +61,8 @@ struct comm_results
 struct network_comm_results_t : result_table, comm_results
 {
 	column<string> netname   	{this, "netname", 64, "%s" };
-	column<double> max_error 	{this, "max_error", "%.8g" };
-	column<size_t> sites     	{this, "sites", "%zu" };
-	column<size_t> streams   	{this, "streams", "%zu" };
-	column<size_t> local_viol	{this, "local_viol", "%zu" };
+	column<string> protocol     {this, "protocol", 64, "%s" };
+	column<size_t> size         {this, "size", "%zu"};
 
 	network_comm_results_t() 
 		: result_table("network_comm_results"), comm_results(this) {}
@@ -56,45 +72,13 @@ struct network_comm_results_t : result_table, comm_results
 };
 extern network_comm_results_t network_comm_results;
 
-struct dataset_results : private reactive
-{
-	column<string> dset_name        {"dset_name", 32, "%s" };
-	column<timestamp> dset_window      {"dset_window", "%d" };
-	column<size_t> dset_warmup      {"dset_warmup", "%zu" };
-	column<size_t> dset_size        {"dset_size", "%zu" };	
-	column<timestamp> dset_duration {"dset_duration", "%ld" };
-	column<size_t> dset_streams		{"dset_streams", "%zu"};
-	column<size_t> dset_hosts		{"dset_hosts", "%zu"};
-	column<size_t> dset_bytes		{"dset_bytes", "%zu"};
-
-	dataset_results(result_table* table) {
-		table->add({&dset_name, &dset_window, &dset_warmup,
-			&dset_size, &dset_duration, &dset_streams,
-			&dset_hosts, &dset_bytes
-		 });
-		on(START_STREAM, [&]() { fill(); });
-	}
-
-	void fill() 
-	{ 
-		dset_name = CTX.metadata().name();
-		dset_window = CTX.metadata().window();
-		dset_warmup = CTX.metadata().warmup_time()+CTX.metadata().warmup_size();
-
-		dset_size = CTX.metadata().size();
-		dset_duration = CTX.metadata().duration();
-		dset_streams = CTX.metadata().stream_ids().size();
-		dset_hosts = CTX.metadata().source_ids().size();
-		dset_bytes = CTX.metadata().size() * sizeof(dds_record);
-	}
-};
-
 
 
 struct gm_comm_results_t : result_table, dataset_results, comm_results
 {
 
-	column<string> protocol   	  {this, "protocol", 32, "%s" };
+	column<string> name   	  	  {this, "name", 64, "%s" };
+	column<string> protocol   	  {this, "protocol", 64, "%s" };
 	column<double> max_error 	  {this, "max_error", "%.8g" };
 	column<size_t> statevec_size  {this, "statevec_size", "%zu" };
 	
@@ -117,7 +101,8 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 	void fill(StarNetwork* nw)
 	{
 		comm_results::fill(nw);
-		protocol = nw->name();
+		name = nw->name();
+		protocol = nw->rpc().name();
 		max_error = nw->beta;
 		statevec_size = nw->proj.size();
 		sites = nw->sites.size();
@@ -133,7 +118,7 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 		bytes_get_drift = chan_frame(nw)
 			.endp(typeid(typename StarNetwork::site_type),"get_drift")
 			.endp_rsp()
-			.sum();
+			.bytes();
 	}
 };
 extern gm_comm_results_t gm_comm_results;
@@ -144,6 +129,7 @@ struct network_host_traffic_t : result_table
 {
 	// each row corresponds to a channel
 	column<string> netname		{this, "netname", 64, "%s"};
+	column<string> protocol   	{this, "protocol", 64, "%s" };
 	column<host_addr> src 		{this, "src", "%d"};
 	column<host_addr> dst 		{this, "dst", "%d"};
 	column<rpcc_t>  endp		{this, "endp", "%u"};
@@ -158,9 +144,10 @@ struct network_interfaces_t : result_table
 {
 	// each row corresponds to a host interface
 	column<string> netname		{this, "netname", 64, "%s"};
+	column<string> protocol   	{this, "protocol", 64, "%s" };
 	column<rpcc_t> rpcc 		{this, "rpcc", "%hu"};
-	column<string> iface 		{this, "iface", 32, "%s"};
-	column<string> method 		{this, "method", 32, "%s"};
+	column<string> iface 		{this, "iface", 64, "%s"};
+	column<string> method 		{this, "method", 64, "%s"};
 	column<bool>   oneway		{this, "oneway", "%c"};
 	network_interfaces_t() : result_table("network_interfaces") {}
 	void output_results(basic_network* nw);	

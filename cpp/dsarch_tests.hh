@@ -4,22 +4,37 @@
 #include <boost/range/adaptors.hpp>
 
 #include <cxxtest/TestSuite.h>
-class ArchTestSuite;
-#define DSARCH_CXXTEST_RUNNING
 #include "dsarch.hh"
 #include "binc.hh"
-
-
 
 using namespace dds;
 using std::string;
 using binc::print;
 
+/****************************************
+	A simple Echo client-server network
+*****************************************/
+
+struct Echo;
+struct Echo_cli;
+
+struct Echo_network : basic_network
+{
+	Echo_network() 
+	{}
+};
+
+
+
 struct Echo : process
 {
+	Echo_network* nw;
 	int value;
 
-	Echo(basic_network* nw) : process(nw), value(0) {}
+	Echo(Echo_network* _nw) 
+		: process(_nw), nw(_nw), value(0)
+	{
+	}
 
 	// remote methods
 
@@ -81,6 +96,115 @@ struct Echo_cli : process
 	}
 };
 
+/****************************************
+	A p2p scatter-gather network 
+
+	Each peer has a key (an integer).
+	Periodically, when the ksy changes,
+	a peer asks the network for the number
+	of peers with equal key.
+
+	The peer has two proxies: a unicast and 
+	mutlicast.
+
+	The multicast group is used to send out 
+	the inquiry, when a key changes.
+	The unicast group is used to reply to
+	the sender of an inquiry.
+*****************************************/
+
+struct PeerNetwork;
+struct Peer;
+
+struct PeerNetwork : basic_network
+{
+	mcast_group<Peer> peers; // this does not need a full type!
+	PeerNetwork() : basic_network(), peers(this) { }
+};
+
+struct Peer_proxy;
+struct Peer_mcast_proxy;
+
+struct Peer : process
+{
+	PeerNetwork* p2pnet;
+
+	// note how the proxy map to this class is
+	// definable, even though the class is not
+	// defined yet!
+	//
+	// The only problem is that the
+	// constructor and methods have to be defined outside the
+	// class
+	proxy_map<Peer_proxy, Peer> peermap;
+
+	// Local state
+	int key;
+	int arity;
+
+	Peer(PeerNetwork* nw, int k) 
+	: process(nw), p2pnet(nw), peermap(this),
+	  key(k), arity(1)
+	{ }
+
+
+	// Remote methods
+	oneway scatter_inquiry(sender<Peer> sender, int x);
+	oneway gather_replies(sender<Peer> replier, int x);
+
+	// This is called externally
+	void change_key(int newkey);
+};
+
+//
+//  The proxy
+//
+
+struct Peer_proxy : remote_proxy<Peer>
+{
+	REMOTE_METHOD(Peer, gather_replies);
+	REMOTE_METHOD(Peer, scatter_inquiry);
+	Peer_proxy(process* owner) : remote_proxy<Peer>(owner) {}
+};
+
+
+//
+//  Peer methods
+//
+
+
+oneway Peer::scatter_inquiry(sender<Peer> who, int what) 
+{
+	if(key==what) {
+		if(who.value!=this)
+			// send reply to other peers, via proxies
+			peermap[who.value].gather_replies(this, key);
+		else
+			// send to myself, but not via a proxy
+			gather_replies(this, key);
+	}
+}
+
+oneway Peer::gather_replies(sender<Peer> who, int x)
+{
+	if(x==key)
+		arity++;
+}
+
+void Peer::change_key(int newkey)
+{
+	key = newkey;
+	arity = 0;
+	// broadcast an inquiry
+	peermap[p2pnet->peers].scatter_inquiry(this, key);
+	// the gather messages will have computed the arity by now
+}
+
+
+
+//
+//  Test suite
+//
 
 class ArchTestSuite : public CxxTest::TestSuite
 {
@@ -88,8 +212,7 @@ public:
 
 	void test_network()
 	{
-		using std::unique_ptr;
-		basic_network nw;
+		Echo_network nw;
 
 		Echo* srv { new Echo(&nw) };
 		const size_t Ncli = 5;
@@ -107,7 +230,7 @@ public:
 		TS_ASSERT_EQUALS(nw.decl_interface(typeid(Echo)), Echo_ifc);
 
 		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).num_channels(), 12);
-		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli);
+		TS_ASSERT_EQUALS(nw.channels().size(), 12*Ncli );
 
 		TS_ASSERT_EQUALS(nw.rpc().get_interface(Echo_ifc).name(), string("Echo"));
 		using namespace std::string_literals;
@@ -137,7 +260,7 @@ public:
 
 	void test_rpc_channels()
 	{
-		basic_network nw;
+		Echo_network nw;
 
 		Echo* srv = new Echo(&nw);
 		Echo_cli* cli = new Echo_cli(&nw);
@@ -151,15 +274,15 @@ public:
 		chan_frame chan(nw);
 
 		TS_ASSERT_EQUALS(chan.size(), 
-			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels()
+			nw.rpc().get_interface(nw.rpc().code(typeid(Echo))).num_channels() 
 			);
 
-		TS_ASSERT_EQUALS(chan.count(), 0);
-		TS_ASSERT_EQUALS(chan.sum(), 0);
-		TS_ASSERT_EQUALS(chan.src(srv).size(), 5);
+		TS_ASSERT_EQUALS(chan.msgs(), 0);
+		TS_ASSERT_EQUALS(chan.bytes(), 0);
+		TS_ASSERT_EQUALS(chan.src(srv).size(), 5 );
 		TS_ASSERT_EQUALS(chan.dst(srv).size(), 7);
 
-		TS_ASSERT_EQUALS(chan.endp_req().size(), 7);
+		TS_ASSERT_EQUALS(chan.endp_req().size(), 7 );
 		TS_ASSERT_EQUALS(chan.endp_rsp().size(), 5);
 
 		TS_ASSERT_EQUALS(cli->proxy._r_proc, srv);
@@ -171,13 +294,13 @@ public:
 		//  srv-> send_int(10) returning Acknoledge<int>(11)
 		//  srv-> echo("Hi")  returning "Echoing Hi"
 
-		TS_ASSERT_EQUALS(chan.src(srv).count(), 2);
-		TS_ASSERT_EQUALS(chan.dst(srv).count(), 3);
-		TS_ASSERT_EQUALS(chan.count(), 5);
+		TS_ASSERT_EQUALS(chan.src(srv).msgs(), 2);
+		TS_ASSERT_EQUALS(chan.dst(srv).msgs(), 3);
+		TS_ASSERT_EQUALS(chan.msgs(), 5);
 
-		TS_ASSERT_EQUALS(chan.src(srv).sum(), sizeof(int)+10);
-		TS_ASSERT_EQUALS(chan.dst(srv).sum(), sizeof(int)+2);
-		TS_ASSERT_EQUALS(chan.sum(), 2*sizeof(int) + 12);
+		TS_ASSERT_EQUALS(chan.src(srv).bytes(), sizeof(int)+10);
+		TS_ASSERT_EQUALS(chan.dst(srv).bytes(), sizeof(int)+2);
+		TS_ASSERT_EQUALS(chan.bytes(), 2*sizeof(int) + 12);
 
 
 		TS_ASSERT_EQUALS( cli->get_int(), 10);
@@ -187,9 +310,55 @@ public:
 		cli->proxy.say_bye("bye");
 		cli->proxy.finish();
 
-		TS_ASSERT_EQUALS(chan.endp_req().count(), 9);
-		TS_ASSERT_EQUALS(chan.endp_rsp().count(), 5);
+		TS_ASSERT_EQUALS(chan.endp_req().msgs(), 9);
+		TS_ASSERT_EQUALS(chan.endp_rsp().msgs(), 5);
 	}
+
+
+
+	void test_multicast()
+	{
+		PeerNetwork p2p;
+
+		// Create the network with 4 peers
+		vector<Peer*> P;
+		for(int i=0; i<4; i++) {
+			auto p = new Peer(&p2p, i);
+			p->set_addr(i);
+			P.push_back(p);
+			p2p.peers.join(p);
+		}
+
+		P[0]->change_key(1);
+		TS_ASSERT_EQUALS(P[0]->arity, 2);
+		TS_ASSERT_EQUALS(P[1]->arity, 1);
+		TS_ASSERT_EQUALS(P[2]->arity, 1);
+		TS_ASSERT_EQUALS(P[3]->arity, 1);
+
+		chan_frame cf(&p2p);
+
+		// There are only 4 channels, two for each of the
+		// constructed proxies: a multicast proxy 0->-2  and a 
+		// unicast proxy 1->0
+		TS_ASSERT_EQUALS(cf.size(), 4);
+		TS_ASSERT_EQUALS(cf.unicast().msgs(), 1);
+		TS_ASSERT_EQUALS(cf.multicast().msgs(), 1);
+
+		P[0]->change_key(2);
+		P[1]->change_key(2);
+		P[2]->change_key(2);
+		TS_ASSERT_EQUALS(P[0]->arity, 2);
+		TS_ASSERT_EQUALS(P[1]->arity, 3);
+		TS_ASSERT_EQUALS(P[2]->arity, 3);
+		TS_ASSERT_EQUALS(P[3]->arity, 1);
+
+		cf = chan_frame(&p2p);
+		TS_ASSERT_EQUALS(cf.unicast().msgs(), 6);
+		TS_ASSERT_EQUALS(cf.multicast().msgs(), 4);
+		TS_ASSERT_EQUALS(cf.multicast().recv_msgs(), 12);
+	}
+
+
 
 };
 

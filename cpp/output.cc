@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstddef>
 #include <algorithm>
+#include <boost/core/demangle.hpp>
 
 #include "method.hh"
 #include "output.hh"
@@ -181,8 +182,9 @@ void output_table::add(basic_column& col)
 
 	if(col._table)
 		throw std::runtime_error("column already added to a table");
-	if(colnames.find(col.name())!=colnames.end())
+	if(colnames.count(col.name())!=0) {
 		throw std::runtime_error(binc::sprint("a column by this name already exists:",col.name()));
+	}
 	col._table = this;
 	col._index = columns.size();
 	columns.push_back(&col);
@@ -199,6 +201,7 @@ void output_table::remove(basic_column& col)
 	assert(columns[col._index]==&col);
 	columns[col._index] = nullptr;
 	colnames.erase(col.name());
+	assert(colnames.find(col.name())==colnames.end());
 	col._table = nullptr;
 	_dirty = true;
 }
@@ -296,7 +299,100 @@ output_file::~output_file()
 //
 //-------------------------------------
 
+//-------------------------------------
+//
+// Formatters
+//
+//-------------------------------------
 
+
+formatter::formatter(output_c_file* of, output_table& tab)
+	: ofile(of), table(tab)
+{ }
+
+formatter::~formatter()
+{ }
+
+
+struct csvtab_formatter : formatter
+{
+	using formatter::formatter;
+	void prolog() override;
+	void row() override;
+	void epilog() override;
+};
+
+void csvtab_formatter::prolog() 
+{
+	/*
+		Logic for prolog:
+		When the file is seekable, check if we are at the beginning
+		before we output a header.
+	 */
+	long int fpos = ftell(ofile->file());
+	if(fpos == -1 || fpos == 0) {
+		for(size_t col=0;col < table.size(); col++) {
+			if(col) fputs(",", ofile->file());
+			fputs(table[col]->name().c_str(), ofile->file());
+		}
+		fputs("\n", ofile->file());
+	} 
+}
+
+void csvtab_formatter::row() 
+{
+	for(size_t col=0;col < table.size(); col++) {
+		if(col) fputs(",", ofile->file());
+		table[col]->emit(ofile->file());
+	}
+	fputs("\n", ofile->file());	
+}
+
+void csvtab_formatter::epilog() 
+{ }
+
+
+struct csvrel_formatter : formatter
+{
+	using formatter::formatter;
+
+	void prolog() override { }
+
+	void row() override {
+		fputs(table.name().c_str(), ofile->file());
+		for(size_t col=0;col < table.size(); col++) {
+			fputs(",", ofile->file());
+			table[col]->emit(ofile->file());
+		}
+		fputs("\n", ofile->file());	
+	}
+
+	void epilog() override { }
+};
+
+
+
+formatter* formatter::create(output_c_file* f, output_table& t, text_format fmt)
+{
+	switch(fmt)
+	{
+	case text_format::csvtab:
+		return new csvtab_formatter(f,t);
+	case text_format::csvrel:
+		return new csvrel_formatter(f,t);
+	default:
+		assert(0);
+	}
+}
+
+void formatter::destroy(formatter* fmt)
+{
+	delete fmt;
+}
+
+//-------------------------------
+// Methods
+//-------------------------------
 
 void output_c_file::open(const string& fpath, open_mode mode)
 {
@@ -311,6 +407,8 @@ void output_c_file::open(const string& fpath, open_mode mode)
 
 void output_c_file::open(FILE* _file, bool _owner)
 {
+	if(stream) 
+		throw std::runtime_error("output file already open");
 	stream = _file;
 	owner = _owner;
 }
@@ -338,12 +436,12 @@ void output_c_file::flush()
 }
 
 
-output_c_file::output_c_file(FILE* _stream, bool _owner)
-: stream(_stream), owner(_owner) { }
+output_c_file::output_c_file(FILE* _stream, bool _owner, text_format f)
+: stream(_stream), owner(_owner), fmt(f) { }
 
 
-output_c_file::output_c_file(const string& _fpath, open_mode mode)
-: output_c_file()
+output_c_file::output_c_file(const string& _fpath, open_mode mode, text_format f)
+: output_c_file(f)
 {
 	open(_fpath, mode);
 }
@@ -355,60 +453,29 @@ output_c_file::~output_c_file()
 }
 
 
-void output_c_file::emit(basic_column* col)
-{
-	// Normally, this does not belong to the column!!!
-	col->emit(file());
-}
-
 void output_c_file::output_prolog(output_table& table)
 {
-	table_flavor flavor = table.flavor();
-
-	switch(flavor) {
-	case table_flavor::RESULTS:
-	case table_flavor::TIMESERIES:
-		break;
-	default:
-		throw std::runtime_error("incompatible flavor");
-	}
-
-	/*
-		Logic for prolog:
-		When the file is seekable
-	 */
-
-	long int fpos = ftell(file());
-	if(fpos == -1 || fpos == 0) {
-		for(size_t col=0;col < table.size(); col++) {
-			if(col) fputs(",", file());
-			fputs(table[col]->name().c_str(), file());
-		}
-		fputs("\n", file());			
-	}
+	// Create formatter for table
+	if(fmtr.count(&table)>0) return;
+	auto form = fmtr[&table] = formatter::create(this, table, fmt);
+	form->prolog();
 }
 
 void output_c_file::output_row(output_table& table)
 {
-	table_flavor flavor = table.flavor();
-
-	switch(flavor) {
-	case table_flavor::RESULTS:
-	case table_flavor::TIMESERIES:
-		break;
-	default:
-		throw std::runtime_error("incompatible flavor");
-	}
-
-	for(size_t col=0;col < table.size(); col++) {
-		if(col) fputs(",", file());
-		emit(table[col]);
-	}
-	fputs("\n", file());
+	fmtr.at(&table)->row();
 }
 
-void output_c_file::output_epilog(output_table&)
-{ }
+void output_c_file::output_epilog(output_table& table)
+{ 
+	auto form = fmtr.at(&table);
+	form->epilog();
+
+	fmtr.erase(&table);
+	formatter::destroy(form);
+}
+
+
 
 
 output_c_file dds::output_stdout(stdout, false);
@@ -422,8 +489,8 @@ output_c_file dds::output_stderr(stderr, false);
 //-------------------------------------
 
 
-output_mem_file::output_mem_file()
-	: state(0)
+output_mem_file::output_mem_file(text_format fmt)
+	: output_c_file(fmt), state(0)
 {
 	state = new memstate();
 	state->buffer = nullptr;
@@ -753,4 +820,29 @@ void output_hdf5::output_epilog(output_table& table)
 		_handler.erase(it);		
 	}
 }
+
+
+//-------------------------------------
+//
+// utilities
+//
+//-------------------------------------
+
+
+basic_enum_repr::basic_enum_repr(const type_info& ti)
+{
+	set_name(boost::core::demangle(ti.name()));
+}
+
+
+enum_repr<text_format> dds::text_format_repr (
+{
+	{text_format::csvtab, "csvtab"},
+	{text_format::csvrel, "csvrel"}
+});
+
+enum_repr<open_mode> dds::open_mode_repr ({
+	{open_mode::truncate, "truncate"},
+	{open_mode::append, "append"}
+});
 

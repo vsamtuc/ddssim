@@ -14,16 +14,16 @@ basic_factory::~basic_factory()
 	
 }
 
-output_file* context::open(FILE* f, bool owner) 
+output_file* context::open(FILE* f, bool owner, text_format fmt) 
 {
-	output_file* of = new output_c_file(f, owner);
+	output_file* of = new output_c_file(f, owner, fmt);
 	result_files.push_back(of);
 	return of;
 }
 
-output_file* context::open(const string& path, open_mode mode) 
+output_file* context::open(const string& path, open_mode mode, text_format fmt) 
 {
-	output_file* of = new output_c_file(path, mode);
+	output_file* of = new output_c_file(path, mode, fmt);
 	result_files.push_back(of);
 	return of;
 }
@@ -73,9 +73,9 @@ void dataset::clear()
 	_streams = none;
 	_sources = none;
 	_time_window = none;
+	_wflush = true;
 	_warmup_size = none;
 	_warmup_time = none;
-	_cool = none;
 }
 
 void dataset::load(datasrc _src) 
@@ -90,22 +90,33 @@ void dataset::set_name(const string& n) { _name = n; }
 void dataset::set_max_length(size_t n) { _max_length = n; }
 void dataset::hash_streams(stream_id h) { _streams = h; }
 void dataset::hash_sources(source_id s) { _sources = s; }
-void dataset::set_time_window(timestamp Tw) { _time_window = Tw; }
 
-void dataset::warmup_size(size_t wsize, bool cool)
+void dataset::set_time_window(timestamp Tw, bool flush) 
+{ 
+	using boost::none;
+	_time_window = Tw; _wflush = flush; 
+	_fixed_window = none;
+}
+
+void dataset::set_fixed_window(size_t W, bool flush) 
+{ 
+	using boost::none;
+	_fixed_window = W; _wflush = flush; 
+	_time_window = none;
+}
+
+void dataset::warmup_size(size_t wsize)
 {
 	using boost::none;
 	_warmup_size = wsize;
 	_warmup_time = none;
-	_cool = cool;
 }
 
-void dataset::warmup_time(timestamp wtime, bool cool)
+void dataset::warmup_time(timestamp wtime)
 {
 	using boost::none;
 	_warmup_time = wtime;
 	_warmup_size = none;
-	_cool = cool;	
 }
 
 
@@ -135,7 +146,9 @@ datasrc dataset::apply_filters()
 
 	// apply window
 	if(_time_window != none)
-		src = time_window(src, _time_window.value());
+		src = time_window(src, _time_window.value(), _wflush);
+	if(_fixed_window != none)
+		src = fixed_window(src, _fixed_window.value(), _wflush);
 
 	return src;
 }
@@ -150,9 +163,9 @@ void dataset::create()
 
 	// if the source is not rewindable, we must materialize it
 	if(_warmup_size != none)
-		create_warmup_size(_warmup_size.value(), _cool.value());
+		create_warmup_size(_warmup_size.value());
 	else if(_warmup_time != none)
-		create_warmup_time(_warmup_time.value(), _cool.value());
+		create_warmup_time(_warmup_time.value());
 	else
 		create_no_warmup();
 
@@ -177,13 +190,9 @@ void dataset::create_no_warmup()
 {
 	apply_filters();
 	if(! src->analyzed()) {
-		if(base_src->rewindable()) {
-			// analyze and rewind
+		if(src->rewindable()) {
 			ds_metadata mdata = collect_metadata();
-			// restore
-			src = base_src;
-			boost::polymorphic_pointer_cast<rewindable_data_source>(src)->rewind();
-			apply_filters();
+			src->rewind();
 			src->set_metadata(mdata);
 		} else {
 			src = materialize(src);
@@ -193,125 +202,18 @@ void dataset::create_no_warmup()
 }
 
 
-void dataset::create_warmup_size(size_t wsize, bool cool)
+void dataset::create_warmup_size(size_t wsize)
 {
-	/*
-	apply_filters();
-	if(! src->analyzed())
-		src = materialize(src);
-	*/
 	create_no_warmup();
-	assert(src->analyzed());
-
-	// Check assertions
-	if(wsize*(cool?2:1) >= src->metadata().size()) 
-		throw std::runtime_error("requested warmup exhausts the data source");
-	if(! (src->valid()))
-		throw std::runtime_error("contrary to metadata, data source is exhausted");
-
-	// load warmup into the buffer
-	//CTX.warmup.clear();
-	for(size_t i=0; i<wsize; i++) {
-		//CTX.warmup.push_back(src->get());
-		src->advance();
-		if(! (src->valid()))
-			throw std::runtime_error("unexpectedly, warmup exhausted the data source");
-	}
-
-	// do we need to cool?
-	if(cool) {
-		// the new length is equal to the current length minus wsize
-		// note that max_length counts from first instantiation, ie. now
-		size_t newlen = src->metadata().size()-wsize;
-		src = filtered_ds(src, max_length(newlen));
-	}
-
-	// ok, now record metadata and rewind
-	ds_metadata mdata = collect_metadata();
-	src = base_src;
-	boost::polymorphic_pointer_cast<rewindable_data_source>(src)->rewind();
-	apply_filters();
-
-	// set warmup
 	CTX.warmup.clear();
-	for(size_t i=0; i<wsize; i++) {
-		CTX.warmup.push_back(src->get());
-		src->advance();
-	}
-
-	// set cool
-	if(cool) {
-		// the new length is equal to the current length minus wsize
-		// note that max_length counts from first instantiation, ie. now
-		size_t newlen = mdata.size();
-		src = filtered_ds(src, max_length(newlen));
-	}
-
-	src->set_metadata(mdata);
-	src->set_warmup_size(wsize);
-	src->set_cool_off(cool);
-
-	//src = materialize(src);
-	//src->set_warmup_size(wsize);
+	src->warmup_size(wsize, & CTX.warmup);
 }
 
-void dataset::create_warmup_time(timestamp wtime, bool cool)
+void dataset::create_warmup_time(timestamp wtime)
 {
-	/*
-	apply_filters();
-	if(! src->analyzed())
-		src = materialize(src);
-	*/
 	create_no_warmup();
-	assert(src->analyzed());
-
-	if(wtime*(cool?2:1) >= src->metadata().duration())
-		throw std::runtime_error("requested warmup time exhausts the data source");
-	if(! (src->valid()))
-		throw std::runtime_error("contrary to metadata, data source is exhausted");
-	if(src->get().ts != src->metadata().mintime())
-		throw std::runtime_error("the metadata start time is not accurate");
-
-	// load warmup into the buffer
-	//CTX.warmup.clear();
-	while( src->get().ts < src->metadata().mintime() + wtime ) {
-		//CTX.warmup.push_back(src->get());
-		src->advance();
-		if(! (src->valid()))
-			throw std::runtime_error("unexpectedly, warmup exhausted the data source");
-	}
-
-	// do we need to cool?
-	if(cool) {
-		// the new duration is equal to the current minus wtime
-		size_t newend = src->metadata().maxtime() - wtime;
-		src = filtered_ds(src, max_timestamp(newend));
-	}
-
-	//src = materialize(src);
-	//src->set_warmup_time(wtime);
-	// ok, now record metadata and rewind
-	ds_metadata mdata = collect_metadata();
-	src = base_src;
-	boost::polymorphic_pointer_cast<rewindable_data_source>(src)->rewind();
-	apply_filters();
-
-	// load warmup into the buffer
 	CTX.warmup.clear();
-	while( src->get().ts < src->metadata().mintime() + wtime ) {
-		CTX.warmup.push_back(src->get());
-		src->advance();
-	}
-
-	if(cool) {
-		// the new duration is equal to the current minus wtime
-		size_t newend = mdata.maxtime();
-		src = filtered_ds(src, max_timestamp(newend));
-	}
-
-	src->set_metadata(mdata);
-	src->set_warmup_time(wtime);
-	src->set_cool_off(cool);
+	src->warmup_time(wtime, & CTX.warmup);
 }
 
 

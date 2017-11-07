@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <boost/range/adaptors.hpp>
 
 #include "results.hh"
 #include "binc.hh"
@@ -13,7 +14,7 @@ using binc::elements_of;
 
 
 /*
-	Implements the traditional Gemoetric Method and its variants
+	Implements the traditional Geometric Method and its variants
 */
 
 
@@ -64,11 +65,11 @@ void coordinator::start_round()
 
 	has_naive.assign(k, in_naive_mode);
 
-	for(auto p : proxy) {
+	for(auto n : net()->sites) {
 		//variation
 		//if(!in_naive_mode) {
 			sz_sent ++;
-			p.second->reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
+			proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
 		//}
 		//else
 		//	p.second->reset(safezone(query.zeta_E));
@@ -97,8 +98,8 @@ oneway coordinator::local_violation(sender<node> ctx)
 	} else {
 		B.clear();
 		Bcompl.clear();
-		for(auto p : proxy) 
-			Bcompl.insert(p.second);
+		for(auto n : node_ptr) 
+			Bcompl.insert(&proxy[n]);
 
 		Ubal = 0.0;
 		Ubal_updates = 0;
@@ -126,10 +127,10 @@ void coordinator::rebalance_random(node_proxy* lvnode)
 	// find a balancing set
 	vector<node_proxy*> nodes;
 	nodes.reserve(k);
-	for(auto p : proxy) {
-		node_proxy* n = p.second;
-		if(B.find(n) == B.end())
-			nodes.push_back(n);
+	for(auto n : node_ptr) {
+		node_proxy* p = &proxy[n];
+		if(B.find(p) == B.end())
+			nodes.push_back(p);
 	}
 	assert(nodes.size()==k-1);
 
@@ -197,10 +198,10 @@ void coordinator::rebalance_random_limits(node_proxy* lvnode)
 	// find a balancing set
 	vector<node_proxy*> nodes;
 	nodes.reserve(k);
-	for(auto p : proxy) {
-		node_proxy* n = p.second;
-		if(B.find(n) == B.end())
-			nodes.push_back(n);
+	for(auto n : node_ptr) {
+		node_proxy* p = & proxy[n];
+		if(B.find(p) == B.end())
+			nodes.push_back(p);
 	}
 	assert(nodes.size()==k-1);
 
@@ -352,20 +353,21 @@ void coordinator::warmup()
 
 void coordinator::setup_connections()
 {
-	proxy.add_sites(net());
+	using boost::adaptors::map_values;
+	proxy.add_sites(net()->sites);
 	for(auto n : net()->sites) {
-		node_index[n.second] = node_ptr.size();
-		node_ptr.push_back(n.second);
+		node_index[n] = node_ptr.size();
+		node_ptr.push_back(n);
 	}
-	k = proxy.size();
+	k = node_ptr.size();
 }
 
 
 coordinator::coordinator(network* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
-	in_naive_mode(false), k(proxy.size()),
-	Qest_series("gm_qest", "%.10g", [&]() { return query.Qest;} ),
+	in_naive_mode(false), k(0),
+	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
 	Ubal(proj),
 	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
 {  
@@ -382,11 +384,12 @@ coordinator::~coordinator()
 *********************************************/
 
 
-gm::network::network(stream_id _sid, const projection& _proj, double _beta)
+gm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
-	set_name("GM");
+	set_name(_name);
+	set_protocol_name("GM");
 	
 	setup(proj, beta);
 	on(START_STREAM, [&]() { 
@@ -404,7 +407,7 @@ void gm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
-		sites[rec.hid]->update_stream();		
+		source_site(rec.hid)->update_stream();		
 }
 
 void gm::network::process_init()
@@ -420,10 +423,6 @@ void gm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 
-	network_comm_results.max_error = beta;
-	network_comm_results.sites = sites.size();
-	network_comm_results.streams = 1;
-	network_comm_results.local_viol = 0;
 	network_comm_results.fill_columns(this);
 	network_comm_results.emit_row();
 

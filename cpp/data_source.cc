@@ -8,7 +8,6 @@
 
 #include <boost/format.hpp>
 #include <boost/endian/conversion.hpp>
-//#include <boost/filesystem/path.hpp>
 
 #include "data_source.hh"
 #include "hdf5_util.hh"
@@ -19,25 +18,27 @@ using namespace dds;
 
 // Time Window
 
-time_window_source::time_window_source(datasrc _sub, dds::timestamp _w)
-	: sub(_sub), Tw(_w) 
-	{
-		set_metadata(sub->metadata());
+time_window_source::time_window_source(datasrc _sub, dds::timestamp _w, bool _flush)
+	: sub(_sub), Tw(_w), flush(_flush)
+{
+	set_metadata(sub->metadata());
 
-		// double the size
-		dsm.set_size( 2*dsm.size() );
+	// double the size
+	dsm.set_size( 2*dsm.size() );
+	// without flush, we are screwing up size
+	if(! _flush) dsm.set_valid(false);
 
-		// set the window
-		dsm.set_window(Tw);
+	// set the window
+	dsm.set_window(Tw);
 
-		// adjust the limits
-		dsm.set_ts_range( 
-			min(dsm.mintime(), dsm.mintime()+Tw),
-			max(dsm.maxtime(), dsm.maxtime()+Tw)
-		  );
+	// adjust the limits
+	timestamp tstart = min(dsm.mintime(), dsm.mintime()+Tw);
+	timestamp tend = _flush ? max(dsm.maxtime(), dsm.maxtime()+Tw) : dsm.maxtime();
+	dsm.set_ts_range( tstart, tend );
 
-		advance();
-	}
+	// init
+	advance();
+}
 
 void time_window_source::advance()
 {
@@ -49,30 +50,149 @@ void time_window_source::advance()
 			advance_from_sub();
 	} else if(sub->valid())
 			advance_from_sub();
-	else if(! window.empty())
+	else if(! window.empty() && flush)
 		advance_from_window();
 	else
 		isvalid = false;
 }
 
+
 void time_window_source::advance_from_window()
 {
 	rec = window.front();
-	window.pop();
+	window.pop_front();
 }
 
 void time_window_source::advance_from_sub()
 {
 	rec = sub->get();
 	sub->advance();
-	window.push(rec);
+	window.push_back(rec);
 	window.back().upd = -window.back().upd;
 	window.back().ts += Tw;
 }
 
+void time_window_source::rewind()
+{
+	sub->rewind();
+	window.clear();
+	isvalid = true;
+	advance();	
+}
 
 // Fixed window
 
+
+fixed_window_source::fixed_window_source(datasrc _sub, size_t _W, bool _flush)
+	: sub(_sub), W(_W), flush(_flush)
+{
+	set_metadata(sub->metadata());
+
+	// double the size
+	dsm.set_size( 2*dsm.size() );
+	// without flush, we are screwing up size
+	if(! _flush) dsm.set_valid(false);
+
+	// set the window
+	dsm.set_window(W);
+
+	// init
+	advance();
+}
+
+
+void fixed_window_source::advance()
+{
+	if(!isvalid) return;
+	if(sub->valid() && !window.empty()) {
+		if(window.size() >= W)
+			advance_from_window();
+		else
+			advance_from_sub();
+	} else if(sub->valid())
+			advance_from_sub();
+	else if(! window.empty() && flush)
+		advance_from_window();
+	else
+		isvalid = false;
+}
+
+
+void fixed_window_source::advance_from_window()
+{
+	rec = window.front();
+	rec.ts = tflush;
+	window.pop_front();
+}
+
+void fixed_window_source::advance_from_sub()
+{
+	rec = sub->get();
+	tflush = rec.ts;
+	sub->advance();
+	window.push_back(rec);
+	window.back().upd = -window.back().upd;
+}
+
+
+void fixed_window_source::rewind()
+{
+	sub->rewind();
+	window.clear();
+	isvalid = true;
+	advance();
+}
+
+
+
+//-----------------------------
+//	Warmup loading
+//-----------------------------
+
+
+void data_source::warmup_time(timestamp wtime, buffered_dataset* buf)
+{
+	if(! valid()) return;
+
+	timestamp tstart = get().ts;
+	timestamp tend = tstart + wtime;
+
+	size_t count = 0;
+	while(valid() && get().ts < tend) {
+		if(buf)
+			buf->push_back(get());
+		advance();
+		count++;
+	}
+
+	if(!valid())
+		throw std::runtime_error("Warmup exhausted the data source");
+
+	// fix metadata
+	set_warmup_time(wtime);
+	dsm.set_size(dsm.size()-count);
+	dsm.set_ts_range(tend, dsm.maxtime());
+}
+
+void data_source::warmup_size(size_t wsize, buffered_dataset* buf)
+{
+	if(! valid()) return;
+
+	size_t count = 0;
+	while(valid() && count < wsize)	{
+		if(buf)
+			buf->push_back(get());
+		advance();
+		count++;		
+	}
+
+	if(!valid())
+		throw std::runtime_error("Warmup exhausted the data source");
+
+	set_warmup_size(wsize);
+	dsm.set_size(dsm.size()-count);
+	dsm.set_ts_range(get().ts, dsm.maxtime());
+}
 
 
 
@@ -239,7 +359,6 @@ public:
 	: filepath(fpath), fstream(0)
 	{
 		fstream = fopen(filepath.c_str(), mode);
-		//boost::filesystem::path path(fpath);
 		string nm = basename((char*) filepath.c_str());
 		dsm.set_name(nm);
 		if(! fstream) {

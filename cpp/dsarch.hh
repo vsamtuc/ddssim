@@ -31,6 +31,27 @@ class channel;
 
 /**
 	RPC code type.
+
+	An rpcc code is a 32-bit number, representing
+	a uni-directional channel class (or set). These
+	sets of channels are called endpoints.
+
+	Each channel is a triple (src, dest, rpcc), where
+	\c src is the source host, \c dst is the destination host
+	and \c rpcc is the unique rpc code it is associated with.
+
+	A remote method (i.e., remote function) can have
+	two endpoints, if it is bidirectional, or only 
+	one endpoint, if it is \c oneway. But see broadcast channels.
+
+	The bits are encoded as follows:
+	- The least significant bit corresponds to the
+	  request channel (0) or response channel (1)
+	- The \c RPCC_BITS_PER_IFC least significant bits
+	  correspond to the methods of an interface.
+	  There can be up to 127 such methods in the interface,
+	  with up to 2 endpoints each.
+
   */
 typedef uint32_t rpcc_t;
 
@@ -77,10 +98,10 @@ constexpr host_addr unknown_addr = std::numeric_limits<host_addr>::max();
 
 	Channels are used to collect network statistics. Each 
 	channel counts the number of messages and the total message
-	size. A channel is defined by
+	size (in bytes). A channel is defined by
 	- the source host
 	- the destination host
-	- the type of message
+	- the type of message (rpcc code)
 
 	Message types are defined by an RPC (message) code. Each rpc endpoint
 	(method) is associated with a request channel, and---if it is
@@ -94,11 +115,16 @@ constexpr host_addr unknown_addr = std::numeric_limits<host_addr>::max();
 	\f[  \prod_{i=1}^m n_i d_i q_i  \f] 
 	request channels in the network, and up to that many response channels.
 
-	Finally, a channel can be a broadcast channel. This is always associated
-	with a request for come rpc method and a special destination host,
-	which is marked as a broadcast host.
+	Finally, a channel can be a multicast channel. This is always associated
+	with some one-way rpc method, sendind data from a single source host A
+	to a destination host group B. Again, there are two channels associated with
+	A and B. One channel counts the traffic sent by A, and the second channel
+	counts the traffic received by all the hosts in host group B. For example,
+	if there are 3 hosts in group B, and a message of 100 bytes is sent, 
+	one channel will register one additional message and 100 additional bytes,
+	and the other will register 3 additional messages and 300 additional bytes.
+	Note that the membership of a host group can change dynamically.
 
-	Note that the source host cannot be a broadcast host.
   */
 class channel
 {
@@ -110,30 +136,77 @@ protected:
 
 	channel(host *s, host* d, rpcc_t rpcc);
 public:
+	virtual ~channel();
 
+	/** The source host */
 	inline host* source() const { return src; }
+
+	/** The destination host */
 	inline host* destination() const { return dst; }
+
+	/** The rpcc code */
 	inline rpcc_t rpc_code() const { return rpcc; }
 
+	/** Number of messages sent */
 	inline auto messages() const { return msgs; }
+
+	/** Number of bytes sent */
 	inline auto bytes() const { return byts; }
 
-	void transmit(size_t msg_size);
+	/** 
+		Number of messages received. 
+		For broadcast channels this is not the same as
+		the number of messages sent.
+	  */
+	virtual size_t messages_received() const { return msgs; }
+
+	/** 
+		Number of bytes received. 
+		For broadcast channels, this is not the same as the
+		bytes sent.
+	  */
+	virtual size_t bytes_received() const { return byts; }
+
+	/**
+		Register the transmission of a message on this channel
+
+		@param msg_size the number of bytes in the transmitted message.
+	  */
+	virtual void transmit(size_t msg_size);
+
+	virtual string repr() const;
+
 	friend class basic_network;
+	friend class host;
 };
 
+
+class broadcast_channel : public channel
+{
+protected:
+	size_t rxmsgs, rxbyts;
+
+	broadcast_channel(host *s, host_group* d, rpcc_t rpcc);	
+public:
+
+	virtual size_t messages_received() const override;
+	virtual size_t bytes_received() const override;
+	virtual void transmit(size_t msg_size) override;
+
+	virtual string repr() const override;
+
+	friend class basic_network;
+	friend class host;
+
+};
 
 
 typedef std::unordered_map<host*, channel*> channel_map;
 typedef std::unordered_set<channel*> channel_set;
 typedef std::unordered_set<host*> host_set;
 
-
-
-
-
 /**
-	Hosts are used as addresses in the basic_network.
+	Hosts are used as nodes in the basic_network.
 
 	Hosts can be named, for more friendly output. A host
 	can represent a single network destination (site), or a set
@@ -205,29 +278,55 @@ public:
 
 /**
 	A host group represents a broadcast address.
-
-	To build the membership of a group, one has to
-	add (non-group) hosts via method `join`.
+	
+	This is simply an abstract base class. The implementation
+	of this class can be anything. All that this class interface
+	provides is the methods that are required by the
+	communication traffic computation.
   */
 class host_group : public host
 {
-protected:
-	host_set grp;
-	friend class basic_network;
 public:
 	/** Constructor  */
 	host_group(basic_network* nw);
 
 	/**
-		Add a simple host to this group.
-	  */
-	void join(host* h);
-
-	/**
 		The members of the group
 	  */
-	const host_set& members() const { return grp; }
+	virtual size_t receivers(host* sender)=0;
 };
+
+
+/**
+	A typed implementation of \c host_group
+
+	This implementation stores the group hosts in an \c std::set.
+  */
+template <typename Process>
+struct mcast_group : host_group
+{ 
+	typedef set<Process*> Container;
+private:
+	Container memb;
+public:
+	typedef typename Container::iterator iterator;
+
+	inline mcast_group(basic_network* _nw) : host_group(_nw) { }
+
+	inline void join(Process* host) {  memb.insert(host); }
+	inline void leave(Process* host) { memb.erase(host); }
+
+	inline bool contains(Process* host) const { return memb.count(host)>0; }
+	inline iterator begin() { return memb.begin(); }
+	inline iterator end() { return memb.end(); }
+
+	virtual size_t receivers(host* sender) override {
+		auto snd = dynamic_cast<Process*>(sender);
+		return memb.size() - memb.count(snd);
+	}
+
+};
+
 
 
 
@@ -235,6 +334,7 @@ public:
 	An rpc descriptor object.
 
 	This is a base class for interfaces and methods.
+	It only holds the rpcc code for the interface or method.
   */
 struct rpc_obj
 {
@@ -244,7 +344,11 @@ struct rpc_obj
 };
 
 /**
-	Represents a method in an rpc protocol
+	Represents a method in an rpc protocol.
+
+	A remote method represents a method that hosts can call
+	on other hosts. This type basically only holds the name
+	of the remote method and whether it is one-way or not.
   */
 struct rpc_method : rpc_obj, named
 {
@@ -261,7 +365,11 @@ struct rpc_method : rpc_obj, named
 };
 
 /**
-	Represents an interface in an rpc protocol
+	Represents an interface in an rpc protocol. 
+
+	An interface is like a 'remote type'. It represents
+	a collection of remote functions that are implemented on
+	a remote host.
   */
 struct rpc_interface : rpc_obj, named
 {
@@ -300,10 +408,15 @@ struct rpc_interface : rpc_obj, named
 };
 
 /**
-	A collection of rpc interfaces.
+	\brief A collection of rpc interfaces. 
+
+	A protocol is the collection of RPC interfaces used in a network.
   */
-struct rpc_protocol
+struct rpc_protocol : public named
 {
+	rpc_protocol() {}
+	rpc_protocol(const string& name) : named(name) {}
+
 	vector<rpc_interface> ifaces;
 	unordered_map<string, size_t> name_map;
 
@@ -341,32 +454,58 @@ struct rpc_protocol
 
 struct rpc_call;
 
+
+
 /**
 	An rpc proxy represents a proxy object for some host.
+
+	When host A wants to call a remote method on host B, 
+	it makes the call through an rpc proxy method, so that
+	the network traffic can be accounted for. Host A is the
+	owner of the proxy and host B is the proxied host (process).
+
+	Each proxy is associated with an rpc interface, which
+	represents the collection of remote calls (rpc functions)
+	being proxied. In middleware terms, the proxy instantiates
+	the interface.
+
+	This class serves as the base class for the
+	\c remote_proxy<T> template class.
 
 	We do not want to pollute the class namespace, in order
 	to avoid collisions with method names. Therefore, all
 	member names start with `_r_`.
   */
-struct rpc_proxy
+class rpc_proxy
 {
+public:
+	/** Interface code for the proxy. */
 	rpcc_t _r_ifc;
-	vector<rpc_call*> _r_calls;
-	host* _r_owner;
-	host* _r_proc = nullptr;
 
-	rpc_proxy(const string& name, host* _own);
-	size_t _r_register(rpc_call* call);
-	void _r_connect(host* dst);
+	/** The collection of calls */
+	vector<rpc_call*> _r_calls;
+
+	/** The owner of the proxy is the process that holds the proxy */
+	host* _r_owner;
+
+	/** This is the node being proxied. */
+	host* _r_proc = nullptr;
 private:
 	template <typename Dest>
 	friend class remote_proxy;
+	template <typename Dest>
+	friend class multicast_proxy;
+	friend class rpc_call;
 	rpc_proxy(size_t ifc, host* _own);
+	size_t _r_register(rpc_call* call);
+	void _r_connect(host* dst);
+public:
+	rpc_proxy(const string& name, host* _own);
 };
 
 
 /**
-	An rcp method belongs to some specific rpc proxy.
+	An rcp call  belongs to some specific rpc proxy.
   */
 struct rpc_call
 {
@@ -378,6 +517,7 @@ protected:
 	bool one_way;
 public:
 	rpc_call(rpc_proxy* _prx, bool _oneway, const string& _name);
+	virtual ~rpc_call();
 
 	void connect(host* dst);
 
@@ -425,18 +565,26 @@ protected:
 	host_addr new_host_addr;
 	host_addr new_group_addr;
 
-
 	// rpc protocol
 	rpc_protocol rpctab;
 
 	friend class host;
+
 public:
 
+	/** A default constructor */
 	basic_network();
 	virtual ~basic_network();
 
-	/// standard group, every host is added to it
-	host_group all_hosts;
+	/// Standard group, every host is added to it, although
+	/// not much use, except taking an address.
+	/// Maybe in the future...
+	struct all_hosts_group : host_group
+	{
+		all_hosts_group(basic_network* _nw) : host_group(_nw) {}
+		size_t receivers(host* h) { return net()->_hosts.size()-1; }
+	};
+	all_hosts_group all_hosts;
 
 	/// The set of hosts
 	inline const host_set& hosts() const { return _hosts; }
@@ -495,6 +643,11 @@ public:
 	const rpc_protocol& rpc() const { return rpctab; }
 
 	/**
+		Set the protocol name
+	  */
+	void set_protocol_name(const string& pname) { rpctab.set_name(pname); }
+
+	/**
 		Create a new RPC channel.
 
 		@param src the source host
@@ -503,6 +656,12 @@ public:
 		@param dir the direction
 	 */
 	channel* connect(host* src, host* dest, rpcc_t rpcc);
+
+	/**
+		Destroy an RPC channel.
+	  */
+	void disconnect(channel* c);
+
 
 	/**
 		Assign an address to a host. 
@@ -528,7 +687,12 @@ public:
 	  */
 	void reserve_addresses(host_addr a);
 
+	/**
+		Get a host by the address if it exists.
 
+		If no host exists with this address, this function returns null.
+	  */
+	host* by_addr(host_addr a) const;
 };
 
 
@@ -551,6 +715,11 @@ public:
 		The default implementation does nothing.
 	  */
 	virtual void setup_connections() { }
+
+	/**
+		This is called for every node before network finalization.
+	 */
+	virtual void finalize() { }
 };
 
 
@@ -569,7 +738,8 @@ public:
 	local_site(basic_network* nw, source_id _sid) 
 	: process(nw), sid(_sid) 
 	{
-		set_addr(_sid);
+		if(!set_addr(_sid))
+			throw std::runtime_error("Local site could not acquire the hid address");
 	}
 
 	/**
@@ -616,7 +786,7 @@ struct star_network : public basic_network
 
 	set<source_id> hids;
 	Hub* hub;
-	unordered_map<source_id, Site*> sites;
+	vector<Site*> sites;
 
 	star_network(const set<source_id>& _hids) 
 	: hids(_hids), hub(nullptr) 
@@ -627,25 +797,45 @@ struct star_network : public basic_network
 		}
 	}
 
+	inline site_type* source_site(source_id hid) const {
+		return static_cast<site_type*>(by_addr(hid));
+	}
+ 
 	template <typename ... Args>
 	Net* setup(Args...args)
 	{
 		// create the nodes
 		hub = new Hub((Net*)this, args...);
 
+
 		for(auto hid : hids) 
 		{
 			Site* n = new Site((Net*)this, hid, args...);
-			sites[hid] = n;
+			n->set_addr(hid);
+			sites.push_back(n);
 		}
 
 		// make the connections
 		hub->setup_connections();
 		for(auto n : sites) {
-			n.second->setup_connections();
+			n->setup_connections();
 		}
 
 		return (Net*)this;
+	}
+
+	~star_network() 
+	{
+		// Delete the nodes that we created...
+		for(auto n : sites) {
+			n->finalize();
+		}
+		hub->finalize();
+
+		for(auto n : sites) {
+			delete n;
+		}
+		delete hub;
 	}
 };
 
@@ -786,6 +976,8 @@ struct remote_method;
 	- its _owner_ is an object of any class which is a subclass of host
 	- its _destination_ is an object of a subclass of \c Process
 
+	This is a typed subclass of \c rpc_proxy, with no attributes.
+
 	@tparam Process the base class for proxied objects.
   */
 template <typename Process>
@@ -802,23 +994,56 @@ public:
 	{ }
 
 	/**
+		Connects this proxy to a destination.
+		This going to be a unicast proxy.
 	  */
-	inline void operator<<=(Process* dest) {
-		_r_connect(dest);
+	inline void operator<<=(Process* dest) { _r_connect(dest); 	}
+
+	/**
+		Connects this proxy to a destination.
+		This going to be a unicast proxy.
+	  */
+	inline void operator<<=(Process& dest) { _r_connect(&dest); }
+
+	/**
+		Connects this proxy to a destination.
+		This going to be a multicast proxy.
+	  */
+	inline void operator<<=(mcast_group<Process>* dest) { _r_connect(dest); 	}
+
+	/**
+		Connects this proxy to a destination.
+		This going to be a multicast proxy.
+	  */
+	inline void operator<<=(mcast_group<Process>& dest) { _r_connect(&dest); }
+
+	/**
+		The process proxied by this proxy.
+	  */
+	inline Process* proc() const { 
+		return dynamic_cast<Process*>(_r_proc); 
 	}
 
-	inline Process* proc() const { return (Process*) _r_proc; }
+	inline mcast_group<Process>* proc_group() const {
+		return dynamic_cast<mcast_group<Process>*>(_r_proc); 		
+	}
 };
 
 
+/**
+	This is a base class for \c remote_method<T,...>.
+
+	This is a typed subclass of \c rpc_call, with no attributes.
+  */
 template <typename Dest>
 struct proxy_method  : rpc_call
 {
 	typedef remote_proxy<Dest> proxy_type;
-	proxy_type* proxy;
+	
+	inline proxy_type* proxy() const { return static_cast<proxy_type*>(_proxy); }
 
 	inline proxy_method(proxy_type* _proxy, bool one_way, const string& _name) 
-	: rpc_call(_proxy, one_way, _name), proxy(_proxy) {}
+	: rpc_call(_proxy, one_way, _name) {}
 
 	inline void transmit_request(size_t msg_size) const {
 		this->request_channel()->transmit(msg_size);		
@@ -849,8 +1074,10 @@ struct remote_method : proxy_method<Dest>
 
 	inline Response operator()(Args...args) const
 	{
+		Dest* target = this->proxy()->proc();
+		assert(target);
 		this->transmit_request(message_size(args...));
-		Response r = (this->proxy->proc()->* (this->method))(
+		Response r = (target->* (this->method))(
 			std::forward<Args>(args)...
 			);
 		if( __transmit_response(r) )
@@ -872,11 +1099,23 @@ struct remote_method<Dest, void, Args...> : proxy_method<Dest>
 
 	inline void operator()(Args...args) const
 	{
-		this->transmit_request(message_size(args...));
-		(this->proxy->proc()->* (this->method))
-			(
-			std::forward<Args>(args)...
-			);
+		// Here we must distinguish the case of having a unicast or
+		// multicast call
+
+		// Try the unicast case first, as it is probably more common
+		Dest* utarget = this->proxy()->proc();
+		if(utarget!=nullptr) {
+			// unicast case
+			this->transmit_request(message_size(args...));
+			(utarget->* (this->method))(	std::forward<Args>(args)...	);
+		} else {
+			mcast_group<Dest>* mtarget = this->proxy()->proc_group();
+			assert(mtarget);
+			this->transmit_request(message_size(args...));
+			// issue the calls
+			for(Dest* target : *mtarget) 			
+				(target->* (this->method))(	std::forward<Args>(args)...	);
+		}
 	}
 };
 
@@ -896,6 +1135,8 @@ make_remote_method(
  decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
  	&RClass::RMethod, #RMethod )) RMethod  \
  { this, &RClass::RMethod, #RMethod }
+
+
 
 
 
@@ -974,7 +1215,7 @@ msgwrapper<T> wrap(T& p) { return msgwrapper<T>(&p); }
 /**
 	A proxy map is a map container for mapping host objects to their proxies.
 
-	Ecah site maintaining a set of proxies on an equal nuber of objects, can
+	Each site maintaining a set of proxies on a number of objects, can
 	use a proxy map store pointers to its proxies.
  */
 template <typename ProxyType, typename ProxiedType = typename ProxyType::proxied_type>
@@ -984,36 +1225,84 @@ public:
 	typedef  ProxiedType  proxied_type;
 	typedef ProxyType  proxy_type;
 
-	process* owner;
+	/**
+		Create an unowned empty proxy map
+	  */
+	proxy_map() : owner(nullptr) {}
 
-	proxy_map() {}
-
+	/**
+		Create a proxy for the given owner
+	  */
 	proxy_map(process* _owner) : owner(_owner) {  }
 
-	proxy_type& operator[](proxied_type* proc) {
-		return * pmap[proc];
+	/**
+		Destroy proxy map and all proxies it created
+	  */
+	~proxy_map() {
+		// remove the proxies 
+		for(auto m : pmap)
+			delete m.second;
+		for(auto m : mpmap)
+			delete m.second;
 	}
 
-	void add(proxied_type* proc) {
-		if(pmap.find(proc)!=pmap.end()) return;
-		pmap[proc] = new proxy_type(owner);
-		* pmap[proc] <<= (proc);
+	/**
+		Get the proxy for the given process.
+	  */
+	proxy_type& operator[](proxied_type* proc) { return * add(proc); }
+	proxy_type& operator[](proxied_type& proc) { return * add(&proc); }
+
+	/**
+		Get the proxy for a given process group.
+	  */
+	proxy_type& operator[](mcast_group<proxied_type>* mproc) { return * add(mproc); }
+	proxy_type& operator[](mcast_group<proxied_type>& mproc) { return * add(&mproc); }
+
+	/**
+		Add a process to the proxy map, creating its proxy.
+	  */
+	proxy_type* add(proxied_type* proc) {
+		if(owner==nullptr)
+			throw std::runtime_error("Proxy map has not been owned yet.");
+		auto it =  pmap.find(proc);
+		if(it!=pmap.end()) return it->second;
+		proxy_type* prx = new proxy_type(owner);
+		*prx <<= proc;
+		pmap[proc] = prx;
+		return prx;
 	}
 
-	template <typename StarNet>
-	void add_sites(const StarNet* net) {
-		for(auto&& i : net->sites) 
-			add(i.second);
+	/** 
+		Add a mcast_group to the map.
+	  */
+	proxy_type* add(mcast_group<proxied_type>* mproc) {
+		if(owner==nullptr)
+			throw std::runtime_error("Proxy map has not been owned yet.");
+		auto it =  mpmap.find(mproc);
+		if(it!=mpmap.end()) return it->second;
+		proxy_type* prx = new proxy_type(owner);
+		*prx <<= mproc;
+		mpmap[mproc] = prx;
+		return prx;
 	}
 
-	auto begin() const { return pmap.begin(); }
-	auto end() const { return pmap.end(); }
+	/**
+		Add proxies to all sites in a container of sites.
 
-	size_t size() const { return pmap.size(); }
+		It the owner is a member of the container, it will be
+		excluded.
+	  */
+	template <typename SiteContainer>
+	void add_sites(const SiteContainer& sites) {
+		for(auto&& h : sites) 
+			if(h != owner) add(h);
+	}
+
 
 private:
+	process* owner;
 	std::map<proxied_type*, proxy_type*> pmap;
-
+	std::map<mcast_group<proxied_type>*, proxy_type*> mpmap;
 };
 
 
@@ -1025,20 +1314,31 @@ private:
 	--------------------------------------- */
 
 /**
- 	A fluent query interface over sets of channels
+ 	A fluent query interface over sets of channels.
+
+ 	This can be used to rapidly select a particular set of
+ 	channels from the network. It is a rather slow implementation,
+ 	but it is quite adequate for statistics that will only be computed
+ 	at the end of an experiment.
   */
 struct chan_frame : vector<channel*>
 {
 	typedef vector<channel*> container;
 
 	chan_frame() {}
+
+	// single channel
 	chan_frame(channel* c) : container{ c } { }
+
+	// channel set
 	chan_frame(const channel_set& cs) 
 	: container(cs.begin(), cs.end()) { }
 
+	// Constructor from network
 	chan_frame(const basic_network& nw) : chan_frame(nw.channels()) {}
 	chan_frame(const basic_network* nw) : chan_frame(nw->channels()) {}
 
+	// The protocol of the network
 	inline const rpc_protocol& rpc() const {
 		if(! empty())
 			return front()->source()->net()->rpc();
@@ -1046,17 +1346,55 @@ struct chan_frame : vector<channel*>
 			return rpc_protocol::empty;
 	}
 
-	inline size_t count() const {
+	//
+	// Statistics. Only basic tallies are supported, but it is
+	// trivial to use a frame with more complex queries, in code.
+	//
+
+	// total messages over all channels
+	inline size_t msgs() const {
 		size_t ret=0;
 		for(auto c : *this) ret += c->messages();
 		return ret;
 	}
 
-	inline size_t sum() const {
+	// total bytes over all channels
+	inline size_t bytes() const {
 		size_t ret=0;
 		for(auto c:*this) ret += c->bytes();
 		return ret;
 	}
+
+
+	// total received messages over broadcast channels
+	inline size_t recv_msgs() const {
+		size_t ret=0;
+		for(auto c : *this) {
+			broadcast_channel* bc = dynamic_cast<broadcast_channel*>(c);
+			if(bc!=nullptr)
+				ret += c->messages_received();
+		}
+		return ret;
+	}
+
+
+	// total received bytes over broadcast channels
+	inline size_t recv_bytes() const {
+		size_t ret=0;
+		for(auto c : *this) {
+			broadcast_channel* bc = dynamic_cast<broadcast_channel*>(c);
+			if(bc!=nullptr)
+				ret += c->bytes_received();
+		}
+		return ret;
+	}
+
+
+	//
+	//
+	//  Selection facilities
+	//
+	//
 
 	template <typename Pred>
 	inline chan_frame select(const Pred& pred) const& {
@@ -1065,6 +1403,11 @@ struct chan_frame : vector<channel*>
 		return cf;		
 	}
 
+	//
+	// Filter by source / destination
+	//
+
+	// Filter by source
 	chan_frame src(host* _src) const {
 		return select([&](channel *c) {
 			return c->source() == _src;
@@ -1076,6 +1419,7 @@ struct chan_frame : vector<channel*>
 		});
 	}
 
+	// Filter by destination
 	chan_frame dst(host* _src) const {
 		return select([&](channel *c) {
 			return c->destination() == _src;
@@ -1087,11 +1431,29 @@ struct chan_frame : vector<channel*>
 		});
 	}
 
+	// Filter only unicast/multicast channels
+	chan_frame unicast() const {
+		return select([&](channel *c) {
+			return ! c->destination()->is_bcast();
+		});		
+	}
+	chan_frame multicast() const {
+		return select([&](channel *c) {
+			return c->destination()->is_bcast();
+		});		
+	}
+
+	// 
+	// filter by endpoint
+	//
+
 	chan_frame endp(rpcc_t code, rpcc_t mask) const {
 		return select([&](channel *c) {
 			return (c->rpc_code()&mask) == (code&mask);
 		});
 	}
+
+	// By interface (rpc_interface)
 	chan_frame endp(const type_info& ti) const {
 		return endp(rpc().code(ti), RPCC_IFC_MASK);
 	}
@@ -1099,6 +1461,7 @@ struct chan_frame : vector<channel*>
 		return endp(rpc().code(ifname), RPCC_IFC_MASK);
 	}
 
+	// By remote method (rpc_method)
 	chan_frame endp(const type_info& ti, const string& mname) const {
 		return endp(rpc().code(ti, mname), RPCC_IFC_MASK);
 	}
@@ -1106,6 +1469,7 @@ struct chan_frame : vector<channel*>
 		return endp(rpc().code(ifname, mname), RPCC_IFC_MASK);
 	}
 
+	// By endpoint direction
 	chan_frame endp_req() const {
 		return endp(0, RPCC_RESP_MASK);
 	}
@@ -1113,9 +1477,23 @@ struct chan_frame : vector<channel*>
 		return endp(1, RPCC_RESP_MASK);
 	}
 
+	//
+	// Union, negation
+	//
+	chan_frame union_with(const chan_frame& other) const {
+		channel_set u;
+		u.insert(begin(), end());
+		u.insert(other.begin(), other.end());
+		return chan_frame(u);
+	}
+
+	chan_frame except(const chan_frame& other) const {
+		channel_set u(begin(), end());
+		for(auto&& c : other) u.erase(c);
+		return chan_frame(u);
+	}
+
 };
-
-
 
 
 

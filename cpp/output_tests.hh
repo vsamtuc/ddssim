@@ -46,8 +46,9 @@ struct myresults  : result_table, table_mixin1, table_mixin2
 	}
 };
 
+namespace dds { class OutputTestSuite; }
 
-class OutputTestSuite : public CxxTest::TestSuite
+class dds::OutputTestSuite : public CxxTest::TestSuite
 {
 public:
 
@@ -83,7 +84,7 @@ public:
 		char* buf = NULL;
 		size_t len = 0;
 		FILE* mf = open_memstream(&buf, &len);
-		output_file* f = new output_c_file(mf);
+		output_file* f = new output_c_file(mf, false, text_format::csvtab);
 		f->bind(tab);
 
 		tab.prolog();
@@ -111,8 +112,8 @@ public:
 	{
 		output_c_file* fset[2];
 
-		fset[0] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
-		fset[1] = new output_c_file(fmemopen(NULL, 8192, "w+"),true);
+		fset[0] = new output_c_file(fmemopen(NULL, 8192, "w+"),true, text_format::csvtab);
+		fset[1] = new output_c_file(fmemopen(NULL, 8192, "w+"),true, text_format::csvtab);
 
 		silly_table tab("SILLY");
 
@@ -522,7 +523,7 @@ public:
 
 		TS_ASSERT_EQUALS(table.size(), 5);
 
-		output_mem_file f;
+		output_mem_file f(text_format::csvtab);
 		table.bind(&f);
 
 		table.prolog();
@@ -543,6 +544,23 @@ public:
 			);
 	}
 
+
+	void test_enum_repr()
+	{
+		TS_ASSERT_EQUALS(open_mode_repr.name() , "dds::open_mode");
+		TS_ASSERT_EQUALS(open_mode_repr["truncate"], open_mode::truncate);
+		TS_ASSERT_EQUALS(open_mode_repr["append"], open_mode::append);
+
+		TS_ASSERT( open_mode_repr.is_member("append") );
+		TS_ASSERT( open_mode_repr.is_member("truncate") );
+		TS_ASSERT( !open_mode_repr.is_member("") );
+
+
+		TS_ASSERT_EQUALS(text_format_repr.name(), "dds::text_format");
+		TS_ASSERT(! text_format_repr.is_member("truncate"));
+		TS_ASSERT( text_format_repr.is_member("csvrel") );
+		TS_ASSERT_THROWS(text_format_repr["goo"], std::out_of_range);
+	}
 
 };
 

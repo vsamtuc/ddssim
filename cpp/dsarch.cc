@@ -24,7 +24,6 @@ host::host(basic_network* n, bool _b)
 {
 	if(!_bcast) {
 		_net->_hosts.insert(this);
-		_net->all_hosts.join(this);
 	}
 	else
 		_net->_groups.insert(this);
@@ -35,7 +34,18 @@ host::host(basic_network* n)
 { }
 
 host::~host()
-{ }
+{ 
+	// nullify incoming channels
+	for(auto c: _incoming)
+		c->dst = nullptr;
+
+	// remove from network
+	if(!_bcast) {
+		_net->_hosts.erase(this);
+	}
+	else
+		_net->_groups.erase(this);
+}
 
 
 host_addr host::addr() 
@@ -75,17 +85,10 @@ host_group::host_group(basic_network* n)
 { }
 
 
-void host_group::join(host* h)
-{
-	if(h->is_bcast())
-		throw std::logic_error("A host group cannot join another");
-	grp.insert(h);
-}
-
 
 //-------------------
 //
-//  channel
+//  channels
 //
 //-------------------
 
@@ -95,11 +98,51 @@ channel::channel(host* _src, host* _dst, rpcc_t _rpcc)
 	: src(_src), dst(_dst), rpcc(_rpcc), msgs(0), byts(0) 
 {  }
 
+channel::~channel()
+{
+
+}
 
 void channel::transmit(size_t msg_size)
 {
 	msgs++;
 	byts += msg_size;
+}
+
+
+broadcast_channel::broadcast_channel(host *s, host_group* d, rpcc_t rpcc)
+	: channel(s,d,rpcc), rxmsgs(0), rxbyts(0)
+{
+}
+
+
+size_t broadcast_channel::messages_received() const { return rxmsgs; }
+
+size_t broadcast_channel::bytes_received() const { return rxbyts; }
+
+void broadcast_channel::transmit(size_t msg_size)
+{
+	channel::transmit(msg_size);
+	size_t gsize = static_cast<host_group*>(dst)->receivers(src);
+	rxmsgs += gsize;
+	rxbyts += gsize*msg_size;
+}
+
+
+string channel::repr() const {
+	ostringstream ss;
+	ss << "[chan " << src->addr() << "->" << dst->addr() << " traffic:"
+		<< msgs << "," << byts << "]";
+	ss.flush();
+	return ss.str();
+}
+
+string broadcast_channel::repr() const {
+	ostringstream ss;
+	ss << "[chan " << src->addr() << "->" << dst->addr() << " traffic:"
+		<< msgs << "(" << rxmsgs <<  ")," << byts << "(" << rxbyts << ")]";
+	ss.flush();
+	return ss.str();
 }
 
 
@@ -121,8 +164,18 @@ channel* basic_network::connect(host* src, host* dst, rpcc_t endp)
 			return chan;
 	}
 
+	if(src->is_bcast())
+		throw std::logic_error("A channel source cannot be a host group");
+	if(dst->is_bcast() && !rpc().get_method(endp).one_way) {
+		throw std::logic_error("A broadcast channel on a non-one_way method cannot be created");
+	}
+
 	// create new channel
-	channel* chan = new channel(src, dst, endp);
+	channel* chan;
+	if(dst->is_bcast())
+		chan = new broadcast_channel(src, static_cast<host_group*>(dst), endp);
+	else
+	 	chan = new channel(src, dst, endp);
 
 	// add it to places
 	_channels.insert(chan);
@@ -131,6 +184,14 @@ channel* basic_network::connect(host* src, host* dst, rpcc_t endp)
 	return chan;
 }
 
+
+void basic_network::disconnect(channel* c)
+{
+	_channels.erase(c);
+	if(c->dst)
+		c->dst->_incoming.erase(c);
+	delete c;
+}
 
 rpcc_t basic_network::decl_interface(const std::type_info& ti)
 {
@@ -168,7 +229,7 @@ basic_network::basic_network()
 bool basic_network::assign_address(host* h, host_addr a)
 {
 	if(h->_addr != unknown_addr)
-		throw std::invalid_argument("host already has an address assignd");
+		return h->_addr == a;
 
 	if(a==unknown_addr) {
 		// assign a default address
@@ -211,10 +272,14 @@ void basic_network::reserve_addresses(host_addr a)
 	}
 }
 
-
+host* basic_network::by_addr(host_addr a) const
+{
+	auto it = addr_map.find(a);
+	return it==addr_map.end() ? nullptr : it->second;
+}
 
 basic_network::~basic_network()
-{ 
+{	
 }
 
 
@@ -371,8 +436,6 @@ const rpc_protocol rpc_protocol::empty;
 //-------------------
 
 
-
-
 rpc_proxy::rpc_proxy(size_t ifc, host* _own)
 : _r_ifc(ifc), _r_owner(_own)
 { 
@@ -417,13 +480,21 @@ rpc_call::rpc_call(rpc_proxy* _prx, bool _oneway, const string& _name)
 	_prx->_r_register(this);
 }
 
+rpc_call::~rpc_call()
+{
+	basic_network* nw = _proxy->_r_owner->net();
+	nw->disconnect(_req_chan);
+	if(! one_way)
+		nw->disconnect(_resp_chan);
+
+}
 
 void rpc_call::connect(host* dst)
 {
 	basic_network* nw = _proxy->_r_owner->net();
 	host* owner = _proxy->_r_owner;
 
-	assert(! dst->is_bcast()); // for now...
+	assert(dst->is_bcast() <= one_way); 
 	_req_chan = nw->connect(owner, dst, _endpoint);
 	if(! one_way)
 		_resp_chan = nw->connect(dst, owner, _endpoint | RPCC_RESP_MASK);

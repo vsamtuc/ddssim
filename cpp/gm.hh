@@ -31,10 +31,10 @@ struct network : star_network<network, coordinator, node>, reactive
 	projection proj;
 	double beta;
 
-	network(stream_id, const projection& _proj, double _beta);
+	network(const string& _name, stream_id, const projection& _proj, double _beta);
 
-	network(stream_id _sid, depth_type D, index_type L, double _beta) 
-	: network(_sid, projection(D,L), _beta) 
+	network(const string& _name, stream_id _sid, depth_type D, index_type L, double _beta) 
+	: network(_name, _sid, projection(D,L), _beta) 
 	{
 		
 	}

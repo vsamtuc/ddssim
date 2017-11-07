@@ -152,9 +152,8 @@ struct context : basic_control
 	// managed files for results
 	fileset_t result_files;
 
-	output_file* open(FILE* f, bool owner = false);
-	output_file* open(const string& path, 
-		open_mode mode = default_open_mode);
+	output_file* open(FILE* f, bool owner, text_format fmt);
+	output_file* open(const string& path, open_mode mode, text_format fmt);
 	output_file* open_hdf5(const string& path, 
 		open_mode mode = default_open_mode);
 
@@ -266,15 +265,16 @@ class dataset : reactive
 	boost::optional<stream_id> _streams;
 	boost::optional<source_id> _sources;
 	boost::optional<timestamp> _time_window;
+	boost::optional<size_t> _fixed_window;
+	bool _wflush;
 
 	boost::optional<size_t> _warmup_size;
 	boost::optional<timestamp> _warmup_time;
-	boost::optional<bool> _cool;
 
 	datasrc apply_filters();
 	void create_no_warmup();
-	void create_warmup_size(size_t wsize, bool cool);
-	void create_warmup_time(timestamp wtime, bool cool);
+	void create_warmup_size(size_t wsize);
+	void create_warmup_time(timestamp wtime);
 	ds_metadata collect_metadata();
 public:
 	dataset();
@@ -287,10 +287,11 @@ public:
 	void set_max_length(size_t n);
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
-	void set_time_window(timestamp Tw);
+	void set_time_window(timestamp Tw, bool flush);
+	void set_fixed_window(size_t W, bool flush);
 
-	void warmup_size(size_t wsize, bool cool);
-	void warmup_time(timestamp wtime, bool cool);
+	void warmup_size(size_t wsize);
+	void warmup_time(timestamp wtime);
 
 	void create();
 };
@@ -414,7 +415,32 @@ struct progress_reporter : reactive, progress_bar
 
 	This is the base class.
   */
-class protocol : public reactive
+class basic_component_type : public named
+{
+protected:
+	static std::map<string, basic_component_type*> ctype_map;
+	basic_component_type(const string& _name) : named(_name) {
+		if(ctype_map.count(_name)>0)
+			throw std::logic_error("Component type called `"+_name+"' already exists");
+		ctype_map[_name] = this;
+	}
+public:
+	virtual reactive* make() = 0;
+};
+
+template <typename C>
+class component_type : public basic_component_type
+{
+
+};
+
+
+/**
+	A protocol is a simulation of a query answering method.
+
+	This is the base class.
+  */
+class query_protocol : public reactive
 {
 public:
 	virtual const basic_query& query() const = 0;

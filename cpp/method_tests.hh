@@ -54,50 +54,6 @@ public:
 		
 	}
 
-	typedef std::map<string,string> vmap;
-	
-	void check_purl(const string& url,
-			const string& type, const string& path, const vmap& vars) {
-
- 		parsed_url purl;
-
-		parse_url(url, purl);
-		
-		TS_ASSERT_EQUALS(purl.type, type);
-		TS_ASSERT_EQUALS(purl.path, path);
-		TS_ASSERT_EQUALS(purl.vars, vars);
-	}	
-	
-	void test_parse_url() {
-		using namespace std;
-
-		check_purl("file:a/v/hello.cc?x=1,y=hello world",
-			   "file",
-			   "a/v/hello.cc",
-			   vmap { {"x", "1"}, {"y", "hello world"} }
-			);
-
-		check_purl("file:/hello.cc?open_mode=truncate",
-			   "file",
-			   "/hello.cc",
-			   vmap { {"open_mode", "truncate"}  }
-			);
-
-		check_purl("hdf5:/hello.cc", "hdf5", "/hello.cc", vmap{} );
-
-		check_purl("hdf5:/hello.cc?open_mode=truncate,group=/foo/bar",
-			   "hdf5",
-			   "/hello.cc",
-			   vmap { {"open_mode", "truncate"}, {"group", "/foo/bar"}  }
-			);
-
-		check_purl("hdf5:hello", "hdf5", "hello", vmap { });
-		check_purl("stdout:", "stdout", "", vmap { } );
-
-		check_purl("foo:", "foo", "", vmap { } );
-
-
-	}  
 };
 
 

@@ -125,14 +125,14 @@ struct network
 	double theta;
 	size_t k;
 
-	network(const projection& proj, double theta, const set<stream_id>& streams);
-	network(depth_type D, index_type L, double theta, const set<stream_id>& streams)
-	: network(projection(D,L), theta, streams)
+	network(const string& _name, const projection& proj, double theta, const set<stream_id>& streams);
+	network(const string& _name, depth_type D, index_type L, double theta, const set<stream_id>& streams)
+	: network(_name, projection(D,L), theta, streams)
 	{ }	
 
-	network(const projection& proj, double theta);
-	network(depth_type D, index_type L, double theta)
-	: network(projection(D,L), theta)
+	network(const string& _name, const projection& proj, double theta);
+	network(const string& _name, depth_type D, index_type L, double theta)
+	: network(_name, projection(D,L), theta)
 	{ }
 
 	void process_warmup();
