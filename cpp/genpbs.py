@@ -61,7 +61,7 @@ def dataset(k, wtime):
     if wtime is not None:
         dset["time_window"] = wtime
         dset["warmup_time"] = wtime
-        dset["cooldown"] = True
+        dset["flush_window"] = False
     return dset
         
 def write_json(jobid, k, wtime, proto, abeta, al, ad):
