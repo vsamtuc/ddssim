@@ -102,3 +102,8 @@ void ds_metadata::merge(const ds_metadata& other)
 }
 
 
+dds::basic_enum_repr::basic_enum_repr(const std::type_info& ti)
+{
+	set_name(boost::core::demangle(ti.name()));
+}
+

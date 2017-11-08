@@ -6,10 +6,12 @@
 #include <utility>
 #include <string>
 #include <set>
+#include <map>
 #include <iterator>
 #include <limits>
 #include <array>
 #include <cassert>
+#include <typeinfo>
 
 namespace dds {
 
@@ -405,6 +407,66 @@ BYTE_SIZE_SIZEOF(float)
 BYTE_SIZE_SIZEOF(double)
 
 BYTE_SIZE_SIZEOF(dds_record)
+
+
+//------------------------------------------
+//
+// Type utilities
+//
+//------------------------------------------
+
+
+
+/**
+	Type-erased class for enumeration constant stringification
+  */
+class basic_enum_repr : public named
+{
+protected:
+	std::map<int, std::string> extl;
+	std::map<std::string, int> intl;
+public:
+	explicit basic_enum_repr(const std::string& ename) : named(ename) {}
+	explicit basic_enum_repr(const std::type_info& ti);
+	inline void add(int val, const std::string& tag) {
+		extl[val] = tag;
+		intl[tag] = val;
+	}
+	int map(const std::string& tag) const { return intl.at(tag); }
+	std::string map(int val) const { return extl.at(val); }
+	bool is_member(int val) const { return extl.count(val); }
+	bool is_member(const std::string& tag) const { return intl.count(tag); };
+};
+
+/**
+	Typed class for enumeration constant stringification
+  */
+template <typename Enum>
+class enum_repr : public basic_enum_repr
+{
+public:
+	typedef std::pair<Enum, const char*> value_type;
+	explicit enum_repr( std::initializer_list< value_type > ilist ) 
+	: basic_enum_repr(typeid(Enum)) 
+	{
+		for(auto&& e : ilist) {
+			Enum val = std::get<0>(e);
+			const std::string& tag = std::get<1>(e);
+			add(static_cast<int>(val), tag);
+		}
+	}
+
+	inline Enum operator[](const std::string& tag) const {
+		return static_cast<Enum>(map(tag));
+	}
+	inline const std::string& operator[](Enum val) const {
+		return map(val);
+	}
+
+};
+
+
+
 
 } // end namespace dds
 

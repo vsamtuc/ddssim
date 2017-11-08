@@ -12,26 +12,31 @@
 using std::string;
 using namespace dds;
 
+
+// A simple macro to check the result of HDF5 C-API functions
 template <typename T>
-inline T __H5_ASSERT(T rc, const char* msg)
+inline T __H5_CHECK(T rc, const char* msg)
 {
-	if(rc==-1)
+	if(rc < 0)
 		throw std::runtime_error(msg);
 	return rc;
 }
-
-#define H5_ASSERT(cmd) (__H5_ASSERT((cmd), #cmd  ))
+#define H5_CHECK(cmd) (__H5_CHECK((cmd), #cmd  ))
 
 	
-
-
+//
+// Return true if a dataset by the given name exists in 
+// the provided location
+//
 inline bool hdf5_exists(hid_t locid, const string& name)
 {
 	//return H5Lexists(locid, name.c_str(), H5P_DEFAULT);
-	return H5_ASSERT(H5LTfind_dataset(locid, name.c_str()));
+	return H5_CHECK(H5LTfind_dataset(locid, name.c_str()));
 }
 
-
+/*
+	The handler type is exposed here for testing purposes
+ */
 struct output_hdf5::table_handler
 {
 	output_table& table;
@@ -54,7 +59,10 @@ struct output_hdf5::table_handler
  */
 extern std::map<type_index, H5::DataType> __pred_type_map; 
 
-
+/*
+	Return the typed value of an attribute, for 
+	scalar arithmetic attributes.
+ */
 template <typename T>
 T get_value(H5::Attribute attr)
 {
@@ -87,7 +95,10 @@ T get_value(H5::Attribute attr)
 }
 
 
-
+/*
+	Return the typed value of an attribute, for 
+	array arithmetic attributes.
+ */
 template <typename T>
 std::vector<T> get_array(H5::Attribute attr)
 {
@@ -98,7 +109,7 @@ std::vector<T> get_array(H5::Attribute attr)
 		"Only arithmetic types are supported");
 
 	if(__pred_type_map.find(typeid(T)) == __pred_type_map.end()) {
-		throw std::logic_error("get_value<T> called for unsupported type");
+		throw std::logic_error("get_array<T> called for unsupported type");
 	}
 
 	// our memory type

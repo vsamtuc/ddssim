@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstddef>
 #include <algorithm>
-#include <boost/core/demangle.hpp>
 
 #include "method.hh"
 #include "output.hh"
@@ -727,14 +726,14 @@ output_hdf5::table_handler::~table_handler()
 
 output_hdf5::~output_hdf5()
 {
-	H5_ASSERT(H5Idec_ref(locid));
+	H5_CHECK(H5Idec_ref(locid));
 }
 
 
 output_hdf5::output_hdf5(long int _locid, open_mode _mode)
 : locid(_locid), mode(_mode)
 {
-	H5_ASSERT(H5Iinc_ref(locid));
+	H5_CHECK(H5Iinc_ref(locid));
 }
 
 output_hdf5::output_hdf5(const H5::Group& _group, open_mode _mode)
@@ -778,8 +777,11 @@ void output_hdf5::output_prolog(output_table& table)
 		// check if an object by the given name exists in the loc
 		if(hdf5_exists(locid, table.name())) {
 			DataSet dset = loc.openDataSet(table.name());
-			// ok, it exists, just check compatibility
-			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
+
+			// ok, the dataset exists, just check compatibility
+			hid_t dset_type = H5_CHECK(H5Dget_type(dset.getId()));
+
+			if(! (th->type == DataType(dset_type)))
 				throw std::runtime_error("On appending to HDF table,"\
 					" types are not compatible");
 
@@ -827,11 +829,6 @@ void output_hdf5::output_epilog(output_table& table)
 //
 //-------------------------------------
 
-
-basic_enum_repr::basic_enum_repr(const type_info& ti)
-{
-	set_name(boost::core::demangle(ti.name()));
-}
 
 
 enum_repr<text_format> dds::text_format_repr (

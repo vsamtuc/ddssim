@@ -342,8 +342,8 @@ public:
 		
 		auto file = H5File("dummy_file2.h5", H5F_ACC_TRUNC);
 
-		TS_ASSERT( H5_ASSERT(H5Iis_valid(file.getId()))>0 );
-		TS_ASSERT_EQUALS( H5_ASSERT(H5Iget_ref(file.getId())), 1);
+		TS_ASSERT( H5_CHECK(H5Iis_valid(file.getId()))>0 );
+		TS_ASSERT_EQUALS( H5_CHECK(H5Iget_ref(file.getId())), 1);
 		
 		//output_hdf5 dset(file);
 		output_hdf5 dset(file);
