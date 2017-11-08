@@ -1156,7 +1156,7 @@ public:
   */
 class output_hdf5 : public output_file
 {
-	int locid;
+	long int locid;
 	open_mode mode;
 
 	struct table_handler;
@@ -1168,7 +1168,7 @@ public:
 	/**
 		Use the location specified by the HDF5 id for the output
 	  */
-	output_hdf5(int _locid, open_mode mode=default_open_mode);
+	output_hdf5(long int _locid, open_mode mode=default_open_mode);
 
 	/**
 		Use the file root for the output.

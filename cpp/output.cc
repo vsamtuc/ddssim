@@ -725,17 +725,16 @@ output_hdf5::table_handler::~table_handler()
  *
  */
 
-
 output_hdf5::~output_hdf5()
 {
-	H5Idec_ref(locid);
+	H5_ASSERT(H5Idec_ref(locid));
 }
 
 
-output_hdf5::output_hdf5(int _locid, open_mode _mode)
+output_hdf5::output_hdf5(long int _locid, open_mode _mode)
 : locid(_locid), mode(_mode)
 {
-	H5Iinc_ref(locid);	
+	H5_ASSERT(H5Iinc_ref(locid));
 }
 
 output_hdf5::output_hdf5(const H5::Group& _group, open_mode _mode)

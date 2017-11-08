@@ -364,7 +364,7 @@ double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon)
 
 	size_t loops = 80;
 	while( fabs((x1-x0)/xm) >= epsilon) {
-		if(--loops = 0) break;
+		if((--loops) == 0) break;
 		double gx = g(xm);
 		if(gx>0)
 			x1 = xm;

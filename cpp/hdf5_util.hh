@@ -12,11 +12,23 @@
 using std::string;
 using namespace dds;
 
+template <typename T>
+inline T __H5_ASSERT(T rc, const char* msg)
+{
+	if(rc==-1)
+		throw std::runtime_error(msg);
+	return rc;
+}
+
+#define H5_ASSERT(cmd) (__H5_ASSERT((cmd), #cmd  ))
+
+	
+
 
 inline bool hdf5_exists(hid_t locid, const string& name)
 {
 	//return H5Lexists(locid, name.c_str(), H5P_DEFAULT);
-	return H5LTfind_dataset(locid, name.c_str());
+	return H5_ASSERT(H5LTfind_dataset(locid, name.c_str()));
 }
 
 
