@@ -337,7 +337,8 @@ public:
 		};
 
 
-		static_assert( std::is_same<hid_t, long int>::value, "Error:hid_t is not long int");
+		//static_assert( std::is_same<hid_t, long int>::value, "Error:hid_t is not long int");
+		static_assert( sizeof(hid_t) <= sizeof(long int), "Error:hid_t is wider than long int");
 		
 		auto file = H5File("dummy_file2.h5", H5F_ACC_TRUNC);
 
