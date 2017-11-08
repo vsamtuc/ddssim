@@ -28,7 +28,7 @@ attlist = [Attribute(name, atype) for name,atype in alist]
 ds = Dataset()
 
 commcost = ds.create_table('COMM', attlist)
-ds.load_csv_in_table('COMM','exp1_results.dat')
+ds.load_csv_in_table('COMM','exp4_results.dat')
 
 #commcost1 = ds.create_view('COMMCOST1', 
 #                      "SELECT *, epsilon/theta as eratio FROM COMMCOST")
@@ -41,30 +41,46 @@ for Y in ['traffic_pct']:
 
     for sel in ds.axis_values(commcost, ['max_error', 'statevec_size']):
         plot = make_plot(commcost, 'sites', Y,
-            axes=['protocol','dset_window','max_error', 'statevec_size'],
-            select={'max_error':sel[0], 'statevec_size':sel[1], 'dset_window':3600},
+            axes=['protocol','max_error', 'statevec_size'],
+            select={'max_error':sel[0], 'statevec_size':sel[1]},
             terminal=PNG()
             )
         plot.make()
 
     for sel in ds.axis_values(commcost, ['sites', 'statevec_size']):
         plot = make_plot(commcost, 'max_error', Y,
-            axes=['protocol','dset_window','sites', 'statevec_size'],
-            select={'sites':sel[0], 'statevec_size':sel[1], 'dset_window':3600},
+            axes=['protocol', 'sites', 'statevec_size'],
+            select={'sites':sel[0], 'statevec_size':sel[1]},
             terminal=PNG()
             )
         plot.make()
+
+
+    for sel in ds.axis_values(commcost, ['sites', 'max_error']):
+        plot = make_plot(commcost, 'statevec_size', Y,
+            axes=['protocol', 'sites', 'max_error'],
+            select={'sites':sel[0], 'max_error':sel[1]},
+            terminal=PNG()
+            )
+        plot.make()
+
 
 for Y in ['traffic_pct']:
 
     for sel in ds.axis_values(commcost1, ['statevec_size']):
         plot = make_plot(commcost1, 'keratio', Y,
-            axes=['protocol','dset_window', 'statevec_size'],
-            select={'statevec_size':sel[0], 'dset_window':3600},
+            axes=['protocol', 'statevec_size'],
+            select={'statevec_size':sel[0]},
             terminal=PNG()
             )
         plot.make()
 
+    plot = make_plot(commcost1, 'keratio', Y,
+        axes=['protocol', 'statevec_size'],
+        select={'statevec_size':greater_than(11000)},
+        terminal=PNG()
+    )
+    plot.make()
 
 
 
