@@ -95,7 +95,7 @@ from _dds import Vec
 
 # dsarch.hh
 
-from _dds import (channel, host, host_group, basic_network, 
+from _dds import (channel, host, basic_network, 
 	rpc_obj, rpc_method, rpc_interface, rpc_protocol,
 	process, local_site,
 	RPCC_BITS_PER_IFC, unknown_addr,

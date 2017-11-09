@@ -422,9 +422,15 @@ BOOST_PYTHON_MODULE(_dds)
     py::register_ptr_to_python< dds::datasrc > ();
 
     class_<dds::time_window_source, bases<dds::data_source>, boost::noncopyable>(
-    	"time_window_source", init<dds::datasrc, dds::timestamp>())
+    	"time_window_source", init<dds::datasrc, dds::timestamp, bool>())
     	.add_property("delay", & dds::time_window_source::delay)
     	;
+
+    class_<dds::fixed_window_source, bases<dds::data_source>, boost::noncopyable>(
+    	"time_window_source", init<dds::datasrc, size_t, bool>())
+    	.add_property("window_size", & dds::fixed_window_source::window_size)
+    	;
+
 
     def("wcup_ds", dds::wcup_ds);
     def("crawdad_ds", dds::wcup_ds);
@@ -638,10 +644,15 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.value("append", dds::open_mode::append)
 		;
 
+	enum_<dds::text_format>("text_format")
+		.value("csvtab", dds::text_format::csvtab)
+		.value("csvrel", dds::text_format::csvrel)
+		;
+
 	class_<dds::output_c_file, bases<dds::output_file>, boost::noncopyable>
-		("output_c_file", init<const std::string&, dds::open_mode>())
-		.def(init<FILE*, bool>())
-		.def(init<>())
+		("output_c_file", init<const std::string&, dds::open_mode, dds::text_format>())
+		.def(init<FILE*, bool, dds::text_format>())
+		.def(init<dds::text_format>())
 		.def("open", 
 			(void (dds::output_c_file::*)(const std::string&, dds::open_mode))
 				&dds::output_c_file::open)
@@ -702,15 +713,6 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.add_property("addr", &dds::host::addr)
 		.def("set_addr", (void (dds::host::*)()) &dds::host::set_addr)
 		.def("set_addr", (bool (dds::host::*)(dds::host_addr)) &dds::host::set_addr)
-		;
-
-	class_<dds::host_group, bases<dds::host>, boost::noncopyable>
-		("host_group", init<dds::basic_network*>())
-		.def("join", &dds::host_group::join, 
-			with_custodian_and_ward<1,2>())
-		.def("members", +[](dds::host_group& g){
-			return collection_to_list<dds::host>(g.members());
-		})
 		;
 
 	class_< dds::rpc_obj >
@@ -871,9 +873,15 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def("open", 
 			// a big typecast !
 			(dds::output_file* 
-			(dds::context::*)(const std::string&, dds::open_mode))  
+			(dds::context::*)(const std::string&, dds::open_mode, dds::text_format))  
 						&dds::context::open, return_internal_reference<>())
+		.def("open_hdf5", 
+			// a big typecast !
+			(dds::output_file* 
+			(dds::context::*)(const std::string&, dds::open_mode))  
+						&dds::context::open_hdf5, return_internal_reference<>())
 		.def("close_result_files", &dds::context::close_result_files)
+		.def("clear", &dds::context::clear)
 		;
 
 
