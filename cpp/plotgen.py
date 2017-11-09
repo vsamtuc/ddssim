@@ -28,7 +28,7 @@ attlist = [Attribute(name, atype) for name,atype in alist]
 ds = Dataset()
 
 commcost = ds.create_table('COMM', attlist)
-ds.load_csv_in_table('COMM','exp4_results.dat')
+ds.load_csv_in_table('COMM','sample_results.data')
 
 #commcost1 = ds.create_view('COMMCOST1', 
 #                      "SELECT *, epsilon/theta as eratio FROM COMMCOST")

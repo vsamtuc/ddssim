@@ -1,5 +1,5 @@
 import sqlite3 as sql
-from StringIO import StringIO
+from io import StringIO, TextIOWrapper
 from subprocess import PIPE, Popen
 from contextlib import closing
 import csv
@@ -26,12 +26,12 @@ class Attribute(object):
 def sql_scalar(value):
     """
     Return a string mapping the python value to SQL representation.
-    This function will currently only accept str,unicode,int,long and float.    
+    This function will currently only accept str, int and float.
     """
     
-    assert isinstance(value, (str,unicode,int,long,float))
-    # for now, this is naive
-    if isinstance(value, (str,unicode)):
+    assert isinstance(value, (str,int,float))
+    # for now, this is naive 
+    if isinstance(value, str):
         return "'"+value+"'"
     else:            
         return repr(value)
@@ -175,7 +175,7 @@ class Relation(object):
                         self.sql_where_clause(where),
                         self.sql_order_by_clause(order)
                         ])
-        print sql
+        print(sql)
         return sql
 
     def scheme(self):
@@ -289,20 +289,20 @@ class Dataset(object):
             self.conn.executemany(table.sql_insertmany(), tabdata[tabname])
 
     def load_csv_in_table(self, rel, filename, dialect='excel', **fmtargs):
-    	data=[]
+        data=[]
         with open(filename,"r") as fin:
             reader = csv.reader(fin, dialect, **fmtargs)
             data = [row for row in reader]
 
-    	table = self.relations[rel]
-    	self.conn.executemany(table.sql_insertmany(), data)
+        table = self.relations[rel]
+        self.conn.executemany(table.sql_insertmany(), data)
     	
 
     def print_relation(self, name):
         rel = self.relations[name]
-        print rel.scheme()
+        print(rel.scheme())
         for row in self.conn.execute(rel.sql_fetch_all()):
-            print row
+            print(row)
 
     def axis_values(self, rel, attr):
         """
@@ -317,6 +317,7 @@ class Dataset(object):
             attr = [attr]
         sql = rel.sql_select(attr, order=attr, distinct=True)
         return [val for val in self.conn.execute(sql)]
+
 
 class Plot(object):
     def __init__(self, title=None, xlabel=None, 
@@ -337,23 +338,26 @@ class Plot(object):
     def make(self, gnuplot="gnuplot"):
         p = Popen(gnuplot, stdin=PIPE)
         try:
-            self.make_script(p.stdin)
+            wrapper = TextIOWrapper(p.stdin)
+            self.make_script(wrapper)
         finally:
+            wrapper.close()
             p.stdin.close()
 
     def make_script(self, f):
-        if self.title: print >>f, 'set title', '"'+self.title+'"'
-        if self.xlabel: print >>f, 'set xlabel "',self.xlabel,'"'
-        if self.ylabel: print >>f, 'set ylabel "',self.ylabel,'"'
-	if self.x_range: print >>f, 'set xrange ',self.x_range
-	if self.y_range: print >>f, 'set yrange ',self.y_range
-        if self.logscale: print >>f, 'set logscale %s' % self.logscale
-        if self.grid:   print >>f, 'set grid %s' % self.grid
-        if self.key: print >>f, "set key %s" % self.key
-        if self.terminal: print >>f, self.terminal.out(self.output)
+        if self.title:      print('set title', '"'+self.title+'"', file=f)
+        if self.xlabel:     print('set xlabel "',self.xlabel,'"', file=f)
+        if self.ylabel:     print('set ylabel "',self.ylabel,'"', file=f)
+        if self.x_range:    print('set xrange ',self.x_range, file=f)
+        if self.y_range:    print('set yrange ',self.y_range, file=f)
+        if self.logscale:   print('set logscale %s' % self.logscale, file=f)
+        if self.grid:       print('set grid %s' % self.grid, file=f)
+        if self.key:        print("set key %s" % self.key, file=f)
+        if self.terminal:   print(self.terminal.out(self.output), file=f)
         
-        print >>f,"plot", ','.join([g.output_plot() for g in self.graphs])
-        for g in self.graphs: g.output_data(f)
+        print("plot", ','.join([g.output_plot() for g in self.graphs]), file=f)
+        for g in self.graphs:
+            g.output_data(f)
             
         return f
 
@@ -395,8 +399,8 @@ class Graph(object):
         sql = self.relation.sql_select([self.x,self.y], where=self.select, order=[self.x])
         conn = self.relation.dataset.conn
         for row in conn.execute(sql):
-            print >>f, " ".join(str(x) for x in row)
-        print >>f, "end"
+            print(" ".join(str(x) for x in row),file=f)
+        print("end", file=f)
 
 
         
@@ -498,7 +502,7 @@ def make_plot(rel, x, y, axes, select={}, title=DEFAULT, style='linespoints',
     if output is DEFAULT:
         wc = rel.sql_where_clause(select)
         output = rel.name+':'+y+'('+x+')'+wc
-	output = output.replace(' ','.')
+        output = output.replace(' ','.')
 
     if xlabel is None: xlabel = x
     if ylabel is None: ylabel = y
@@ -525,7 +529,7 @@ def make_plot(rel, x, y, axes, select={}, title=DEFAULT, style='linespoints',
     
 
 if __name__=='__main__':
-    print """Example usage:
+    print("""Example usage:
     alist = [
         ('dset', str),
         ('theta', float),
@@ -556,4 +560,4 @@ if __name__=='__main__':
                          select={'theta':less_than(0.125)&greater_than(0.115), 'servers':between(3,6)},
                          terminal=PNG())
         plot.make_script(f)
-"""
+""")
