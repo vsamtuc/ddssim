@@ -11,9 +11,15 @@ ifndef DEBUG
 DEBUG=1
 endif
 
-INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
-LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
-	-lhdf5_serial -ldl -laec -lsz -lz -lm -ljsoncpp #-lboost_filesystem -lboost_system
+PYTHON_INCLUDE:= $(shell /usr/bin/python3-config --includes)
+PYTHON_LIB:= $(shell /usr/bin/python3-config --ldflags)
+
+HDF5_INCLUDE:= -I/usr/include/hdf5/serial
+HDF5_LIB:= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
+	-lhdf5_serial -ldl -laec -lsz -lz
+
+INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
+LIB=  $(HDF5_LIB) -lm -ljsoncpp #-lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 #-Og
@@ -36,7 +42,7 @@ endif
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc agm.cc gm.cc\
+	tods.cc  safezone.cc fgm.cc sgm.cc\
 	cfgfile.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
@@ -75,7 +81,8 @@ dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
 
 _dds.so: dds_module.o libdds.a
-	$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
+	#$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
+	$(CXX) -shared -o $@ $^ -lboost_python-py35 $(LIB) $(PYTHON_LIB)
 
 #unit_tests.cc: $(UNIT_TESTS) 
 #	cxxtestgen --error-printer -o $@ $^

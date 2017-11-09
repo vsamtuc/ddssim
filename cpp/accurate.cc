@@ -4,6 +4,14 @@
 
 using namespace dds;
 
+component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
+
+template<>
+data_source_statistics* component_type<data_source_statistics>::create(const Json::Value&)
+{
+	return new data_source_statistics();
+}
+
 data_source_statistics::data_source_statistics()
 {
 	on(START_RECORD, [&](){ process(CTX.stream_record()); });

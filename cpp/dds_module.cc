@@ -4,10 +4,6 @@
 #include "dds.hh"
 #include "data_source.hh"
 #include "method.hh"
-#include "accurate.hh"
-#include "tods.hh"
-#include "agm.hh"
-#include "results.hh"
 #include "binc.hh"
 #include "cfgfile.hh"
 
@@ -297,7 +293,6 @@ BOOST_PYTHON_MODULE(_dds)
 
 
 
-
     /**********************************************
      *
      *  dds.hh
@@ -363,18 +358,26 @@ BOOST_PYTHON_MODULE(_dds)
     	)
     	;
 
+
     // Also good for std::set<source_id> !!!!
     class_< std::set<dds::stream_id> >
     		("id_set", init<>())
     	.def( init< const::set<dds::stream_id>& >() )
-    	.def("__len__", & std::set<dds::stream_id>::size )
+		// The next lines are stupid, but without the cast, the
+		// compiler would barf.
+		// This broke when I switched to ubuntu 17.10. I would very much like
+		// to know what happened, it is probably related to inheritance
+		// and the STL container implementation somehow...
+    	.def("__len__", (size_t (std::set<dds::stream_id>::*)()) & std::set<dds::stream_id>::size )
+		// this broke when I switched to ubuntu 17.10
     	.def("__iter__", py::iterator<std::set<dds::stream_id>>())
-    	.add_property("empty", &std::set<dds::stream_id>::empty)
-    	.def("clear", &std::set<dds::stream_id>::clear )
+    	.def("empty", (bool (std::set<dds::stream_id>::*)()) &std::set<dds::stream_id>::empty)
+    	.def("clear", (void (std::set<dds::stream_id>::*)()) &std::set<dds::stream_id>::clear )
     	.def("__bool__", &set_ops<dds::stream_id>::not_empty )
     	.def("__contains__", &set_ops<dds::stream_id>::contains )
     	.def("add", &set_ops<dds::stream_id>::add )
     	;
+
 
     class_<dds::ds_metadata>("ds_metadata")
     	.add_property("size", &dds::ds_metadata::size)
@@ -446,9 +449,13 @@ BOOST_PYTHON_MODULE(_dds)
 
 	class_< dds::buffered_dataset >("buffered_dataset")
 		.def("__iter__", py::iterator< dds::buffered_dataset >())
-    	.def("__len__", & dds::buffered_dataset::size )
-    	.def("size", & dds::buffered_dataset::size )
-    	.def("load", &dds::buffered_dataset::load)
+		// The next two lines are stupid, but without the cast, the
+		// compiler would barf.
+		// This broke when I switched to ubuntu 17.10. I would very much like
+		// to know what happened
+    	.def("__len__", (size_t (dds::buffered_dataset::*)()) & dds::buffered_dataset::size )
+    	.def("size", (size_t (dds::buffered_dataset::*)()) & dds::buffered_dataset::size )
+    	.def("load", & dds::buffered_dataset::load )
     	.def("analyze", &dds::buffered_dataset::analyze)
 		;
 
@@ -467,7 +474,6 @@ BOOST_PYTHON_MODULE(_dds)
 		("materialized_data_source", init<dds::datasrc>())
 		;
 
-	
 
 	def("hdf5_ds", (dds::datasrc (*)(const std::string&, const std::string&)) 
 		&dds::hdf5_ds);
@@ -1022,7 +1028,7 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def("prob_failure", &agms::projection::prob_failure)
 		;
 
-	object numpy = import("numpy");
+	//object numpy = import("numpy");
 	//numeric::array::set_module_and_type("numpy","ndarray");
 
 	class_< agms::sketch, bases<dds::Vec> >("agms_sketch",
@@ -1045,32 +1051,6 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		;
 
 
-    /**********************************************
-     *
-     *  results.hh
-     *
-     **********************************************/
-
-	// class_< dds::comm_results_t, bases<dds::result_table>, boost::noncopyable>
-	// 	("comm_results_t")
-	// 	;
-
-	// class_< dds::local_stream_stats_t, bases<dds::result_table>, boost::noncopyable>
-	// 	("local_stream_stats_t")
-	// 	;
-#define DECL_RESULT_TABLE(tname)\
-    scope().attr( #tname ) = py::ptr((dds::result_table*) & dds:: tname );
-
-    DECL_RESULT_TABLE(local_stream_stats)
-    DECL_RESULT_TABLE(network_comm_results)
-    DECL_RESULT_TABLE(network_host_traffic)
-    DECL_RESULT_TABLE(network_interfaces)
-
-#undef DECL_RESULT_TABLE
-	// scope().attr("local_stream_stats") 
-	// 	= py::ptr((dds::result_table*) &dds::local_stream_stats);
-	// scope().attr("network_comm_results") 
-	// 	= py::ptr((dds::result_table*) &dds::network_comm_results);
 
 
     /**********************************************

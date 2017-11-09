@@ -4,17 +4,19 @@
 
 #include "results.hh"
 #include "binc.hh"
-#include "gm.hh"
+#include "sgm.hh"
 
 using namespace dds;
-using namespace dds::gm;
+using namespace gm;
+using namespace gm::sgm;
+
 
 using binc::print;
 using binc::elements_of;
 
 
 /*
-	Implements the traditional Geometric Method and its variants
+	Implements the traditional, Set-based Geometric Method and its variants
 */
 
 
@@ -384,7 +386,7 @@ coordinator::~coordinator()
 *********************************************/
 
 
-gm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
+sgm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
@@ -403,14 +405,14 @@ gm::network::network(const string& _name, stream_id _sid, const projection& _pro
 	});
 }
 
-void gm::network::process_record()
+void sgm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
 		source_site(rec.hid)->update_stream();		
 }
 
-void gm::network::process_init()
+void sgm::network::process_init()
 {
 	// let the coordinator initialize the nodes
 	CTX.timeseries.add(hub->Qest_series);
@@ -419,7 +421,7 @@ void gm::network::process_init()
 }
 
 
-void gm::network::output_results()
+void sgm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 

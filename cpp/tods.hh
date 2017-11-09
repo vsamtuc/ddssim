@@ -10,8 +10,9 @@
 #include "method.hh"
 
 
-namespace dds { namespace tods {
+namespace tods {
 
+using namespace dds;
 using namespace agms;
 
 class network;
@@ -148,7 +149,7 @@ struct network
 
 
 
-} } // end namespace dds
+}  // end namespace tods
 
 
 #endif

@@ -4,10 +4,11 @@
 
 #include "results.hh"
 #include "binc.hh"
-#include "agm.hh"
+#include "fgm.hh"
 
 using namespace dds;
-using namespace dds::agm;
+using namespace gm;
+using namespace gm::fgm;
 
 using binc::print;
 using binc::elements_of;
@@ -592,7 +593,7 @@ coordinator::~coordinator()
 *********************************************/
 
 
-agm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
+fgm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
@@ -621,14 +622,14 @@ agm::network::network(const string& _name, stream_id _sid, const projection& _pr
 
 
 
-void agm::network::process_record()
+void fgm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
 		source_site(rec.hid)->update_stream();		
 }
 
-void agm::network::process_init()
+void fgm::network::process_init()
 {
 	// let the coordinator initialize the nodes
 	hub->warmup();
@@ -636,7 +637,7 @@ void agm::network::process_init()
 }
 
 
-void agm::network::output_results()
+void fgm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 

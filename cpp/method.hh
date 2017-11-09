@@ -9,6 +9,7 @@
 #include <utility>
 
 #include <boost/optional.hpp>
+#include <jsoncpp/json/json.h>
 
 #include "dds.hh"
 #include "eca.hh"
@@ -419,19 +420,25 @@ class basic_component_type : public named
 {
 protected:
 	static std::map<string, basic_component_type*> ctype_map;
-	basic_component_type(const string& _name) : named(_name) {
-		if(ctype_map.count(_name)>0)
-			throw std::logic_error("Component type called `"+_name+"' already exists");
-		ctype_map[_name] = this;
-	}
+	basic_component_type(const string& _name);
+	basic_component_type(const type_info& ti);
+	virtual ~basic_component_type();
 public:
-	virtual reactive* make() = 0;
+	virtual reactive* create(const Json::Value&) = 0;
+
+	static basic_component_type* get_component_type(const string& _name);
+	static basic_component_type* get_component_type(const type_info& ti);
+	static const std::map<string, basic_component_type*>& component_types();
+	static std::set<string> aliases(basic_component_type* ctype);
 };
 
 template <typename C>
 class component_type : public basic_component_type
 {
-
+public:
+	component_type(const string& _name) : basic_component_type(_name) {}
+	component_type() : basic_component_type(typeid(C)) {}
+	virtual C* create(const Json::Value&) override;
 };
 
 

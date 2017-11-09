@@ -8,7 +8,7 @@
 using std::cout;
 using std::endl;
 using namespace dds;
-using namespace dds::tods;
+using namespace tods;
 
 
 /************************************

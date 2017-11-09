@@ -5,12 +5,13 @@
 #include <iostream>
 
 #include "data_source.hh"
-#include "agm.hh"
+#include "fgm.hh"
 
 #include <cxxtest/TestSuite.h>
 
 using namespace std;
 using namespace dds;
+using namespace gm;
 
 class GeomTestSuite : public CxxTest::TestSuite
 {
@@ -19,18 +20,17 @@ public:
 
 	void test_gm2_network()
 	{
-		using namespace dds::agm;
 
 		// load a dataset to the coord
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
-		agm::network net("foo",0, projection(5, 400), 0.5);
+		fgm::network net("foo",0, projection(5, 400), 0.5);
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);
 
 		for(auto p : net.sites) {
-			node_proxy *np = & net.hub->proxy[p];
+			fgm::node_proxy *np = & net.hub->proxy[p];
 			TS_ASSERT_EQUALS(np->proc(), p);
 			TS_ASSERT_EQUALS(np->_r_owner, net.hub);
 			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p]] , p);
@@ -51,7 +51,7 @@ public:
 
 		CTX.clear();
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
-		agm::network net("foo", 0, proj, 0.5);
+		fgm::network net("foo", 0, proj, 0.5);
 
 		net.hub->start_round();
 

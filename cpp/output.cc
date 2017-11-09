@@ -414,6 +414,7 @@ void output_c_file::open(FILE* _file, bool _owner)
 
 void output_c_file::close()
 {
+	// handle the stream
 	if((!stream)) return;
 	if(owner) {
 		if(fclose(stream)!=0)
@@ -449,6 +450,9 @@ output_c_file::output_c_file(const string& _fpath, open_mode mode, text_format f
 output_c_file::~output_c_file()
 {
 	close();
+	// remove any open formatters
+	for(auto&& f : fmtr)
+		formatter::destroy(f.second);
 }
 
 
@@ -683,6 +687,7 @@ void output_hdf5::table_handler::append_row()
 	// Make the image of an object.
 	// This need not be aligned as far as I can tell!!!!!
 	char buffer[size];
+	memset(buffer,0,size); // this should silence valgrind
 	make_row(buffer);
 
 	/*

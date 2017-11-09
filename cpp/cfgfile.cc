@@ -11,8 +11,8 @@
 #include "accurate.hh"
 #include "tods.hh"
 #include "agms.hh"
-#include "agm.hh"
-#include "gm.hh"
+#include "fgm.hh"
+#include "sgm.hh"
 #include "cfgfile.hh"
 #include "binc.hh"
 #include "output.hh"
@@ -139,8 +139,8 @@ static projection get_projection(Value& js)
 {
 	Value& jp = js["projection"];
 
-	depth_type d = jp["depth"].asInt();
-	index_type w = jp["width"].asInt();
+	depth_type d = jp["depth"].asUInt();
+	index_type w = jp["width"].asUInt();
 	assert(d>0 && w>0);
 	
 	projection proj(d,w);
@@ -167,7 +167,7 @@ static void handle_agm(Value& js, vector<reactive*>& components)
 	stream_id sid = get_stream(js);
 	projection proj = get_projection(js);
 	double beta = get_beta(js);
-	components.push_back(new agm::network(name,sid, proj, beta ));
+	components.push_back(new gm::fgm::network(name,sid, proj, beta ));
 }
 
 static void handle_gm(Value& js, vector<reactive*>& components)
@@ -176,7 +176,7 @@ static void handle_gm(Value& js, vector<reactive*>& components)
 	stream_id sid = get_stream(js);
 	projection proj = get_projection(js);
 	double beta = get_beta(js);
-	components.push_back(new gm::network(name, sid, proj, beta ));
+	components.push_back(new gm::sgm::network(name, sid, proj, beta ));
 }
 
 
