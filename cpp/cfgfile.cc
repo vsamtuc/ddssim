@@ -9,14 +9,11 @@
 
 #include "data_source.hh"
 #include "accurate.hh"
-#include "tods.hh"
-#include "agms.hh"
-#include "fgm.hh"
-#include "sgm.hh"
 #include "cfgfile.hh"
-#include "binc.hh"
+#include "method.hh"
 #include "output.hh"
 #include "results.hh"
+#include "binc.hh"
 
 
 using namespace dds;
@@ -149,37 +146,20 @@ projection dds::get_projection(const Value& js)
 	return proj;
 }
 
-
-static double get_beta(Value& js)
+std::set<stream_id> dds::get_streams(const Value& js)
 {
-	return js["beta"].asDouble();
+	std::set<stream_id> ret;
+	const Value& jp = js["streams"];
+	if(jp.isArray()) {
+		for(auto&& val : jp) {
+			ret.insert(val.asInt());
+		}
+	}
+	else {
+		ret.insert(jp.asInt());
+	}
+	return ret;
 }
-
-static stream_id get_stream(Value& js)
-{
-	return js["stream"].asInt();
-}
-
-
-static void handle_agm(Value& js, vector<reactive*>& components)
-{
-	string name = js["name"].asString();
-	stream_id sid = get_stream(js);
-	projection proj = get_projection(js);
-	double beta = get_beta(js);
-	components.push_back(new gm::fgm::network(name,sid, proj, beta ));
-}
-
-static void handle_gm(Value& js, vector<reactive*>& components)
-{
-	string name = js["name"].asString();
-	stream_id sid = get_stream(js);
-	projection proj = get_projection(js);
-	double beta = get_beta(js);
-	components.push_back(new gm::sgm::network(name, sid, proj, beta ));
-}
-
-
 
 
 void dds::prepare_components(Value& js, vector<reactive*>& components)
@@ -196,12 +176,9 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 		string type = jc["type"].asString();
 
 		// map to a handler
-		if(type=="agm")
-			handle_agm(jc, components);
-		else if (type=="gm")
-			handle_gm(jc, components);
-		else
-			throw std::runtime_error("Error: component type '"+type+"' is unknown");
+		basic_component_type* ctype = basic_component_type::get_component_type(type);
+		auto c = ctype->create(jc);
+		components.push_back(c);
 	}
 }
 
@@ -255,6 +232,7 @@ void dds::parse_url(const string& url, parsed_url& purl)
 	using std::regex;
 	using std::smatch;
 	using std::regex_match;
+	using std::sregex_token_iterator;
 	
 	regex re_url(RE_URL);
 	smatch match;

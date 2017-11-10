@@ -653,9 +653,3 @@ void fgm::network::output_results()
 
 gm::component_type<network> fgm::fgm_comptype("FGM");
 
-// need this too
-template <>
-network* dds::component_type<network>::create(const Json::Value& js)
-{
-	throw std::runtime_error("Not implemented");
-}

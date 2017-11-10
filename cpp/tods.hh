@@ -146,7 +146,7 @@ struct network
 	~network();
 };
 
-
+extern component_type<network> tods_comptype;
 
 
 }  // end namespace tods

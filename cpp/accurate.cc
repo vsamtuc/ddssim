@@ -128,6 +128,15 @@ void data_source_statistics::report(std::ostream& s)
 //
 
 
+component_type<selfjoin_exact_method> selfjoin_exact_method::comp_type;
+
+template <>
+selfjoin_exact_method* component_type<selfjoin_exact_method>::create(const Json::Value& js)
+{
+
+}
+
+
 selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
 : exact_method<qtype::SELFJOIN>(self_join(sid)) 
 { 
@@ -165,6 +174,14 @@ void selfjoin_exact_method::finish()
 //
 //////////////////////////////////////////////
 //
+component_type<twoway_join_exact_method> twoway_join_exact_method::comp_type;
+
+template <>
+twoway_join_exact_method* component_type<twoway_join_exact_method>::create(const Json::Value& js)
+{
+
+}
+
 
 twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
 : exact_method<qtype::JOIN>(join(s1,s2)) 
@@ -244,6 +261,13 @@ agms_sketch_updater::agms_sketch_updater(stream_id _sid, agms::projection proj)
 factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
+component_type<selfjoin_agms_method> selfjoin_agms_method::comp_type;
+template <>
+selfjoin_agms_method* component_type<selfjoin_agms_method>::create(const Json::Value& js)
+{
+
+}
+
 
 selfjoin_agms_method::selfjoin_agms_method(stream_id sid,
 	depth_type D, index_type L) 
@@ -284,6 +308,14 @@ void selfjoin_agms_method::process_record()
 //
 //////////////////////////////////////////////
 //
+
+component_type<twoway_join_agms_method> twoway_join_agms_method::comp_type;
+
+template <>
+twoway_join_agms_method* component_type<twoway_join_agms_method>::create(const Json::Value& js)
+{
+
+}
 
 
 twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 

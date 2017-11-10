@@ -12,6 +12,7 @@
 #include "agms.hh"
 #include "safezone.hh"
 #include "method.hh"
+#include "gm.hh"
 
 
 namespace gm { namespace fgm {

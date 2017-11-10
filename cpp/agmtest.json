@@ -2,7 +2,7 @@
     "components" : [
 		{
 			"name": "agm",
-		    "type": "agm",
+		    "type": "FGM",
 		    "stream": 0,
 		    "projection": {
 				"depth": 7,
@@ -13,7 +13,7 @@
 		},
 		{
 			"name": "gm",			
-		    "type": "gm",
+		    "type": "SGM",
 		    "stream": 0,
 		    "projection": {
 				"depth": 7,

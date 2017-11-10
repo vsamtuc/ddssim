@@ -4,12 +4,34 @@
 
 #include "cfgfile.hh"
 
+// Include all components (!#$!@#%% linker!!)
+#include "accurate.hh"
+#include "tods.hh"
+#include "sgm.hh"
+#include "fgm.hh"
+
 using namespace dds;
 using namespace std;
 
+
+
+
 void usage()
 {
-	cout << "SUpported components:" << endl;
+	cout << "Supported components:" << endl;
+	// Here, we do not use the component registry, in order to force
+	// the !#$!@#%^ linker to link all components!
+	vector<basic_component_type*> c;
+	c.push_back(&tods::tods_comptype);
+	c.push_back(&gm::sgm::sgm_comptype);
+	c.push_back(&gm::fgm::fgm_comptype);
+	c.push_back(&dds::data_source_statistics::comp_type);
+	c.push_back(&dds::selfjoin_exact_method::comp_type);
+	c.push_back(&dds::twoway_join_exact_method::comp_type);
+	c.push_back(&dds::selfjoin_agms_method::comp_type);
+	c.push_back(&dds::twoway_join_agms_method::comp_type);
+
+
 	for(auto&& c: basic_component_type::component_types())
 		cout << "   " << c.first << endl;
 }
