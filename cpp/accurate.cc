@@ -4,13 +4,19 @@
 
 using namespace dds;
 
-component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
+namespace dds {
 
 template<>
-data_source_statistics* component_type<data_source_statistics>::create(const Json::Value&)
+data_source_statistics* comp_type<data_source_statistics>::create(const Json::Value&)
 {
 	return new data_source_statistics();
 }
+
+}
+
+
+dds::comp_type<data_source_statistics> data_source_statistics::comp_t("data_source_statistics");
+
 
 data_source_statistics::data_source_statistics()
 {

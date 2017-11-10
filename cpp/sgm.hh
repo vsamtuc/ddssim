@@ -227,14 +227,13 @@ struct node_proxy : remote_proxy<node>
 
 } // end namespace gm::sgm
 
-
-
-
 }  // end namespace gm
 
 
-template <>
-inline size_t dds::byte_size<gm::sgm::node*>(gm::sgm::node  * const & ) { return 4; }
+namespace dds {
+	template <>
+	inline size_t byte_size<gm::sgm::node*>(gm::sgm::node  * const & ) { return 4; }
+}
 
 
 #endif

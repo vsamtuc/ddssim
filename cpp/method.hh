@@ -433,12 +433,12 @@ public:
 };
 
 template <typename C>
-class component_type : public basic_component_type
+class comp_type : public basic_component_type
 {
 public:
-	component_type(const string& _name) : basic_component_type(_name) {}
-	component_type() : basic_component_type(typeid(C)) {}
-	virtual C* create(const Json::Value&) override;
+	comp_type(const string& _name) : basic_component_type(_name) {}
+	comp_type() : basic_component_type(typeid(C)) {}
+	virtual C* create(const Json::Value&) override ;
 };
 
 

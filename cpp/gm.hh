@@ -19,11 +19,11 @@ using namespace dds;
 
 
 template <typename GMProto>
-class component_type : public dds::component_type<GMProto>
+class component_type : public basic_component_type
 {
 public:
 
-	component_type(const string& _name) : dds::component_type<GMProto>(_name) {}
+	component_type(const string& _name) : dds::basic_component_type(_name) {}
 
 	GMProto* create(const Json::Value& js) override {
 		using agms::projection;
