@@ -4,18 +4,18 @@
 
 using namespace dds;
 
+
 namespace dds {
 
 template<>
-data_source_statistics* comp_type<data_source_statistics>::create(const Json::Value&)
+data_source_statistics* component_type<data_source_statistics>::create(const Json::Value&)
 {
 	return new data_source_statistics();
 }
 
 }
 
-
-dds::comp_type<data_source_statistics> data_source_statistics::comp_t("data_source_statistics");
+dds::component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
 
 
 data_source_statistics::data_source_statistics()
@@ -134,6 +134,8 @@ void data_source_statistics::report(std::ostream& s)
 //
 
 
+
+
 selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
 : exact_method<qtype::SELFJOIN>(self_join(sid)) 
 { 
@@ -171,6 +173,7 @@ void selfjoin_exact_method::finish()
 //
 //////////////////////////////////////////////
 //
+
 
 twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
 : exact_method<qtype::JOIN>(join(s1,s2)) 
@@ -251,6 +254,7 @@ factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
 
+
 selfjoin_agms_method::selfjoin_agms_method(stream_id sid,
 	depth_type D, index_type L) 
 : selfjoin_agms_method(sid, agms::projection(D,L))
@@ -292,6 +296,7 @@ void selfjoin_agms_method::process_record()
 //
 
 
+
 twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 
 	agms::depth_type D, agms::index_type L) 
 : twoway_join_agms_method(s1, s2, agms::projection(D,L))
@@ -326,3 +331,42 @@ void twoway_join_agms_method::process_record()
 	}
 }
 
+
+
+
+namespace dds {
+
+
+component_type<selfjoin_exact_method> selfjoin_exact_method::comp_type;
+template <>
+selfjoin_exact_method* component_type<selfjoin_exact_method>::create(const Json::Value& js)
+{
+
+}
+
+
+component_type<twoway_join_exact_method> twoway_join_exact_method::comp_type;
+
+template <>
+twoway_join_exact_method* component_type<twoway_join_exact_method>::create(const Json::Value& js)
+{
+
+}
+
+
+component_type<selfjoin_agms_method> selfjoin_agms_method::comp_type;
+template <>
+selfjoin_agms_method* component_type<selfjoin_agms_method>::create(const Json::Value& js)
+{
+
+}
+
+component_type<twoway_join_agms_method> twoway_join_agms_method::comp_type;
+template <>
+twoway_join_agms_method* component_type<twoway_join_agms_method>::create(const Json::Value& js)
+{
+
+}
+
+
+}

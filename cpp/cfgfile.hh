@@ -17,6 +17,49 @@ namespace dds
 {
 	using std::vector;
 
+	/**
+		\brief Return a projection from the current object.
+
+		This will look for a member of the form
+		\code{.cpp}
+		"projection": {
+			"depth": <int>,
+			"width": <int>,
+			["epsilon": <float>]
+		}
+		\endcode
+	  */
+	agms::projection get_projection(const Json::Value& js);
+
+	/**
+		\brief Return a set of sids from the current object.
+
+		This will look for a member of the form
+		\code{.cpp}
+		"streams": <int>
+		\endcode
+		or
+		\code{.cpp}
+		"streams": [<int> *]   // zero streams is acceptable!
+		\endcode
+	  */
+	std::set<stream_id> get_streams(const Json::Value& js);
+ 
+	/**
+		\brief Return a set of sids from the current object.
+
+		This will look for a member of the form
+		\code{.cpp}
+		"streams": <int>
+		\endcode
+		or
+		\code{.cpp}
+		"streams": [<int> *]   // zero streams is acceptable!
+		\endcode
+	  */
+	std::set<stream_id> get_query(const Json::Value& js);
+
+
 	typedef std::unordered_map<std::string, output_file*> output_file_map;
 
 	struct parsed_url
@@ -36,8 +79,7 @@ namespace dds
 
 	void execute(Json::Value&);
 
-	agms::projection get_projection(const Json::Value& js);
-  
+ 
 } // end namespace dds
 
 #endif

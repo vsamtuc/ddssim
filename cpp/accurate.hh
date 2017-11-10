@@ -55,7 +55,7 @@ public:
 	data_source_statistics(); 
 	~data_source_statistics();
 
-	static comp_type<data_source_statistics> comp_t; 
+	static dds::component_type<data_source_statistics> comp_type; 
 };
 
 
@@ -99,6 +99,8 @@ class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 	void finish();
 public:
 	selfjoin_exact_method(stream_id sid);
+
+ 	static component_type<selfjoin_exact_method> comp_type;
 };
 
 
@@ -116,6 +118,8 @@ class twoway_join_exact_method : public exact_method<qtype::JOIN>
 	void finish();
 public:
 	twoway_join_exact_method(stream_id s1, stream_id s2);
+
+	static component_type<twoway_join_exact_method> comp_type;	
 };
 
 
@@ -197,6 +201,8 @@ class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 public:
 	selfjoin_agms_method(stream_id sid, const agms::projection& proj);
 	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
+
+	static component_type<selfjoin_agms_method> comp_type;
 };
 
 
@@ -215,6 +221,8 @@ class twoway_join_agms_method : public agms_method<qtype::JOIN>
 public:
 	twoway_join_agms_method(stream_id s1, stream_id s2, const agms::projection& proj);
 	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
+
+	static component_type<twoway_join_agms_method> comp_type;	
 };
 
 

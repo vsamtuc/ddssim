@@ -14,6 +14,7 @@
 #include "method.hh"
 #include "gm.hh"
 
+
 namespace gm { namespace fgm {
 
 using std::cout;

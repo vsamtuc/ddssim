@@ -19,7 +19,7 @@ using namespace dds;
 
 
 template <typename GMProto>
-class component_type : public basic_component_type
+class component_type : public dds::basic_component_type
 {
 public:
 

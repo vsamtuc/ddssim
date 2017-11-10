@@ -46,7 +46,6 @@ struct network : star_network<network, coordinator, node>, reactive
 };
 
 
-//extern component_type<network> sgm_comptype;
 extern gm::component_type<network> sgm_comptype;
 
 

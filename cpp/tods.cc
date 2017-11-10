@@ -4,6 +4,7 @@
 #include "method.hh"
 #include "tods.hh"
 #include "results.hh"
+#include "cfgfile.hh"
 
 using std::cout;
 using std::endl;
@@ -214,4 +215,23 @@ size_t node_stream_state::byte_size() const
 	compressed_sketch sk { dE, delta_updates };
 	return sk.byte_size();
 }
+
+
+namespace dds {
+
+template <>
+network* component_type<network>::create(const Json::Value& js)
+{
+	string _name = js["name"].asString();
+	projection _proj = get_projection(js);
+	double _theta = js["theta"].asDouble();
+	std::set<stream_id> _sids = get_streams(js);
+
+	return new network(_name, _proj, _theta, _sids);
+}
+
+}
+
+component_type<network> tods::tods_comptype("TODS");
+
 
