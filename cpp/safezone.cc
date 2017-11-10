@@ -2,6 +2,7 @@
 #include "safezone.hh"
 
 
+using namespace gm;
 using namespace dds;
 
 

@@ -1,15 +1,19 @@
 
 #include <sstream>
+#include <boost/python.hpp>
+#include <jsoncpp/json/json.h>
 
 #include "dds.hh"
 #include "data_source.hh"
 #include "method.hh"
-#include "binc.hh"
+#include "mathlib.hh"
 #include "cfgfile.hh"
+#include "dsarch.hh"
+#include "accurate.hh"
+#include "agms.hh"
+#include "safezone.hh"
 
-#include <boost/python.hpp>
-#include <jsoncpp/json/json.h>
-
+#include "binc.hh"
 using binc::print;
 
 namespace { // Avoid cluttering the global namespace.
@@ -257,7 +261,7 @@ BOOST_PYTHON_MODULE(_dds)
 
     class_< dds::Vec >
     	("Vec", init<size_t>())
-    	.def(init<const Vec&>())
+    	.def(init<const dds::Vec&>())
     	.def(init<double, size_t>())
     	.def("__len__", & dds::Vec::size)
     	.def("resize", &dds::Vec::resize)
@@ -362,7 +366,7 @@ BOOST_PYTHON_MODULE(_dds)
     // Also good for std::set<source_id> !!!!
     class_< std::set<dds::stream_id> >
     		("id_set", init<>())
-    	.def( init< const::set<dds::stream_id>& >() )
+    	.def( init< const std::set<dds::stream_id>& >() )
 		// The next lines are stupid, but without the cast, the
 		// compiler would barf.
 		// This broke when I switched to ubuntu 17.10. I would very much like
@@ -1061,26 +1065,26 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 
 
 
-	class_< dds::selfjoin_agms_safezone, boost::noncopyable >
+	class_< gm::selfjoin_agms_safezone, boost::noncopyable >
 		("selfjoin_agms_safezone", 
 			init<const agms::sketch&, double, double>())
 		.def("__call__", 
 			// cast to select the overload
-			(double (dds::selfjoin_agms_safezone::*)(const agms::sketch&) )
-			& dds::selfjoin_agms_safezone::operator())
+			(double (gm::selfjoin_agms_safezone::*)(const agms::sketch&) )
+			& gm::selfjoin_agms_safezone::operator())
 		;
 
-	class_< dds::selfjoin_query, boost::noncopyable >
+	class_< gm::selfjoin_query, boost::noncopyable >
 		("selfjoin_query", init<double, agms::projection>())
-		.def("update_estimate", & dds::selfjoin_query::update_estimate)
-		.def_readonly("beta", &dds::selfjoin_query::beta)
-		.def_readonly("epsilon", &dds::selfjoin_query::epsilon)
-		.def_readonly("Qest", &dds::selfjoin_query::Qest)
-		.def_readonly("Tlow", &dds::selfjoin_query::Tlow)
-		.def_readonly("Thigh", &dds::selfjoin_query::Thigh)
-		.def_readonly("zeta_E", &dds::selfjoin_query::zeta_E)
-		.def_readonly("E", &dds::selfjoin_query::E)
-		.def_readonly("safe_zone", &dds::selfjoin_query::safe_zone)
+		.def("update_estimate", & gm::selfjoin_query::update_estimate)
+		.def_readonly("beta", &gm::selfjoin_query::beta)
+		.def_readonly("epsilon", &gm::selfjoin_query::epsilon)
+		.def_readonly("Qest", &gm::selfjoin_query::Qest)
+		.def_readonly("Tlow", &gm::selfjoin_query::Tlow)
+		.def_readonly("Thigh", &gm::selfjoin_query::Thigh)
+		.def_readonly("zeta_E", &gm::selfjoin_query::zeta_E)
+		.def_readonly("E", &gm::selfjoin_query::E)
+		.def_readonly("safe_zone", &gm::selfjoin_query::safe_zone)
 		;
 
 

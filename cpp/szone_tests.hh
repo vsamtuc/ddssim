@@ -14,6 +14,7 @@
 using namespace std;
 using namespace dds;
 using namespace agms;
+using namespace gm; 
 using binc::print;
 using binc::sprint;
 

@@ -470,7 +470,7 @@ public:
 	inline auto packed() { pack(); return *this; }
 
 	/**
-		Return true if there is no mapping for a key
+		Return true if there is mapping for a key
 
 		Note that a mapping may exist and be `((Range)0)` if the vector is unpacked.
 	  */

@@ -11,10 +11,10 @@
 	regions, safe zone functions, distance functions, etc.
   */
 
-namespace dds { 
+namespace gm { 
 
+using namespace dds;
 using namespace agms;
-
 
 /**
 	A base class for safe zone functions, marking them
