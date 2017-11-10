@@ -107,19 +107,28 @@ void basic_column::set(const string&)
 //
 //-------------------------------------
 
-static std::unordered_map<string, output_table*> __table_registry;
-static std::unordered_set<output_table*> __all_tables;
+static std::unordered_map<string, output_table*>& __table_registry()
+{
+	static std::unordered_map<string, output_table*> foo;
+	return foo;
+}
+
+static std::unordered_set<output_table*>& __all_tables()
+{
+	static std::unordered_set<output_table*> foo;
+	return foo;
+}
 
 output_table* output_table::get(const string& name)
 {
-	auto iter = __table_registry.find(name);
-	return (iter!=__table_registry.end()) ? iter->second : nullptr;
+	auto iter = __table_registry().find(name);
+	return (iter!=__table_registry().end()) ? iter->second : nullptr;
 }
 
 
 const std::unordered_set<output_table*> all()
 {
-	return __all_tables;
+	return __all_tables();
 }
 
 
@@ -128,10 +137,10 @@ output_table::output_table(const string& _name, table_flavor _f)
 {
 	if(_name.empty())
 		throw std::runtime_error("Table cannot have empty name");
-	if(__table_registry.count(_name)>0)
+	if(__table_registry().count(_name)>0)
 		throw std::runtime_error("A table of name `"+_name+"' is already registered");
-	__table_registry[_name] = this;
-	__all_tables.insert(this);	
+	__table_registry()[_name] = this;
+	__all_tables().insert(this);	
 }
 
 
@@ -142,8 +151,8 @@ output_table::~output_table()
 		if(c) c->_table = 0;
 	}
 	output_binding::unbind_all(files);
-	__table_registry.erase(this->name());
-	__all_tables.erase(this);
+	__table_registry().erase(this->name());
+	__all_tables().erase(this);
 }
 
 

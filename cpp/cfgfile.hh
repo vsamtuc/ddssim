@@ -6,6 +6,7 @@
 
 #include <jsoncpp/json/json.h>
 
+#include "agms.hh"
 #include "method.hh"
 
 /**
@@ -17,7 +18,6 @@ namespace dds
 	using std::vector;
 
 	typedef std::unordered_map<std::string, output_file*> output_file_map;
-
 
 	struct parsed_url
 	{
@@ -35,6 +35,8 @@ namespace dds
 	output_file_map prepare_output(Json::Value&, reporter&);
 
 	void execute(Json::Value&);
+
+	agms::projection get_projection(const Json::Value& js);
   
 } // end namespace dds
 

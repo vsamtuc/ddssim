@@ -7,6 +7,13 @@
 using namespace dds;
 using namespace std;
 
+void usage()
+{
+	cout << "SUpported components:" << endl;
+	for(auto&& c: basic_component_type::component_types())
+		cout << "   " << c.first << endl;
+}
+
 int main(int argc, char** argv)
 {
 	Json::Value cfg;
@@ -15,6 +22,7 @@ int main(int argc, char** argv)
 		cfgfile >> cfg;		
 	} else {
 		cout << "Expected config file argument:  <mycfg>.json" << endl;
+		usage();
 		return -1;
 	}
 

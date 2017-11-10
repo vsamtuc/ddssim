@@ -12,6 +12,7 @@
 #include "agms.hh"
 #include "safezone.hh"
 #include "method.hh"
+#include "gm.hh"
 
 using std::cout;
 using std::endl;
@@ -44,6 +45,9 @@ struct network : star_network<network, coordinator, node>, reactive
 	void output_results();
 };
 
+
+//extern component_type<network> sgm_comptype;
+extern gm::component_type<network> sgm_comptype;
 
 
 struct node_proxy;

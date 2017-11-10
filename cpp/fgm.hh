@@ -42,6 +42,9 @@ struct network : star_network<network, coordinator, node>, reactive
 };
 
 
+extern gm::component_type<network> fgm_comptype;
+
+
 
 struct node_proxy;
 

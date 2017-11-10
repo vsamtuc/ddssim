@@ -419,7 +419,7 @@ struct progress_reporter : reactive, progress_bar
 class basic_component_type : public named
 {
 protected:
-	static std::map<string, basic_component_type*> ctype_map;
+	static std::map<string, basic_component_type*>& ctype_map();
 	basic_component_type(const string& _name);
 	basic_component_type(const type_info& ti);
 	virtual ~basic_component_type();

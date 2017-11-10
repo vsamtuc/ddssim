@@ -434,3 +434,27 @@ void sgm::network::output_results()
 	gm_comm_results.fill(this);
 	gm_comm_results.emit_row();
 }
+
+
+gm::component_type<network> sgm::sgm_comptype("SGM");
+
+// need this too
+template <>
+network* dds::component_type<network>::create(const Json::Value& js)
+{
+	throw std::runtime_error("Not implemented");
+}
+
+#if 0
+component_type<network> sgm::sgm_comptype("SGM");
+
+template <>
+sgm::network* component_type<network>::create(const Json::Value& js)
+{
+	string name = js["name"].asString();
+	stream_id sid = js["stream"].asUInt();
+	projection proj = get_projection(js);
+	double beta = js["beta"].asDouble();
+}
+#endif
+

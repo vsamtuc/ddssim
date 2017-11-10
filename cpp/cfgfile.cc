@@ -134,10 +134,9 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 //----------------------------------------------
 
 
-
-static projection get_projection(Value& js)
+projection dds::get_projection(const Value& js)
 {
-	Value& jp = js["projection"];
+	const Value& jp = js["projection"];
 
 	depth_type d = jp["depth"].asUInt();
 	index_type w = jp["width"].asUInt();
@@ -149,6 +148,7 @@ static projection get_projection(Value& js)
 		proj.set_epsilon(jp["epsilon"].asDouble());
 	return proj;
 }
+
 
 static double get_beta(Value& js)
 {
