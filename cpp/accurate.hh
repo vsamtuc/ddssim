@@ -24,7 +24,7 @@ using std::endl;
 
 using namespace std::string_literals;
 
-class data_source_statistics : public reactive
+class data_source_statistics : public component
 {
 	set<stream_id> sids;
 	set<source_id> hids;
@@ -70,17 +70,17 @@ using std::map;
  *************************************/
 
 
-class query_method : public reactive
+class query_method : public component
 {
 protected:
 	basic_stream_query Q;
-	string method_name;
 	double curest = 0.0;
 
 	column_ref<double> series;
 public:
-	query_method(const basic_stream_query& _Q, const string& methname) 
-	: Q(_Q), method_name(methname), series({methname+"_"+repr(Q), "%.0f", curest})
+	query_method(const string& _name, const basic_stream_query& _Q) 
+	: 	component(_name),
+		Q(_Q), series({_name+".qest", "%.0f", curest})
 	{
 		CTX.timeseries.add(series);
 	}
@@ -108,7 +108,7 @@ class selfjoin_exact_method : public query_method
 	void process_warmup(const buffered_dataset& wset);
 	void finish();
 public:
-	selfjoin_exact_method(stream_id sid);
+	selfjoin_exact_method(const string& n, stream_id sid);
 
 };
 
@@ -126,7 +126,7 @@ class twoway_join_exact_method : public query_method
 	void process_record(const dds_record& rec);
 	void finish();
 public:
-	twoway_join_exact_method(stream_id s1, stream_id s2);
+	twoway_join_exact_method(const string& n, stream_id s1, stream_id s2);
 
 };
 
@@ -169,8 +169,8 @@ class selfjoin_agms_method : public query_method
 	void initialize();
 	void process_record();
 public:
-	selfjoin_agms_method(stream_id sid, const agms::projection& proj);
-	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
+	selfjoin_agms_method(const string& n, stream_id sid, const agms::projection& proj);
+	selfjoin_agms_method(const string& n, stream_id sid, agms::depth_type D, agms::index_type L);
 
 };
 
@@ -188,8 +188,8 @@ class twoway_join_agms_method : public query_method
 	void initialize();
 	void process_record();
 public:
-	twoway_join_agms_method(stream_id s1, stream_id s2, const agms::projection& proj);
-	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
+	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, const agms::projection& proj);
+	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
 
 };
 

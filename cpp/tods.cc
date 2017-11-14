@@ -225,7 +225,8 @@ network* component_type<network>::create(const Json::Value& js)
 	string _name = js["name"].asString();
 	projection _proj = get_projection(js);
 	double _theta = js["theta"].asDouble();
-	std::set<stream_id> _sids = get_streams(js);
+	auto streams = get_streams(js);
+	std::set<stream_id> _sids(streams.begin(), streams.end());
 
 	return new network(_name, _proj, _theta, _sids);
 }

@@ -119,7 +119,7 @@ struct node : local_site
 	The main method object
   */
 struct network 
-	: star_network<network, coordinator, node>, reactive
+	: star_network<network, coordinator, node>, component
 {
 	set<stream_id> streams;
 	projection proj;

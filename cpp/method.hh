@@ -411,6 +411,9 @@ struct progress_reporter : reactive, progress_bar
 
 
 
+class component;
+
+
 /**
 	A protocol is a simulation of a query answering method.
 
@@ -424,7 +427,7 @@ protected:
 	basic_component_type(const type_info& ti);
 	virtual ~basic_component_type();
 public:
-	virtual reactive* create(const Json::Value&) = 0;
+	virtual component* create(const Json::Value&) = 0;
 
 	static basic_component_type* get_component_type(const string& _name);
 	static basic_component_type* get_component_type(const type_info& ti);
@@ -442,7 +445,13 @@ public:
 };
 
 
-
+class component : public virtual named, public reactive
+{
+public:
+	component();
+	component(const string& _name);
+	virtual ~component();
+};
 
 
 } //end namespace dds

@@ -25,7 +25,7 @@ using namespace dds;
 struct coordinator;
 struct node;
 
-struct network : star_network<network, coordinator, node>, reactive
+struct network : star_network<network, coordinator, node>, component
 {
 	stream_id sid;
 	projection proj;

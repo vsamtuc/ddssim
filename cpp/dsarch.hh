@@ -553,7 +553,7 @@ public:
 	used, these strings are generated from the C++ classes without
 	any user-code overhead.
   */
-class basic_network : public named
+class basic_network : public virtual named
 {
 protected:
 	host_set _hosts;		// all the simple hosts

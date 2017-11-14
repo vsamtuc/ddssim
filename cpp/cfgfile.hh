@@ -37,6 +37,10 @@ namespace dds
 
 		This will look for a member of the form
 		\code{.cpp}
+		"stream:": <int>
+		\endcode
+		or
+		\code{.cpp}
 		"streams": <int>
 		\endcode
 		or
@@ -44,7 +48,7 @@ namespace dds
 		"streams": [<int> *]   // zero streams is acceptable!
 		\endcode
 	  */
-	std::set<stream_id> get_streams(const Json::Value& js);
+	std::vector<stream_id> get_streams(const Json::Value& js);
  
 	/**
 		\brief Return a set of sids from the current object.

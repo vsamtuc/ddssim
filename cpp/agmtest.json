@@ -21,7 +21,30 @@
 				"epsilon": 0.05
 		    },
 		    "beta": 0.1
-		}		
+		},
+		{
+			"name": "stat",
+			"type": "data_source_statistics"
+		},
+		{
+			"name": "sj0",
+			"type": "exact_query",
+			"query": "SELFJOIN",
+			"stream": 0
+		},
+		{
+			"name": "amssj0",
+			"type": "agms_query",
+			"query": "SELFJOIN",
+			"streams": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1			
+		}
+
     ],
 
     "dataset" : {
@@ -31,7 +54,7 @@
 		//"dataset" : "wc_day46_1",
 		//"file" : "/src/datasets/wc_day46",
 		"hash_streams": 1,
-		"set_max_length": 100//,
+		"set_max_length": 10000//,
 		//"hash_sources": 4,
 		//"time_window": 28800,    // 4*3600
 		//"fixed_window": 10000000,
@@ -47,7 +70,7 @@
 		"gm_comm" : "file:wc_gm_comm.dat?open_mode=append",
 		"comm" : "file:wc_comm.dat?open_mode=append",
 		"h5f" : "hdf5:wc_results.h5",
-		"wcout" : "file:wc_tseries.dat?open_mode=truncate"
+		"wcout" : "file:wc_tseries.dat?open_mode=truncate,format=csvtab"
     },
 
     "bind" : {

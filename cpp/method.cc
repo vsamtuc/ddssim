@@ -62,6 +62,16 @@ basic_component_type* basic_component_type::get_component_type(const type_info& 
 }
 
 
+component::component()
+{ }
+
+component::component(const string& _name)
+	: named(_name)
+{ }
+
+component::~component()
+{ }
+
 
 basic_factory::~basic_factory()
 {

@@ -146,19 +146,43 @@ projection dds::get_projection(const Value& js)
 	return proj;
 }
 
-std::set<stream_id> dds::get_streams(const Value& js)
+std::vector<stream_id> dds::get_streams(const Value& js)
 {
-	std::set<stream_id> ret;
-	const Value& jp = js["streams"];
-	if(jp.isArray()) {
-		for(auto&& val : jp) {
-			ret.insert(val.asInt());
+	std::vector<stream_id> ret;
+
+	if(js.isMember("stream")) {
+		ret.push_back( js["stream"].asInt() );
+	} else if(js.isMember("streams")) {
+		const Value& jp = js["streams"];
+		if(jp.isArray()) {
+			for(auto&& val : jp) {
+				ret.push_back(val.asInt());
+			}
 		}
+		else {
+			ret.push_back(jp.asInt());
+		}		
 	}
-	else {
-		ret.insert(jp.asInt());
-	}
+
 	return ret;
+}
+
+
+basic_stream_query dds::get_query(const Value& js)
+{
+	basic_stream_query Q;
+	if(! js.isMember("query"))
+		return Q;
+	qtype qt = qtype_repr[js["query"].asString()];
+	Q.set_type(qt);
+
+	double beta = js.get("beta", 0.0).asDouble();
+	Q.set_approximation(beta);
+
+	auto streams = get_streams(js);
+	Q.set_operands(streams);
+
+	return Q;
 }
 
 
