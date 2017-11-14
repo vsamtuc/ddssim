@@ -8,6 +8,7 @@
 
 #include "agms.hh"
 #include "method.hh"
+#include "query.hh"
 
 /**
    Utilities to read json files using libjsoncpp
@@ -57,7 +58,7 @@ namespace dds
 		"streams": [<int> *]   // zero streams is acceptable!
 		\endcode
 	  */
-	std::set<stream_id> get_query(const Json::Value& js);
+	basic_stream_query get_query(const Json::Value& js);
 
 
 	typedef std::unordered_map<std::string, output_file*> output_file_map;

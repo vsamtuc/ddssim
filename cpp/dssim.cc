@@ -26,12 +26,8 @@ void usage()
 	c.push_back(&gm::sgm::sgm_comptype);
 	c.push_back(&gm::fgm::fgm_comptype);
 	c.push_back(&dds::data_source_statistics::comp_type);
-	c.push_back(&dds::selfjoin_exact_method::comp_type);
-	c.push_back(&dds::twoway_join_exact_method::comp_type);
-	c.push_back(&dds::selfjoin_agms_method::comp_type);
-	c.push_back(&dds::twoway_join_agms_method::comp_type);
-
-
+	c.push_back(&dds::exact_query_comptype);
+	c.push_back(&dds::agms_query_comptype);
 	for(auto&& c: basic_component_type::component_types())
 		cout << "   " << c.first << endl;
 }

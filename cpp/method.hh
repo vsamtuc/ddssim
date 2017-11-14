@@ -442,18 +442,6 @@ public:
 };
 
 
-/**
-	A protocol is a simulation of a query answering method.
-
-	This is the base class.
-  */
-class query_protocol : public reactive
-{
-public:
-	virtual const basic_query& query() const = 0;
-	virtual double current_estimate() const = 0;
-};
-
 
 
 

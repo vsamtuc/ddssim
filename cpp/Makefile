@@ -41,7 +41,7 @@ endif
 ###################################
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc dsarch.cc results.cc\
+	accurate.cc dds.cc query.cc dsarch.cc results.cc\
 	tods.cc  safezone.cc fgm.cc sgm.cc\
 	cfgfile.cc
 
