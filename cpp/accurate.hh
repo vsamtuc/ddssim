@@ -56,7 +56,7 @@ public:
 	data_source_statistics(); 
 	~data_source_statistics();
 
-	static component_type<data_source_statistics> comp_type; 
+	static dds::component_type<data_source_statistics> comp_type; 
 };
 
 

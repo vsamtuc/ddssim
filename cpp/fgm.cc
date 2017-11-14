@@ -651,5 +651,5 @@ void fgm::network::output_results()
 	gm_comm_results.emit_row();
 }
 
-gm::component_type<network> fgm::fgm_comptype("FGM");
+gm::component_type<gm::fgm::network> gm::fgm::fgm_comptype("FGM");
 

@@ -217,6 +217,8 @@ size_t node_stream_state::byte_size() const
 }
 
 
+namespace dds {
+
 template <>
 network* component_type<network>::create(const Json::Value& js)
 {
@@ -226,6 +228,8 @@ network* component_type<network>::create(const Json::Value& js)
 	std::set<stream_id> _sids = get_streams(js);
 
 	return new network(_name, _proj, _theta, _sids);
+}
+
 }
 
 component_type<network> tods::tods_comptype("TODS");

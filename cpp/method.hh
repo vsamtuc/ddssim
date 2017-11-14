@@ -438,7 +438,7 @@ class component_type : public basic_component_type
 public:
 	component_type(const string& _name) : basic_component_type(_name) {}
 	component_type() : basic_component_type(typeid(C)) {}
-	virtual C* create(const Json::Value&) override;
+	virtual C* create(const Json::Value&) override ;
 };
 
 

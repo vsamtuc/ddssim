@@ -438,4 +438,3 @@ void sgm::network::output_results()
 
 gm::component_type<network> sgm::sgm_comptype("SGM");
 
-

@@ -4,13 +4,19 @@
 
 using namespace dds;
 
-component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
+
+namespace dds {
 
 template<>
 data_source_statistics* component_type<data_source_statistics>::create(const Json::Value&)
 {
 	return new data_source_statistics();
 }
+
+}
+
+dds::component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
+
 
 data_source_statistics::data_source_statistics()
 {
@@ -336,9 +342,14 @@ void twoway_join_agms_method::process_record()
 component_type<query_method> dds::exact_query_comptype("exact_query");
 component_type<query_method> dds::agms_query_comptype("agms_query");
 
+namespace dds {
+
 template<>
 query_method* component_type<query_method>::create(const Json::Value& js)
 {
 	return NULL;
 }
+
+
+} //end namespace dds
 

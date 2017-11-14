@@ -126,7 +126,7 @@ output_table* output_table::get(const string& name)
 }
 
 
-const std::unordered_set<output_table*> all()
+const output_table::registry& output_table::all()
 {
 	return __all_tables();
 }
