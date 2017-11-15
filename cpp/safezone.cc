@@ -1,10 +1,11 @@
 
+#include "binc.hh"
 #include "safezone.hh"
 
 
 using namespace gm;
 using namespace dds;
-
+using namespace binc;
 
 /////////////////////////////////////////////////////////
 //
@@ -261,11 +262,24 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 }
 
 
+/////////////////////////////////////////////////////////
+//
+//  twoway_join_agms_safezone_upper_bound
+//  twoway_join_agms_safezone_lower_bound
+//  twoway_join_agms_safezone
+//
+/////////////////////////////////////////////////////////
 
 
+
+
+
+
+/////////////////////////////////////////////////////////
 //
 //  Query objects
 //
+/////////////////////////////////////////////////////////
 
 
 selfjoin_query::selfjoin_query(double _beta, projection _proj)
@@ -305,45 +319,52 @@ void selfjoin_query::compute()
 
 
 
+
 /////////////////////////////////////////////////////////
 //
-//  selfjoin_agms_safezone_upper_bound
-//  selfjoin_agms_safezone_lower_bound
-//  selfjoin_agms_safezone
+//  hyperbola distance routines
 //
 /////////////////////////////////////////////////////////
 
-
-double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon)
+double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsilon)
 {
 	/*
-		Consider the hyperbola $y(x) = \sqrt{x^2+T}$ for $x\in [0,+\infty)$, and
-		let $ (\xi, \psi) $ be a point on it.
+		Consider the hyperbola \( y(x) = \sqrt{x^2+T} \), where \(T \geq 0\),
+		 for \( x\in [0,+\infty) \), and
+		let \( (\xi, \psi) \) be a point on it.
 
-		First, assume $\xi >0$. Then, the normal to the hyperbola at that point
-		is the line passing through points $(2\xi,0)$ and $(0,2\psi)$. To see this,
-		note that $\nabla y^2-x^2 = (-2x, 2y)$. In other words, the normal to the
-		hyperbola at $(\xi, \psi)$ has a parametric equation of 
+		First, assume \( \xi >0 \). Then, the normal to the hyperbola at that point
+		is the line passing through points \( (2\xi,0) \) and \( (0,2\psi) \). To see this,
+		note that \( \nabla (y^2-x^2) = (-2x, 2y) \). In other words, the normal to the
+		hyperbola at \( (\xi, \psi) \) has a parametric equation of 
 		\[  (\xi,\psi) + t (-2\xi, 2\psi).  \]
 
-		Now, any point $(p,q)$ whose nearest neighbor is $(\xi, \psi)$ must satisfy
+		Now, any point \( (p,q)\) whose nearest neighbor is \( (\xi, \psi) \) must satisfy
 		\[  (p,q) =  (\xi,\psi) + t (-2\xi, 2\psi),  \]
-		and by eliminating $t$ we get 
+		and by eliminating \( t\) we get 
 		\[   \frac{p}{\xi} + \frac{q}{\psi} = 2.  \]
 		Thus, it suffices to find the root of the function
 		\[  g(x) = 2 - p/x - q/y(x) \]
 		(which is unique).
 
-		This function has $g(0) = -\infty$, $g(\xi) = 0$ and $g(\max(p,q))>0$. Also,
+		This function has \( g(0) = -\infty\), \(g(\xi) = 0\) and \(g(\max(p,q))>0\). Also,
 		\[  g'(x) = \frac{p}{x^2} + \frac{qx}{2y^3}.  \]
 
-		In case $p=0$, it is easy to see that, if $q>2\sqrt{T}$, then the nearest point is
-		$(\sqrt{(q/2)^2 - T}, q/2)$, and for $q\leq 2\sqrt{T}$, the answer is $(0, \sqrt{T})$.
+		In case \(p=0\), it is easy to see that, if \(q>2\sqrt{T}\), then the nearest point is
+		\( (\sqrt{(q/2)^2 - T}, q/2)\), and for \( q\leq 2\sqrt{T} \), the answer is \( (0, \sqrt{T}) \).
 	*/
 	using std::max;
 
 	if(T<0)
 		throw std::invalid_argument("call to hyperbola_nearest_neighbor with T<0");
+
+	if(T==0.0) {
+		// Direct solution
+		if(p<0.0) 
+			return (q<=p) ? 0.0 : 0.5*(p-q);
+		else
+			return (q<=-p) ? 0.0 : 0.5*(p+q);
+	}
 
 	if(p==0.0) {
 		if(q > 2.*sqrt(T))
@@ -363,7 +384,7 @@ double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon)
 	double x0 = 0;
 	double xm = (x0+x1)/2;
 
-	size_t loops = 80;
+	size_t loops = 100;
 	while( fabs((x1-x0)/xm) >= epsilon) {
 		if((--loops) == 0) break;
 		double gx = g(xm);
@@ -375,6 +396,7 @@ double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon)
 			break;
 		xm = (x0+x1)/2;
 	}
+	//binc::print("loop=",loops," \\xi=",xm, " x0=",x0, " x1=",x1);
 
 #undef Y
 #undef g

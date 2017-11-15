@@ -19,7 +19,8 @@ using binc::elements_of;
 	node
 *********************************************/
 
-void node::update_stream() 
+template <qtype QType>
+void node<QType>::update_stream() 
 {
 	assert(CTX.stream_record().hid == site_id());
 
@@ -41,7 +42,8 @@ void node::update_stream()
 }
 
 
-void node::setup_connections()
+template <qtype QType>
+void node<QType>::setup_connections()
 {
 	num_sites = coord.proc()->k;
 }
@@ -56,7 +58,8 @@ void node::setup_connections()
 // invariant sum(zeta) > Threshold
 
 // initialize a new round
-void coordinator::start_round()
+template <qtype QType>
+void coordinator<QType>::start_round()
 {
 	// compute current parameters from query
 	bitweight.assign(k, 0);
@@ -99,7 +102,8 @@ void coordinator::start_round()
 }	
 
 
-void coordinator::start_subround(double total_zeta)
+template <qtype QType>
+void coordinator<QType>::start_subround(double total_zeta)
 {
 	num_subrounds++;
 	bit_budget = k;
@@ -111,9 +115,10 @@ void coordinator::start_subround(double total_zeta)
 
 
 // remote call on host violation
-oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
+template <qtype QType>
+oneway coordinator<QType>::threshold_crossed(sender<node_t> ctx, int delta_bits)
 {
-	node* n = ctx.value;
+	node_t* n = ctx.value;
 	size_t nid = node_index[n];
 
 	if(has_naive[nid] && md[nid]) {
@@ -136,7 +141,8 @@ oneway coordinator::threshold_crossed(sender<node> ctx, int delta_bits)
 
 }
 
-void coordinator::finish_subround()
+template <qtype QType>
+void coordinator<QType>::finish_subround()
 {
 	const int MAX_LEVEL = 300;
 
@@ -164,8 +170,9 @@ void coordinator::finish_subround()
 }
 
 
-
-double coordinator::rebalance(const set<node_proxy*> B)
+#if 0
+template <qtype QType>
+double coordinator<QType>::rebalance(const set<node_proxy_t*> B)
 {
 	assert(B.size());
 
@@ -192,7 +199,8 @@ double coordinator::rebalance(const set<node_proxy*> B)
 }
 
 
-set<node_proxy*> coordinator::rebalance_pairs()
+template <qtype QType>
+set<node_proxy*> coordinator<QType>::rebalance_pairs()
 {
 	vector< node_double > hvalue = compute_hvalue();
 
@@ -225,7 +233,8 @@ set<node_proxy*> coordinator::rebalance_pairs()
 }
 
 
-set<node_proxy*> coordinator::rebalance_light()
+template <qtype QType>
+set<node_proxy*> coordinator<QType>::rebalance_light()
 {
 	set<node_proxy*> B;
 
@@ -246,7 +255,8 @@ set<node_proxy*> coordinator::rebalance_light()
 }
 
 
-vector<node_double> coordinator::compute_hvalue()
+template <qtype QType>
+vector<node_double> coordinator<QType>::compute_hvalue()
 {
 	vector<node_double> hvalue;
 	hvalue.reserve(k);
@@ -258,14 +268,15 @@ vector<node_double> coordinator::compute_hvalue()
 
 	return hvalue;
 }
+#endif
 
-
-void coordinator::finish_subrounds(double total_zeta)
+template <qtype QType>
+void coordinator<QType>::finish_subrounds(double total_zeta)
 {
 	/* 
 		In this function, we try to rebalance.
 	 */
-
+#if 0
 	if(! in_naive_mode && k>1) {
 		// attempt to rebalance		
 		// get rebalancing set
@@ -280,13 +291,15 @@ void coordinator::finish_subrounds(double total_zeta)
 			return;
 		}
 	}
+#endif
 	finish_round();
 }
 
 
 
 // initialize a new round
-void coordinator::finish_round()
+template <qtype QType>
+void coordinator<QType>::finish_round()
 {
 	// collect all data
 	sketch newE(query.E.proj);
@@ -342,7 +355,8 @@ void coordinator::finish_round()
 
 
 
-void coordinator::compute_model()
+template <qtype QType>
+void coordinator<QType>::compute_model()
 {
 	// size of state vector
 	const size_t D = query.E.size();
@@ -438,7 +452,8 @@ void coordinator::compute_model()
 }
 
 
-void coordinator::print_model() 
+template <qtype QType>
+void coordinator<QType>::print_model() 
 {
 	print("        Model alpha=", elements_of(alpha));
 	print("        Model  beta=", elements_of(beta));
@@ -446,7 +461,8 @@ void coordinator::print_model()
 }
 
 
-void coordinator::trace_round(sketch& newE)
+template <qtype QType>
+void coordinator<QType>::trace_round(sketch& newE)
 {
 
 	// report
@@ -511,7 +527,8 @@ void coordinator::trace_round(sketch& newE)
 	
 }
 
-void coordinator::print_state()
+template <qtype QType>
+void coordinator<QType>::print_state()
 {
 	printf("nid zeta.... c... zeta_0..\n");
 	double zeta_t = 0.0;
@@ -539,7 +556,8 @@ void coordinator::print_state()
 
 
 
-void coordinator::warmup()
+template <qtype QType>
+void coordinator<QType>::warmup()
 {
 	sketch dE(net()->proj);
 
@@ -552,7 +570,8 @@ void coordinator::warmup()
 }
 
 
-void coordinator::setup_connections()
+template <qtype QType>
+void coordinator<QType>::setup_connections()
 {
 	using boost::adaptors::map_values;
 	proxy.add_sites(net()->sites);
@@ -569,7 +588,8 @@ void coordinator::setup_connections()
 }
 
 
-coordinator::coordinator(network* nw, const projection& proj, double beta)
+template <qtype QType>
+coordinator<QType>::coordinator(network_t* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
 	in_naive_mode(true), k(0),
@@ -582,7 +602,8 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 {  
 }
 
-coordinator::~coordinator()
+template <qtype QType>
+coordinator<QType>::~coordinator()
 {
 }
 
@@ -593,14 +614,15 @@ coordinator::~coordinator()
 *********************************************/
 
 
-fgm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
-: 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
+template <qtype QType>
+fgm::network<QType>::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
+: 	star_network<network<QType>, coordinator<QType>, node<QType> >(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
 	set_name(_name);
-	set_protocol_name("AGMC");
+	this->set_protocol_name("AGMC");
 	
-	setup(proj, beta);
+	this->setup(proj, beta);
 
 	on(START_STREAM, [&]() { 
 		process_init(); 
@@ -612,32 +634,35 @@ fgm::network::network(const string& _name, stream_id _sid, const projection& _pr
 		output_results();
 	});
 	on(INIT, [&]() {
-		CTX.timeseries.add(hub->Qest_series);
+		CTX.timeseries.add(this->hub->Qest_series);
 	});
 	on(DONE, [&]() { 
-		CTX.timeseries.remove(hub->Qest_series);
+		CTX.timeseries.remove(this->hub->Qest_series);
 	});
 }
 
 
 
 
-void fgm::network::process_record()
+template <qtype QType>
+void fgm::network<QType>::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
-		source_site(rec.hid)->update_stream();		
+		this->source_site(rec.hid)->update_stream();		
 }
 
-void fgm::network::process_init()
+template <qtype QType>
+void fgm::network<QType>::process_init()
 {
 	// let the coordinator initialize the nodes
-	hub->warmup();
-	hub->start_round();
+	this->hub->warmup();
+	this->hub->start_round();
 }
 
 
-void fgm::network::output_results()
+template <qtype QType>
+void fgm::network<QType>::output_results()
 {
 	//network_comm_results.netname = "GM2";
 
@@ -651,5 +676,5 @@ void fgm::network::output_results()
 	gm_comm_results.emit_row();
 }
 
-gm::component_type<gm::fgm::network> gm::fgm::fgm_comptype("FGM");
+gm::p_component_type< gm::fgm::network > gm::fgm::fgm_comptype("FGM");
 

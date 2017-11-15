@@ -3,6 +3,7 @@
 		{
 			"name": "agm",
 		    "type": "FGM",
+		    "query": "SELFJOIN",
 		    "stream": 0,
 		    "projection": {
 				"depth": 7,
@@ -14,6 +15,7 @@
 		{
 			"name": "gm",			
 		    "type": "SGM",
+		    "query": "SELFJOIN",
 		    "stream": 0,
 		    "projection": {
 				"depth": 7,
@@ -54,7 +56,7 @@
 		//"dataset" : "wc_day46_1",
 		//"file" : "/src/datasets/wc_day46",
 		"hash_streams": 1,
-		"set_max_length": 10000//,
+		"set_max_length": 1000//,
 		//"hash_sources": 4,
 		//"time_window": 28800,    // 4*3600
 		//"fixed_window": 10000000,

@@ -267,46 +267,59 @@ private:
 	for finding the root of function
 	\f[  g(x) = 2 - p/x - q/y(x)  \f]
 
-	The accuracy \f$ epsilon >0 \f$ is relative: if \f$x_r\f$ is returned, then
+	The accuracy \f$ \epsilon >0 \f$ is relative: if \f$x_r\f$ is returned, then
 	the actuall value will lie in
-	an interval of size \f$ x_r (1\pm \epsilon/2)\f$.
+	an interval of size \f$ x_r\cdot (1\pm \epsilon/2)\f$.
 
 	Accuracy is set to \f$\epsilon = 10^{-13}\f$ by default. This is close to the accuracy
 	of IEEE 754 `double`.
 
 	This method converges in about 40 iterations on average.
   */
-double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon=1.E-13 );
+double hyperbola_nearest_neighbor(double p, double q, double T, double epsilon=1.E-13 );
 
 
 /**
 	A safe zone for the problem \f$x^2 - y^2 \geq T\f$ in 2 dimensions.
 	
 	The reference point for this safezone is given as \f$(\xi, \psi)\f$, and
-	must satisfy the condition \f$\xi^2 - \psi^2 \geq T\f$. 
+	must satisfy the condition \f$\xi^2 - \psi^2 \geq T\f$. If this is not the case,
+	an \c std::invalid_argument is thrown.
 
-	When \f$T=0\f$, the function expects \f$ \xi \neq 0\f$. That is, a safe zone
-	cannot have non-empty interior.
+	When \f$T=0\f$, there is ambiguity if \f$ \xi = 0\f$: there are two candidate safe
+	zones, one is \f$ Z_{+} =  \{ x\geq |y| \} \f$ and the other is \f$ Z_{-} = \{ x \leq -|y| \} \f$. In
+	this case, the function will select zone \f$ Z_{+} \f$.
+
   */
-struct square_difference_2d_safe_zone : safezone_base
+struct bilinear_2d_safe_zone : safezone_base
 {
-	double T;			// threshold
-	int xihat;			// cached for case T>0
-	double u, v;		// cached for case T<=0
+	double T;			///< threshold
+	int xihat;			///< cached for case T>0
+	double u, v;		//< cached for case T<=0
 
-	square_difference_2d_safe_zone() {}
+	/**
+		\brief Default construct an invalid safe zone
+	  */
+	bilinear_2d_safe_zone() : safezone_base(false) {}
 
-	square_difference_2d_safe_zone(double xi, double psi, double _T)
-	: T(_T), xihat(sgn(xi))
+	/**
+		\brief Construct a valid safe zone.
+
+		@param xi the x-coordinate of reference point \f$(\xi,\psi)\f$.
+		@param psi the y-coordinate of reference point \f$(\xi,\psi)\f$.
+		@param _T  the safe zone threshold
+
+		@throws std::invalid_argument if \f$ \xi^2 - \psi^2 < T\f$.
+	  */
+	bilinear_2d_safe_zone(double xi, double psi, double _T)
+	: T(_T), xihat(sgn(xi)), u(0.0), v(0.0)
 	{
 		if(sq(xi)-sq(psi) < T)
 			throw std::invalid_argument("the reference point is non-admissible");
-		if(T==0 and xi==0) 
-			throw std::invalid_argument("the safe zone has empty interior");
 
 		// cache the conic safe zone, if applicable
 		if(T<0) {
-			u = hyberbola_nearest_neighbor(xi, fabs(psi), -T);
+			u = hyperbola_nearest_neighbor(xi, fabs(psi), -T);
 			v = sqrt(sq(u)-T);
 			// eikonalize
 			double norm_u_v = sqrt(sq(u)+sq(v));
@@ -314,9 +327,15 @@ struct square_difference_2d_safe_zone : safezone_base
 			u /= norm_u_v;
 			v /= norm_u_v;
 			T /= norm_u_v;
+		} else if(T==0.0) {
+			u = (xi>=0.0) ? 1.0/sqrt(2.0) : -1.0/sqrt(2.0);
+			v = 1.0/sqrt(2.0);
 		}
 	}
 
+	/**
+		\brief The value of the safe zone function at \f$(x,y)\f$.
+	  */
 	double operator()(double x, double y) const {
 		if(T>0) {
 			// compute the signed distance function of the set $\{ x >= \sqrt{y^2+T} \}$.
@@ -324,7 +343,7 @@ struct square_difference_2d_safe_zone : safezone_base
 
 			int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
 
-			double v = hyberbola_nearest_neighbor(y, x_xihat, T);
+			double v = hyperbola_nearest_neighbor(y, x_xihat, T);
 			double u = sqrt(sq(v)+T);
 
 			return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
@@ -352,7 +371,7 @@ struct inner_product_safe_zone
 	double T;
 	Vec xihat;
 
-	square_difference_2d_safe_zone sqdiff;
+	bilinear_2d_safe_zone sqdiff;
 
 	/**
 		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
@@ -372,7 +391,7 @@ struct inner_product_safe_zone
 		double norm_xi = norm_L2(xi);
 		double norm_psi = norm_L2(psi);
 
-		sqdiff = square_difference_2d_safe_zone(norm_xi, norm_psi, 4.*T);
+		sqdiff = bilinear_2d_safe_zone(norm_xi, norm_psi, 4.*T);
 
 		if(norm_xi>0)
 			xihat = xi/norm_xi;
@@ -395,9 +414,8 @@ struct inner_product_safe_zone
 };
 
 
-
-
 struct twoway_join_query;
+
 
 struct twoway_join_agms_safezone_lower_bound
 {

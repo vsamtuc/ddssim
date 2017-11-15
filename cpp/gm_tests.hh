@@ -24,13 +24,13 @@ public:
 		// load a dataset to the coord
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
-		fgm::network net("foo",0, projection(5, 400), 0.5);
+		fgm::network<qtype::SELFJOIN> net("foo",0, projection(5, 400), 0.5);
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);
 
 		for(auto p : net.sites) {
-			fgm::node_proxy *np = & net.hub->proxy[p];
+			fgm::node_proxy<qtype::SELFJOIN> *np = & net.hub->proxy[p];
 			TS_ASSERT_EQUALS(np->proc(), p);
 			TS_ASSERT_EQUALS(np->_r_owner, net.hub);
 			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p]] , p);
@@ -51,7 +51,7 @@ public:
 
 		CTX.clear();
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
-		fgm::network net("foo", 0, proj, 0.5);
+		fgm::network<qtype::SELFJOIN> net("foo", 0, proj, 0.5);
 
 		net.hub->start_round();
 

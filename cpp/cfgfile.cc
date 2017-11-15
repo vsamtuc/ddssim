@@ -202,6 +202,7 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 		// map to a handler
 		basic_component_type* ctype = basic_component_type::get_component_type(type);
 		auto c = ctype->create(jc);
+		cout << "Component of type `" << typeid(*c).name() << "' created"<<endl;
 		components.push_back(c);
 	}
 }

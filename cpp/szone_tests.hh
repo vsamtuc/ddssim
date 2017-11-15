@@ -27,7 +27,7 @@ public:
 		Testing function of the quantile
 		safezones, eikonal and non-eikonal
 		*/
-	void test_quorun_est()
+	void test_quorum_est()
 	{
 
 		Vec zE = { 13.0, 17, 26, 11, -33, 31, 52 };
@@ -330,6 +330,165 @@ public:
 
 			TS_ASSERT_LESS_THAN( norm_Linf(X-E), 1E-9);
 		}
+	}
+
+
+
+	void test_hyperbola_nn_0()
+	{
+		using gm::hyperbola_nearest_neighbor; 
+		TS_ASSERT_EQUALS(hyperbola_nearest_neighbor(0,0,0), 0);
+
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,-3,0), 0, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,-1,0), 0, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,-0.9,0), 0.05, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,0,0), 0.5, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,1,0), 1, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(1,2,0), 1.5, 1E-9);
+
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,-3,0), 0, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,-1,0), 0, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,-0.9,0), -0.05, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,0,0), -0.5, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,1,0), -1, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(-1,2,0), -1.5, 1E-9);
+
+
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(0,1,0), 0.5, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(0,10,0), 5.0, 1E-9);
+		TS_ASSERT_DELTA(hyperbola_nearest_neighbor(0,-1,0), 0.0, 1E-9);
+	}
+
+
+	void test_hyperbola_nn_scale()
+	{
+
+		for(double xi=-10; xi<=10; xi+=0.1) {
+			double psi = sqrt(xi*xi+1.0);
+			for(double t=0.49; t>=-100.0; t+=((t>=-1.0)?-0.01:t) ) {
+				double p = xi-2.0*t*xi;
+				double q = psi + 2.0*t*psi;
+
+				double xi_ret = hyperbola_nearest_neighbor(p,q,1.0);
+
+				TS_ASSERT_DELTA(xi_ret, xi, 1E-9);
+
+				//binc::print("p=",p," q=",q," xi=",xi);
+
+				for(double T = 1E-5; T<= 1E5; T*=10.) {
+					double sqrtT = sqrt(T);
+					double xi_s = hyperbola_nearest_neighbor(p*sqrtT, q*sqrtT, T)/sqrtT;
+					TS_ASSERT_DELTA(xi_s, xi_ret, 1E-9 );
+
+				}
+			}
+		}
+	}
+
+
+	void test_bilinear_2d_T_zero()
+	{
+		bilinear_2d_safe_zone zeta( 1., 0., 0. );
+
+		TS_ASSERT_DELTA(zeta(1.,0.), 1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), 0, 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), -1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		zeta = {0.,0.,0.}; // this should yield the same safe zone as above
+		TS_ASSERT_DELTA(zeta(1.,0.), 1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), 0, 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), -1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		zeta = {1.,1.,0.}; // this should yield the same safe zone as above
+		TS_ASSERT_DELTA(zeta(1.,0.), 1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), 0, 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), -1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		zeta = {-1.,1.,0.}; // this should define the left-facing cone
+		TS_ASSERT_DELTA(zeta(1.,0.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), -sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), 1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		zeta = {-1.,0.5,0.}; // this should define the left-facing cone
+		TS_ASSERT_DELTA(zeta(1.,0.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), -sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), 1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		zeta = {-1.,-0.5,0.}; // this should define the left-facing cone
+		TS_ASSERT_DELTA(zeta(1.,0.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(1.,1.), -sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(0.,1.), -1./sqrt(2), 1.E-12);
+		TS_ASSERT_DELTA(zeta(-1.,0.), 1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
+
+		// When the ref.point is not in the zone, throw!
+		TS_ASSERT_THROWS( (zeta={0,1,0}), std::invalid_argument  );
+	}
+
+	void test_bilinear_2d_T_pos()
+	{
+		bilinear_2d_safe_zone zeta { 1, 0, 1};
+
+		TS_ASSERT_EQUALS(zeta.u, 0.0);
+		TS_ASSERT_EQUALS(zeta.v, 0.0);
+		TS_ASSERT_EQUALS(zeta.T, 1.0);
+		TS_ASSERT_EQUALS(zeta.xihat, 1);
+
+		TS_ASSERT_DELTA(zeta(sqrt(2),1), 0., 1E-12);
+		TS_ASSERT_DELTA(zeta(sqrt(5),2), 0., 1E-12);
+		TS_ASSERT_DELTA(zeta(sqrt(5),2), 0., 1E-12);
+
+		for(double a=0.1; a<10; a+=0.1) {
+			double d = sqrt(2*sq(a)+1);
+			TS_ASSERT_DELTA(zeta(0,2*a), -d, 1E-12);
+			TS_ASSERT_DELTA(zeta(2.0*sqrt(sq(a)+1.0),0), d, 1E-12);
+		}
+
+		zeta = {-1.5, -0.5, 1};
+
+		TS_ASSERT_DELTA(zeta(-sqrt(2),1), 0., 1E-12);
+		TS_ASSERT_DELTA(zeta(-sqrt(5),2), 0., 1E-12);
+		TS_ASSERT_DELTA(zeta(-sqrt(5),2), 0., 1E-12);
+
+		for(double a=0.1; a<10; a+=0.1) {
+			double d = sqrt(2*sq(a)+1);
+			TS_ASSERT_DELTA(zeta(0,2*a), -d, 1E-12);
+			TS_ASSERT_DELTA(zeta(-2.0*sqrt(sq(a)+1.0),0), d, 1E-12);
+		}
+
+		// When the ref.point is not in the zone, throw!
+		TS_ASSERT_THROWS( (zeta={-1,0.5,1}), std::invalid_argument  );		
+	}
+
+
+	void test_bilinear_2d_T_neg()
+	{
+		bilinear_2d_safe_zone zeta { 1, 0, -1};
+
+		double uu = 0.5;
+		double vv = sqrt(1.+sq(uu));
+		double norm_uuvv = sqrt(sq(uu)+sq(vv));
+		TS_ASSERT_DELTA(zeta.u, uu/norm_uuvv, 1E-12);
+		TS_ASSERT_DELTA(zeta.v, vv/norm_uuvv, 1E-12);
+
+		TS_ASSERT_DELTA(zeta(0,sqrt(5)), -sqrt(1.5), 1E-12);
+		TS_ASSERT_DELTA(zeta(0,-sqrt(5)), -sqrt(1.5), 1E-12);
+		TS_ASSERT_DELTA(zeta(0,0), 1/norm_uuvv, 1E-12);
+
+		zeta = {0, -0.5, -1};
+		TS_ASSERT_DELTA(zeta.u, 0.0, 1E-16);
+		TS_ASSERT_DELTA(zeta.v, 1.0, 1E-16);
+		TS_ASSERT_DELTA(zeta(0,0), 1, 1E-16);
+		TS_ASSERT_DELTA(zeta(10,0), 1, 1E-16);
+		TS_ASSERT_DELTA(zeta(-100,0), 1, 1E-16);
+
+		TS_ASSERT_DELTA(zeta(1E6,1), 0, 1E-16);
+		TS_ASSERT_DELTA(zeta(-1E6,-2), -1, 1E-16);
+
 	}
 
 

@@ -7,8 +7,9 @@
 // Include all components (!#$!@#%% linker!!)
 #include "accurate.hh"
 #include "tods.hh"
-#include "sgm.hh"
-#include "fgm.hh"
+#include "gm.hh"
+//#include "sgm.hh"
+//#include "fgm.hh"
 
 using namespace dds;
 using namespace std;

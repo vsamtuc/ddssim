@@ -19,14 +19,32 @@ namespace gm { namespace fgm {
 
 using std::cout;
 using std::endl;
+using std::vector;
 using namespace agms;
 using namespace dds;
 
+using dds::qtype;
+
+template <qtype QType>
 struct coordinator;
+
+template <qtype QType>
 struct node;
 
-struct network : star_network<network, coordinator, node>, component
+template <qtype QType>
+struct node_proxy;
+
+
+template <qtype QType>
+struct network 
+	: 	star_network<network<QType> , coordinator<QType> , node<QType> >, 
+		component
 {
+	typedef coordinator<QType> coordinator_t;
+	typedef node<QType> node_t;
+	typedef network<QType> network_t;
+	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
+
 	stream_id sid;
 	projection proj;
 	double beta;
@@ -43,20 +61,18 @@ struct network : star_network<network, coordinator, node>, component
 };
 
 
-extern gm::component_type<network> fgm_comptype;
 
-
-
-struct node_proxy;
-
-using std::vector;
-
-typedef tuple<node_proxy*,double>  node_double;
-
-
+template <qtype QType>
 struct coordinator : process
 {
-	proxy_map<node_proxy, node> proxy;
+	typedef coordinator<QType> coordinator_t;
+	typedef node<QType> node_t;
+	typedef node_proxy<QType> node_proxy_t;
+	typedef network<QType> network_t;
+
+	typedef tuple< node_proxy<QType>*, double>  node_double;
+
+	proxy_map<node_proxy_t, node_t> proxy;
 
 	//
 	// protocol stuff
@@ -69,8 +85,8 @@ struct coordinator : process
 	size_t k;				// number of sites
 
 	// index the nodes
-	map<node*, size_t> node_index;
-	vector<node*> node_ptr;
+	map<node_t*, size_t> node_index;
+	vector<node_t*> node_ptr;
 
 	// protocol related
 	vector<bool> has_naive;
@@ -95,10 +111,10 @@ struct coordinator : process
 	Vec alpha, beta, gamma;
 	vector<bool> md;  // the model's output;
 	
-	coordinator(network* nw, const projection& proj, double beta); 
+	coordinator(network_t* nw, const projection& proj, double beta); 
 	~coordinator();
 
-	inline network* net() { return static_cast<network*>(host::net()); }
+	inline network_t* net() { return static_cast<network_t*>(host::net()); }
 
 	void setup_connections() override;
 
@@ -110,7 +126,7 @@ struct coordinator : process
 	//
 
 	// remote call on host violation
-	oneway threshold_crossed(sender<node> ctx, int delta_bitw);
+	oneway threshold_crossed(sender<node_t> ctx, int delta_bitw);
 
 	void start_round();   // initialize a new round
 	void finish_round();  // finish current round and start new one
@@ -123,10 +139,10 @@ struct coordinator : process
 	//
 	// rebalancing
 	//
-
+#if 0
 	// This method performs the actual rebalancing and returns the delta_zeta
 	// of the rebalanced nodes.
-	double rebalance(const set<node_proxy*> B);
+	double rebalance(const set<node_proxy_t*> B);
 
 	// Returns a rebalancing set two nodes, or empty.
 	set<node_proxy*> rebalance_pairs();
@@ -135,6 +151,7 @@ struct coordinator : process
 	
 	// used in rebalancing heuristics: return the vector of zeta_lu for each node
 	vector<node_double> compute_hvalue();
+#endif
 
 	// 
 	// model routines
@@ -153,18 +170,25 @@ struct coordinator : process
 
 
 
-
-struct coord_proxy : remote_proxy<coordinator>
+template <qtype QType>
+struct coord_proxy : remote_proxy< coordinator<QType> >
 {
-	REMOTE_METHOD(coordinator, threshold_crossed);
-	coord_proxy(process* c) : remote_proxy<coordinator>(c) { }
+	typedef coordinator<QType> coordinator_t;
+	REMOTE_METHOD(coordinator_t, threshold_crossed);
+	coord_proxy(process* c) : remote_proxy< coordinator<QType> >(c) { }
 };
 
 
 
-
+template <qtype QType>
 struct node : local_site
 {
+	typedef coordinator<QType> coordinator_t;
+	typedef node<QType> node_t;
+	typedef node_proxy<QType> node_proxy_t;
+	typedef network<QType> network_t;
+	typedef coord_proxy<QType> coord_proxy_t;
+
 	int num_sites;				// number of sites
 
 	safezone szone;	// pointer to the safezone (shared among objects)
@@ -183,9 +207,9 @@ struct node : local_site
 	sketch dS;				// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
 
-	coord_proxy coord;
+	coord_proxy_t coord;
 
-	node(network* net, source_id hid, const projection& proj, double beta)
+	node(network_t* net, source_id hid, const projection& proj, double beta)
 	: local_site(net, hid), 
 		U(proj), update_count(0),
 		dS(proj), round_local_updates(0),
@@ -266,16 +290,19 @@ struct node : local_site
 
 };
 
-struct node_proxy : remote_proxy<node>
+template <qtype QType>
+struct node_proxy : remote_proxy< node<QType> >
 {
-	REMOTE_METHOD(node, reset);
-	REMOTE_METHOD(node, set_safezone);
-	REMOTE_METHOD(node, reset_bitweight);
-	REMOTE_METHOD(node, get_drift);
-	REMOTE_METHOD(node, set_drift);
-	REMOTE_METHOD(node, get_zeta);
-	REMOTE_METHOD(node, get_zeta_lu);
-	node_proxy(process* p) : remote_proxy<node>(p) {}
+	typedef node<QType> node_t;
+
+	REMOTE_METHOD(node_t, reset);
+	REMOTE_METHOD(node_t, set_safezone);
+	REMOTE_METHOD(node_t, reset_bitweight);
+	REMOTE_METHOD(node_t, get_drift);
+	REMOTE_METHOD(node_t, set_drift);
+	REMOTE_METHOD(node_t, get_zeta);
+	REMOTE_METHOD(node_t, get_zeta_lu);
+	node_proxy(process* p) : remote_proxy< node<QType> >(p) {}
 };
 
 } // end namespace gm::fgm
@@ -286,7 +313,7 @@ struct node_proxy : remote_proxy<node>
 namespace dds{
 	
 template <>
-inline size_t byte_size<gm::fgm::node*>(gm::fgm::node* const &) { return 4; }
+inline size_t byte_size< gm::fgm::node<qtype::SELFJOIN> *>(gm::fgm::node<qtype::SELFJOIN> * const &) { return 4; }
 }
 
 

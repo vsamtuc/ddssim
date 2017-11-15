@@ -24,7 +24,8 @@ using binc::elements_of;
 	node
 *********************************************/
 
-void node::update_stream() 
+template <qtype QType>
+void node<QType>::update_stream() 
 {
 	assert(CTX.stream_record().hid == site_id());
 
@@ -39,7 +40,8 @@ void node::update_stream()
 }
 
 
-void node::setup_connections()
+template <qtype QType>
+void node<QType>::setup_connections()
 {
 	num_sites = coord.proc()->k;
 }
@@ -51,7 +53,8 @@ void node::setup_connections()
 
 
 // initialize a new round
-void coordinator::start_round()
+template <qtype QType>
+void coordinator<QType>::start_round()
 {
 	// compute current parameters from query
 
@@ -85,9 +88,10 @@ void coordinator::start_round()
 
 
 // remote call on host violation
-oneway coordinator::local_violation(sender<node> ctx)
+template <qtype QType>
+oneway coordinator<QType>::local_violation(sender<node_t> ctx)
 {
-	node* n = ctx.value;
+	node_t* n = ctx.value;
 
 	/* 
 		In this function, we try to rebalance. If this fails, we
@@ -96,12 +100,12 @@ oneway coordinator::local_violation(sender<node> ctx)
 	if(! in_naive_mode && k>1) {
 		// attempt to rebalance		
 		// get rebalancing set
-		rebalance_random_limits(& proxy[n]);
+		rebalance_random_limits(n);
 	} else {
 		B.clear();
 		Bcompl.clear();
 		for(auto n : node_ptr) 
-			Bcompl.insert(&proxy[n]);
+			Bcompl.insert(n);
 
 		Ubal = 0.0;
 		Ubal_updates = 0;
@@ -114,25 +118,25 @@ oneway coordinator::local_violation(sender<node> ctx)
 
 
 
-void coordinator::rebalance_random(node_proxy* lvnode)
+template <qtype QType>
+void coordinator<QType>::rebalance_random(node_t* lvnode)
 {
 	B.clear();
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	compressed_sketch csk = lvnode->get_drift();
+	compressed_sketch csk = proxy[lvnode].get_drift();
 	Ubal = csk.sk;
 	Ubal_updates = csk.updates;
 	Ubal_admissible = false;
 	assert(query.safe_zone(query.E + Ubal) <= 0.0);
 
 	// find a balancing set
-	vector<node_proxy*> nodes;
+	vector<node_t*> nodes;
 	nodes.reserve(k);
 	for(auto n : node_ptr) {
-		node_proxy* p = &proxy[n];
-		if(B.find(p) == B.end())
-			nodes.push_back(p);
+		if(B.find(n) == B.end())
+			nodes.push_back(n);
 	}
 	assert(nodes.size()==k-1);
 
@@ -148,7 +152,7 @@ void coordinator::rebalance_random(node_proxy* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_sketch csk = n->get_drift();
+			compressed_sketch csk = proxy[n].get_drift();
 			Ubal += csk.sk;
 			Ubal_updates += csk.updates;
 			zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
@@ -185,25 +189,25 @@ void coordinator::rebalance_random(node_proxy* lvnode)
   (b) \sum |B|  over a round to be <= k
   ... 
  */
-void coordinator::rebalance_random_limits(node_proxy* lvnode)
+template <qtype QType>
+void coordinator<QType>::rebalance_random_limits(node_t* lvnode)
 {
 	B.clear();
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	compressed_sketch csk = lvnode->get_drift();
+	compressed_sketch csk = proxy[lvnode].get_drift();
 	Ubal = csk.sk;
 	Ubal_updates = csk.updates;
 	Ubal_admissible = false;
 	assert(query.safe_zone(query.E + Ubal) <= 0.0);
 
 	// find a balancing set
-	vector<node_proxy*> nodes;
+	vector<node_t*> nodes;
 	nodes.reserve(k);
 	for(auto n : node_ptr) {
-		node_proxy* p = & proxy[n];
-		if(B.find(p) == B.end())
-			nodes.push_back(p);
+		if(B.find(n) == B.end())
+			nodes.push_back(n);
 	}
 	assert(nodes.size()==k-1);
 
@@ -223,7 +227,7 @@ void coordinator::rebalance_random_limits(node_proxy* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_sketch csk = n->get_drift();
+			compressed_sketch csk = proxy[n].get_drift();
 			Ubal += csk.sk;
 			Ubal_updates += csk.updates;
 			zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
@@ -254,7 +258,8 @@ void coordinator::rebalance_random_limits(node_proxy* lvnode)
 }
 
 
-void coordinator::rebalance()
+template <qtype QType>
+void coordinator<QType>::rebalance()
 {
 	Ubal /= B.size();
 
@@ -263,7 +268,7 @@ void coordinator::rebalance()
 	compressed_sketch skbal { Ubal, Ubal_updates };
 
 	for(auto n : B) {
-		n->set_drift(skbal);
+		proxy[n].set_drift(skbal);
 	}	
 
 	round_total_B += B.size();
@@ -278,11 +283,12 @@ void coordinator::rebalance()
 
 
 // initialize a new round
-void coordinator::finish_round()
+template <qtype QType>
+void coordinator<QType>::finish_round()
 {
 	// collect all data
 	for(auto n : Bcompl) {
-		compressed_sketch csk = n->get_drift();
+		compressed_sketch csk = proxy[n].get_drift();
 		Ubal += csk.sk;
 		Ubal_updates += csk.updates;
 	}
@@ -298,7 +304,8 @@ void coordinator::finish_round()
 }
 
 
-void coordinator::trace_round(sketch& newE)
+template <qtype QType>
+void coordinator<QType>::trace_round(sketch& newE)
 {
 
 	// report
@@ -341,7 +348,8 @@ void coordinator::trace_round(sketch& newE)
 
 
 
-void coordinator::warmup()
+template <qtype QType>
+void coordinator<QType>::warmup()
 {
 	sketch dE(net()->proj);
 
@@ -353,7 +361,8 @@ void coordinator::warmup()
 }
 
 
-void coordinator::setup_connections()
+template <qtype QType>
+void coordinator<QType>::setup_connections()
 {
 	using boost::adaptors::map_values;
 	proxy.add_sites(net()->sites);
@@ -365,7 +374,8 @@ void coordinator::setup_connections()
 }
 
 
-coordinator::coordinator(network* nw, const projection& proj, double beta)
+template <qtype QType>
+coordinator<QType>::coordinator(network_t* nw, const projection& proj, double beta)
 : 	process(nw), proxy(this), 
 	query(beta, proj), total_updates(0), 
 	in_naive_mode(false), k(0),
@@ -375,7 +385,8 @@ coordinator::coordinator(network* nw, const projection& proj, double beta)
 {  
 }
 
-coordinator::~coordinator()
+template <qtype QType>
+coordinator<QType>::~coordinator()
 {
 }
 
@@ -386,14 +397,15 @@ coordinator::~coordinator()
 *********************************************/
 
 
-sgm::network::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
-: 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),
+template <qtype QType>
+sgm::network<QType>::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
+: 	star_network_t(CTX.metadata().source_ids()),
 	sid(_sid), proj(_proj), beta(_beta) 
 {
 	set_name(_name);
-	set_protocol_name("GM");
+	this->set_protocol_name("GM");
 	
-	setup(proj, beta);
+	this->setup(proj, beta);
 	on(START_STREAM, [&]() { 
 		process_init(); 
 	} );
@@ -405,23 +417,26 @@ sgm::network::network(const string& _name, stream_id _sid, const projection& _pr
 	});
 }
 
-void sgm::network::process_record()
+template <qtype QType>
+void sgm::network<QType>::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	if(rec.sid==sid) 
-		source_site(rec.hid)->update_stream();		
+		this->source_site(rec.hid)->update_stream();		
 }
 
-void sgm::network::process_init()
+template <qtype QType>
+void sgm::network<QType>::process_init()
 {
 	// let the coordinator initialize the nodes
-	CTX.timeseries.add(hub->Qest_series);
-	hub->warmup();
-	hub->start_round();
+	CTX.timeseries.add(this->hub->Qest_series);
+	this->hub->warmup();
+	this->hub->start_round();
 }
 
 
-void sgm::network::output_results()
+template <qtype QType>
+void sgm::network<QType>::output_results()
 {
 	//network_comm_results.netname = "GM2";
 
@@ -436,5 +451,5 @@ void sgm::network::output_results()
 }
 
 
-gm::component_type<network> sgm::sgm_comptype("SGM");
+gm::p_component_type<network> sgm::sgm_comptype("SGM");
 
