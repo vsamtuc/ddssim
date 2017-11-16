@@ -14,7 +14,7 @@ using namespace binc;
 /////////////////////////////////////////////////////////
 
 quorum_safezone::quorum_safezone() 
-: safezone_base(false) { }
+: safezone_func_base(false) { }
 
 quorum_safezone::quorum_safezone(const Vec& zE, size_t _k) 
 {
@@ -402,3 +402,54 @@ double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsil
 #undef g
 	return xm;
 }
+
+
+/////////////////////////////////////////////////////////
+//
+//  bilinear 2d safe zone
+//
+/////////////////////////////////////////////////////////
+
+bilinear_2d_safe_zone::bilinear_2d_safe_zone() 
+: safezone_func_base(false) {}
+
+bilinear_2d_safe_zone::bilinear_2d_safe_zone(double xi, double psi, double _T)
+	: T(_T), xihat(sgn(xi)), u(0.0), v(0.0)
+{
+	if(sq(xi)-sq(psi) < T)
+		throw std::invalid_argument("the reference point is non-admissible");
+
+	// cache the conic safe zone, if applicable
+	if(T<0) {
+		u = hyperbola_nearest_neighbor(xi, fabs(psi), -T);
+		v = sqrt(sq(u)-T);
+		// eikonalize
+		double norm_u_v = sqrt(sq(u)+sq(v));
+		assert(norm_u_v > 0);
+		u /= norm_u_v;
+		v /= norm_u_v;
+		T /= norm_u_v;
+	} else if(T==0.0) {
+		u = (xi>=0.0) ? 1.0/sqrt(2.0) : -1.0/sqrt(2.0);
+		v = 1.0/sqrt(2.0);
+	}
+}
+
+double bilinear_2d_safe_zone::operator()(double x, double y) const 
+{
+	if(T>0) {
+		// compute the signed distance function of the set $\{ x >= \sqrt{y^2+T} \}$.
+		double x_xihat = x*xihat;
+
+		int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
+
+		double v = hyperbola_nearest_neighbor(y, x_xihat, T);
+		double u = sqrt(sq(v)+T);
+
+		return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
+	} 
+	else {
+		return u*x - v*fabs(y) - T;
+	} 
+}
+

@@ -100,6 +100,14 @@ public:
 	{ }
 
 
+	inline size_t hash(depth_type d, key_type key) const {
+		return hf->hash(d,key) % L;
+	}
+
+	inline bool fourwise(depth_type d, key_type key) const {
+		return hf->fourwise(d,key);
+	}
+
 	void update_index(key_type key, Index& idx) const;
 
 	void update_mask(key_type key, Mask& mask) const; 
@@ -121,6 +129,120 @@ public:
 	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
 
 };
+
+
+
+/**
+	AGMS sketch view
+
+	This template applies AGMS sketch operations on a generic 
+	collection of counters, as defined by a range of random-access
+	iterators.
+  */
+template <typename IterType>
+struct sketch_view
+{
+	typedef IterType iterator;
+	typedef decltype(* iterator()) counter_type;
+
+	/// the projection of the sketch
+	agms::projection proj;
+
+	/// The range of the sketch
+	IterType __begin, __end;
+
+	sketch_view() {}
+
+	sketch_view(const projection& _proj) : proj(_proj) { }
+	sketch_view(const projection& _proj, const iterator& b, const iterator& e)
+		: proj(_proj), __begin(b), __end(e) 
+		{ 
+			assert(valid_range(__begin, __end));
+		}
+
+	void set_range(const iterator& b, const iterator& e) {
+		assert(valid_range(b, e));
+		__begin = b;
+		__end = e;
+	}
+
+	inline bool valid_range(const iterator& b, const iterator& e) const {
+		return std::distance(b,e) == (ptrdiff_t) proj.size();
+	}
+
+	/// The hash family
+	inline hash_family* hashf() const { return proj.hashf(); }
+
+	/// The dimension \f$L\f$ of the sketch.
+	inline index_type width() const { return proj.width(); }
+
+	/// The depth \f$D \f$ of the sketch.
+	inline depth_type depth() const { return proj.depth(); }
+
+	/// Return true if this sketch is compatible to sk
+	template <typename Iter>
+	inline bool compatible(const sketch_view<Iter>& sk) const {
+		return proj == sk.proj;
+	}
+
+	inline iterator begin() const { return __begin; }
+
+	inline iterator end() const { return __end; }
+
+	inline auto row_begin(size_t row) const {
+		return begin(*this)+row*width();
+	}
+
+	inline auto row_end(size_t row) const {
+		return begin(*this)+(row+1)*width();
+	}
+
+
+	/// Update the counters for key and freq
+	void update(key_type key, counter_type freq = 1) const
+	{
+		hash_family* const h = proj.hashf();
+		size_t off = 0;
+		for(size_t d=0; d<depth(); d++) {
+			size_t off2 = h->hash(d, key) % width();
+			if(h->fourwise(d, key))
+				__begin[off+off2] += freq;
+			else
+				__begin[off+off2] -= freq;
+			off += width();
+		}		
+	}
+
+	/// Update the counters for key and freq and set delta vector
+	void update(delta_vector& delta, key_type key, counter_type freq = 1) const
+	{
+		proj.update_index(key, delta.index);
+		for(size_t d=0; d<depth(); d++) {
+			delta.xold[d] = __begin[delta.index[d]];
+			__begin[delta.index[d]] += proj.fourwise(d, key) ? freq : -freq;
+			delta.xnew[d] = __begin[delta.index[d]];
+		}
+	}
+
+	/// Update the counters from index and mask, as returned by projection
+	void apply_update(const Index& idx, const Mask& m, counter_type freq=1)  const
+	{
+		assert(idx.size() == m.size());
+		for(size_t i=0;i<idx.size();i++) {
+			__begin[idx[i]] += m[i]? freq : -freq;
+		}
+	}
+
+	/// update the counters from delta vector
+	void apply_update(const delta_vector& delta) const
+	{
+		for(size_t i=0; i<delta.index.size(); i++) {
+			__begin[delta.index[i]] += delta.xnew[i]-delta.xold[i]; 
+		}
+	}
+
+};
+
 
 
 /**
@@ -198,6 +320,12 @@ public:
 
 	/// The depth \f$D \f$ of the sketch.
 	inline depth_type depth() const { return proj.depth(); }
+
+	/// A sketch view on this sketch object
+	inline auto view() { 
+		typedef decltype(std::begin(*this)) iter;
+		return sketch_view<iter>(proj, begin(*this), end(*this)); 
+	}
 
 	/// Update the sketch.
 	void update(key_type key, double freq = 1.0);
@@ -392,6 +520,28 @@ inline sketch operator/(const sketch& s, double a)
 }
 
 
+/**
+	A reference to a sketch to perform incremental updates.
+
+	A container for a sketch reference and a delta_vector. 
+	The update method also updates the delta.
+  */
+struct inc_sketch_updater
+{
+	sketch& sk;
+	delta_vector delta;
+private:
+	// temporary, used to avoid parameter passing
+	Mask mask;
+public:
+
+	inc_sketch_updater(sketch& _sk);
+
+	void update(key_type key, double freq=1.0);
+	inline void insert(key_type key) { update(key,1.0); }
+	inline void erase(key_type key) { update(key,-1.0); }
+};
+
 
 /**
 	An incrementally updatable sketch.
@@ -413,7 +563,6 @@ public:
 	inline void insert(key_type key) { update(key,1.0); }
 	inline void erase(key_type key) { update(key,-1.0); }
 };
-
 
 
 /**

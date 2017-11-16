@@ -80,7 +80,7 @@ protected:
 public:
 	query_method(const string& _name, const basic_stream_query& _Q) 
 	: 	component(_name),
-		Q(_Q), series({_name+".qest", "%.0f", curest})
+		Q(_Q), series {_name+".qest", "%.0f", curest}
 	{
 		CTX.timeseries.add(series);
 	}

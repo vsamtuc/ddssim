@@ -3,15 +3,19 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 
 #include "data_source.hh"
 #include "fgm.hh"
+#include "binc.hh"
 
 #include <cxxtest/TestSuite.h>
 
 using namespace std;
 using namespace dds;
 using namespace gm;
+
+
 
 class GeomTestSuite : public CxxTest::TestSuite
 {
@@ -21,7 +25,8 @@ public:
 	void test_gm2_network()
 	{
 
-		// load a dataset to the coord
+		// load a dataset to the coord to initialize the
+		// metadata
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
 		fgm::network<qtype::SELFJOIN> net("foo",0, projection(5, 400), 0.5);
@@ -74,7 +79,6 @@ public:
 			TS_ASSERT_EQUALS(sz(W, zeta_l, zeta_u), w);
 			TS_ASSERT_EQUALS(sz.zeta_E, net.hub->query.zeta_E);
 		}
-
 	}
 
 

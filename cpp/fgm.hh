@@ -61,6 +61,13 @@ struct network
 };
 
 
+//////////////////////////////////
+// 
+// Query, state, safezone
+//
+//////////////////////////////////
+
+
 
 template <qtype QType>
 struct coordinator : process
@@ -70,14 +77,14 @@ struct coordinator : process
 	typedef node_proxy<QType> node_proxy_t;
 	typedef network<QType> network_t;
 
-	typedef tuple< node_proxy<QType>*, double>  node_double;
+	typedef typename continuous_query<QType>::query_type query_type;
 
 	proxy_map<node_proxy_t, node_t> proxy;
 
 	//
 	// protocol stuff
 	//
-	selfjoin_query query;	// current query state
+	query_type query;	// current query state
 	size_t total_updates;	// number of stream updates received
 
 	bool in_naive_mode;		// when true, use the naive safezone
@@ -189,9 +196,13 @@ struct node : local_site
 	typedef network<QType> network_t;
 	typedef coord_proxy<QType> coord_proxy_t;
 
-	int num_sites;				// number of sites
+	typedef typename continuous_query<QType>::safezone_type safezone_type;
+	typedef typename continuous_query<QType>::state_vector_type state_vector_type;
+	typedef typename continuous_query<QType>::drift_vector_type drift_vector_type;
 
-	safezone szone;	// pointer to the safezone (shared among objects)
+	int num_sites;			// number of sites
+
+	safezone_type szone;	// safezone object
 
 	double minzeta; 		// minimum value of zeta so far
 	double zeta_l, zeta_u;          // zetas of lower and upper bounds
@@ -201,10 +212,10 @@ struct node : local_site
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
 	int bitweight;			// equal to number of bits sent since last reset_bitweight()
 
-	isketch U;				// drift vector
+	drift_vector_type U;	// drift vector
 	size_t update_count;	// number of updates in drift vector
 
-	sketch dS;				// the sketch of all updates over a round
+	state_vector_type dS;		// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
 
 	coord_proxy_t coord;

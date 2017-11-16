@@ -2,6 +2,7 @@
 #define __SAFEZONE_HH__
 
 
+#include "query.hh"
 #include "mathlib.hh"
 #include "agms.hh"
 
@@ -20,11 +21,11 @@ using namespace agms;
 	A base class for safe zone functions, marking them
 	as valid or not. Invalid safe zones are e.g. not-initialized
   */
-struct safezone_base
+struct safezone_func_base
 {
 	bool isvalid;
-	safezone_base() : isvalid(true){}
-	safezone_base(bool v) : isvalid(v) {}
+	safezone_func_base() : isvalid(true){}
+	safezone_func_base(bool v) : isvalid(v) {}
 };
 
 
@@ -54,7 +55,7 @@ struct safezone_base
 
 	@see quorum_safezone_fast
   */
-struct quorum_safezone : safezone_base
+struct quorum_safezone : safezone_func_base
 {
 	size_t n;	/// the number of inputs
 	size_t k;	/// the lower bound on true inputs
@@ -114,14 +115,14 @@ struct quorum_safezone_fast : quorum_safezone
 	values.
 
   */
-struct selfjoin_agms_safezone_upper_bound : safezone_base
+struct selfjoin_agms_safezone_upper_bound : safezone_func_base
 {
 	double sqrt_T;		// threshold above
 	quorum_safezone Median;
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_upper_bound() : safezone_base(false) {}
+	selfjoin_agms_safezone_upper_bound() : safezone_func_base(false) {}
 
 	selfjoin_agms_safezone_upper_bound(const sketch& E, double T);
 
@@ -154,7 +155,7 @@ struct selfjoin_agms_safezone_upper_bound : safezone_base
 	values.
 
   */
-struct selfjoin_agms_safezone_lower_bound : safezone_base
+struct selfjoin_agms_safezone_lower_bound : safezone_func_base
 {
 	sketch Ehat;		// normalized reference vector
 	double sqrt_T;			// threshold above
@@ -163,7 +164,7 @@ struct selfjoin_agms_safezone_lower_bound : safezone_base
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_lower_bound() : safezone_base(false) {}
+	selfjoin_agms_safezone_lower_bound() : safezone_func_base(false) {}
 
 	selfjoin_agms_safezone_lower_bound(const sketch& E, double T);
 
@@ -188,7 +189,7 @@ struct selfjoin_query;
 	@see selfjoin_agms_safezone_upper_bound
 	@see selfjoin_agms_safezone_lower_bound
  */
-struct selfjoin_agms_safezone : safezone_base
+struct selfjoin_agms_safezone : safezone_func_base
 {
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
 	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
@@ -199,7 +200,7 @@ struct selfjoin_agms_safezone : safezone_base
 		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
 	};
 
-	selfjoin_agms_safezone() : safezone_base(false) {}
+	selfjoin_agms_safezone() : safezone_func_base(false) {}
 
 	selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh);
 
@@ -291,7 +292,7 @@ double hyperbola_nearest_neighbor(double p, double q, double T, double epsilon=1
 	this case, the function will select zone \f$ Z_{+} \f$.
 
   */
-struct bilinear_2d_safe_zone : safezone_base
+struct bilinear_2d_safe_zone : safezone_func_base
 {
 	double T;			///< threshold
 	int xihat;			///< cached for case T>0
@@ -300,7 +301,7 @@ struct bilinear_2d_safe_zone : safezone_base
 	/**
 		\brief Default construct an invalid safe zone
 	  */
-	bilinear_2d_safe_zone() : safezone_base(false) {}
+	bilinear_2d_safe_zone();
 
 	/**
 		\brief Construct a valid safe zone.
@@ -311,47 +312,12 @@ struct bilinear_2d_safe_zone : safezone_base
 
 		@throws std::invalid_argument if \f$ \xi^2 - \psi^2 < T\f$.
 	  */
-	bilinear_2d_safe_zone(double xi, double psi, double _T)
-	: T(_T), xihat(sgn(xi)), u(0.0), v(0.0)
-	{
-		if(sq(xi)-sq(psi) < T)
-			throw std::invalid_argument("the reference point is non-admissible");
-
-		// cache the conic safe zone, if applicable
-		if(T<0) {
-			u = hyperbola_nearest_neighbor(xi, fabs(psi), -T);
-			v = sqrt(sq(u)-T);
-			// eikonalize
-			double norm_u_v = sqrt(sq(u)+sq(v));
-			assert(norm_u_v > 0);
-			u /= norm_u_v;
-			v /= norm_u_v;
-			T /= norm_u_v;
-		} else if(T==0.0) {
-			u = (xi>=0.0) ? 1.0/sqrt(2.0) : -1.0/sqrt(2.0);
-			v = 1.0/sqrt(2.0);
-		}
-	}
+	bilinear_2d_safe_zone(double xi, double psi, double _T);
 
 	/**
 		\brief The value of the safe zone function at \f$(x,y)\f$.
 	  */
-	double operator()(double x, double y) const {
-		if(T>0) {
-			// compute the signed distance function of the set $\{ x >= \sqrt{y^2+T} \}$.
-			double x_xihat = x*xihat;
-
-			int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
-
-			double v = hyperbola_nearest_neighbor(y, x_xihat, T);
-			double u = sqrt(sq(v)+T);
-
-			return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
-		} 
-		else {
-			return u*x - v*fabs(y) - T;
-		} 
-	}
+	double operator()(double x, double y) const;
 };
 
 
@@ -429,7 +395,7 @@ struct twoway_join_agms_safezone_upper_bound
 
 
 
-struct twoway_join_agms_safezone : safezone_base
+struct twoway_join_agms_safezone : safezone_func_base
 {
 
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
@@ -478,6 +444,13 @@ struct twoway_join_query
 	void update_estimate2(const sketch&);
 
 };
+
+
+
+
+
+template <qtype QType>
+struct continuous_query;
 
 
 
@@ -569,6 +542,28 @@ struct safezone
 			return compressed_sketch{*Eglobal, updates}.byte_size();
 	}
 };
+
+
+template <>
+struct continuous_query<qtype::SELFJOIN>
+{
+	typedef selfjoin_query query_type;
+	typedef sketch state_vector_type;
+	typedef isketch drift_vector_type;
+	typedef safezone safezone_type;
+};
+
+
+
+template <>
+struct continuous_query<qtype::JOIN>
+{
+	typedef selfjoin_query query_type;
+	typedef sketch state_vector_type;
+	typedef isketch drift_vector_type;
+	typedef safezone safezone_type;
+};
+
 
 
 

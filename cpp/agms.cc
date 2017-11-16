@@ -180,15 +180,6 @@ size_t std::hash<projection>::operator()( const projection& p) const
 	return seed;
 }
 
-
-isketch::isketch(const projection& _proj)
-	: 	sketch(_proj), 
-		delta(proj.depth()),
-		mask(proj.depth())
-	{ 	}
-
-
-
 template <typename T>
 void print_vec(const string& name, const T& a) 
 {
@@ -198,6 +189,41 @@ void print_vec(const string& name, const T& a)
 		cout << (i?",":"") << a[i];
 	cout << "}" << endl;
 }
+
+
+
+inc_sketch_updater::inc_sketch_updater(sketch& _sk)
+	: 	sk(_sk), 
+		delta(_sk.proj.depth()),
+		mask(_sk.proj.depth())
+	{ 	}
+
+
+void inc_sketch_updater::update(key_type key, double freq)
+{
+	sk.proj.update_index(key, delta.index);
+	sk.proj.update_mask(key, mask);
+	
+	delta.xold = sk[delta.index];
+	for(size_t d=0; d<mask.size(); d++) {
+		if(mask[d])
+			delta.xnew[d] = delta.xold[d] + freq;
+		else
+			delta.xnew[d] = delta.xold[d] - freq;
+	}
+	
+	sk[delta.index] = delta.xnew;
+}
+
+
+
+isketch::isketch(const projection& _proj)
+	: 	sketch(_proj), 
+		delta(proj.depth()),
+		mask(proj.depth())
+	{ 	}
+
+
 
 
 void isketch::update(key_type key, double freq)
@@ -215,4 +241,3 @@ void isketch::update(key_type key, double freq)
 	
 	(*this)[delta.index] = delta.xnew;
 }
-
