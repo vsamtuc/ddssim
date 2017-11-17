@@ -18,6 +18,36 @@ using namespace tods;
  *
  ************************************/
 
+
+
+/**
+	Wrapper for a sketch and number of updates.
+
+	This class wraps a reference to a sketch together with 
+	a count of the updates it contains. The byte size of this 
+	object is computed to be the minimum of the size of the
+	sketch and the size of all the updates.
+
+	TODO: currently the size of the updates is overestimated.
+  */
+struct compressed_sketch
+{
+	const agms::sketch& sk;
+	size_t updates;
+
+	struct __raw_record {
+		dds::key_type key;
+	};
+
+	size_t byte_size() const {
+		size_t E_size = dds::byte_size(sk);
+		size_t Raw_size = sizeof(__raw_record)*updates;
+		return std::min(E_size, Raw_size);
+	}
+};
+
+
+
 tods::network::network(const string& _name, const projection& _proj, double _theta, 
 	const set<stream_id>& _streams)
 : 	star_network<network, coordinator, node>(CTX.metadata().source_ids()),

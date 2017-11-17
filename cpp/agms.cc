@@ -132,40 +132,6 @@ void sketch::update(key_type key, double freq)
 }
 
 
-Vec agms::dot_estvec(const sketch& s1, const sketch& s2)
-{
-	assert(s1.compatible(s2));
-	const depth_type D = s1.depth();
-	Vec ret(D);
-
-	for(size_t d=0;d<D;d++)
-		ret[d] = std::inner_product(s1.row_begin(d), s1.row_end(d),
-			s2.row_begin(d), 0.0);
-	return ret;
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds1, const sketch& s2)
-{
-	oldstate += (ds1.xnew - ds1.xold)*s2[ds1.index];
-	return oldstate;
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const sketch& s1, const delta_vector& ds2)
-{
-	return dot_estvec_inc(oldstate, ds2, s1);
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds)
-{
-	oldstate += ds.xnew*ds.xnew - ds.xold*ds.xold;
-	return oldstate;
-}
-
-
-
 
 
 

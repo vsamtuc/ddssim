@@ -32,6 +32,8 @@ using namespace binc;
 using namespace Simple;
 
 
+
+
 class MiscTestSuite : public CxxTest::TestSuite
 {
 public:

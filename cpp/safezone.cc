@@ -2,10 +2,21 @@
 #include "binc.hh"
 #include "safezone.hh"
 
-
 using namespace gm;
 using namespace dds;
 using namespace binc;
+
+
+
+query_state::query_state(size_t _D)
+	: E(_D)
+{ 
+	E = 0.0;
+}
+
+
+
+
 
 /////////////////////////////////////////////////////////
 //
@@ -14,11 +25,12 @@ using namespace binc;
 /////////////////////////////////////////////////////////
 
 quorum_safezone::quorum_safezone() 
-: safezone_func_base(false) { }
+: safezone_func(false) { }
 
-quorum_safezone::quorum_safezone(const Vec& zE, size_t _k) 
+quorum_safezone::quorum_safezone(const Vec& zE, size_t _k, bool _eik) 
 {
 	prepare(zE, _k);
+	set_eikonal(_eik);
 }
 
 void quorum_safezone::prepare(const Vec& zE, size_t _k) 
@@ -76,7 +88,7 @@ inline static bool next_I(size_t *I, size_t m, size_t l)
 }
 
 
-double quorum_safezone::operator()(const Vec& zX) 
+double quorum_safezone::func_eikonal(const Vec& zX) 
 {
 	// precompute  zeta_i(E)*zeta_i(X) for all i\in L
 	Vec zEzX = zetaE;
@@ -111,7 +123,7 @@ double quorum_safezone::operator()(const Vec& zX)
 
 
 
-double quorum_safezone_fast::operator()(const Vec& zX) 
+double quorum_safezone::func_non_eikonal(const Vec& zX) 
 {
 	Vec zEzX = zetaE;
 	zEzX *= zX[L];
@@ -129,23 +141,18 @@ double quorum_safezone_fast::operator()(const Vec& zX)
 /////////////////////////////////////////////////////////
 
 
-selfjoin_agms_safezone_upper_bound::selfjoin_agms_safezone_upper_bound(const sketch& E, double T)
-: 	sqrt_T(sqrt(T)), Median()
-{ 
-	Vec dest = sqrt(dot_estvec(E));
-	Median.prepare(sqrt_T - dest , (E.depth()+1)/2) ;
-}
 
-
-double selfjoin_agms_safezone_upper_bound::operator()(const sketch& X) 
+double selfjoin_agms_safezone_upper_bound::operator()(const Vec& X) 
 {
-	Vec z = sqrt_T - sqrt(dot_estvec(X));
+	const_Vec_sketch_view x = make_sketch_view(proj, X);
+	Vec z = sqrt_T - sqrt(dot_estvec(x));
 	return Median(z);
 }
 
-double selfjoin_agms_safezone_upper_bound::with_inc(incremental_state& incstate, const sketch& X) 
+double selfjoin_agms_safezone_upper_bound::with_inc(incremental_state& incstate, const Vec& X) 
 {
-	incstate = dot_estvec(X);
+	const_Vec_sketch_view x = make_sketch_view(proj, X);
+	incstate = dot_estvec(x);
 	Vec z = sqrt_T - sqrt(incstate);
 	return Median(z);
 }
@@ -158,49 +165,22 @@ double selfjoin_agms_safezone_upper_bound::inc(incremental_state& incstate, cons
 }
 
 
-selfjoin_agms_safezone_lower_bound::selfjoin_agms_safezone_lower_bound(const sketch& E, double T)
-: 	Ehat(E), sqrt_T(sqrt(T))
-{ 
-	assert(T>=0.0);   // T must be positive
 
-	//
-	//  If T == 0.0, the function returns +inf
-	//
 
-	if(T>0.0) {
 
-		Vec dest = sqrt(dot_estvec(E));
-		Median.prepare( dest - sqrt_T, (E.depth()+1)/2);
-
-		//
-		// Normalize E: divide each row  E_i by ||E_i||
-		//
-		size_t L = E.width();
-		for(size_t d=0; d<E.depth(); d++) {
-			if(dest[d]>0.0)  {
-				// Note: this is an aliased assignment, but should
-				// be ok, because it is pointwise aliased!
-				Vec tmp = Ehat[slice(d*L,L,1)];
-				Ehat[slice(d*L,L,1)] = tmp/dest[d];
-			}
-			// else, if dest[d]==0, then Ehat[slice(d)] == 0! leave it
-		}
-
-	}
-
-}
-
-double selfjoin_agms_safezone_lower_bound::operator()(const sketch& X) 
+double selfjoin_agms_safezone_lower_bound::operator()(const Vec& X) 
 {
 	if(sqrt_T==0.0) return INFINITY;
-	Vec z = dot_estvec(X,Ehat) - sqrt_T ;
+	const_Vec_sketch_view x = make_sketch_view(Ehat.proj,X);
+	Vec z = dot_estvec(x,Ehat) - sqrt_T ;
 	return Median(z);
 }
 
-double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const sketch& X)
+double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const Vec& X)
 {
 	if(sqrt_T==0.0) return INFINITY;
-	incstate = dot_estvec(X,Ehat);
+	const_Vec_sketch_view x = make_sketch_view(Ehat.proj,X);
+	incstate = dot_estvec(x,Ehat);
 	Vec z = incstate - sqrt_T;
 	return Median(z);
 }
@@ -214,24 +194,13 @@ double selfjoin_agms_safezone_lower_bound::inc(incremental_state& incstate, cons
 }
 
 
-selfjoin_agms_safezone::selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh)
-: 	lower_bound(E, Tlow),
-	upper_bound(E, Thigh)
-{
-	assert(Tlow < Thigh);
-}
-
-selfjoin_agms_safezone::selfjoin_agms_safezone(selfjoin_query& q) 
-:  selfjoin_agms_safezone(q.E, q.Tlow, q.Thigh)
-{ }
-
 
 // from-scratch computation
-double selfjoin_agms_safezone::operator()(const sketch& X) 
+double selfjoin_agms_safezone::operator()(const Vec& X) 
 {
 	return min(lower_bound(X), upper_bound(X));
 }
-double selfjoin_agms_safezone::operator()(const sketch& X, double& zeta_l, double& zeta_u) 
+double selfjoin_agms_safezone::operator()(const Vec& X, double& zeta_l, double& zeta_u) 
 {
 	zeta_l = lower_bound(X);
 	zeta_u = upper_bound(X);
@@ -239,12 +208,12 @@ double selfjoin_agms_safezone::operator()(const sketch& X, double& zeta_l, doubl
 }
 
 
-double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X)
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const Vec& X)
 {
 	return min(lower_bound.with_inc(incstate.lower, X), 
 		upper_bound.with_inc(incstate.upper, X));
 }
-double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X,
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const Vec& X,
 					double& zeta_l, double& zeta_u)
 {
 	return min( (zeta_l = lower_bound.with_inc(incstate.lower, X)), 
@@ -282,10 +251,12 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 /////////////////////////////////////////////////////////
 
 
-selfjoin_query::selfjoin_query(double _beta, projection _proj)
-	: beta(_beta), epsilon(_proj.epsilon()), E(_proj)
+selfjoin_query_state::selfjoin_query_state(double _beta, projection _proj)
+	: query_state(_proj.size()),
+	  beta(_beta), proj(_proj), 
+	  epsilon(_proj.epsilon())
 {
-	assert( norm_Linf(E)==0.0);
+	assert(norm_Linf(E)==0.0);
 	if( epsilon >= beta )
 		throw std::invalid_argument("total error is less than sketch error");
 	compute();
@@ -293,30 +264,34 @@ selfjoin_query::selfjoin_query(double _beta, projection _proj)
 }
 
 
-void selfjoin_query::update_estimate(const sketch& newE)
+void selfjoin_query_state::update_estimate(const Vec& newE)
 {
 	// compute the admissible region
 	E += newE;
 	compute();
 }
 
-void selfjoin_query::compute()
+void selfjoin_query_state::compute()
 {
-	Qest = dot_est(E);
+	Qest = query_func(E);
 
 	if(Qest>0) {
 		Tlow = (1+epsilon)*Qest/(1.0+beta);
 		Thigh = (1-epsilon)*Qest/(1.0-beta);
-		safe_zone = std::move(selfjoin_agms_safezone(*this)); 
 	}
 	else {
 		Tlow = 0.0; Thigh=1.0;
-		safe_zone = selfjoin_agms_safezone(E,0.0,1.0);
 	}
+	safe_zone = std::move(selfjoin_agms_safezone(Eview(), Tlow, Thigh, true)); 
 
 	zeta_E = safe_zone(E);
 }
 
+
+double selfjoin_query_state::query_func(const Vec& x)
+{
+	return dot_est(make_sketch_view(proj, E));
+}
 
 
 
@@ -411,7 +386,7 @@ double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsil
 /////////////////////////////////////////////////////////
 
 bilinear_2d_safe_zone::bilinear_2d_safe_zone() 
-: safezone_func_base(false) {}
+: safezone_func(false) {}
 
 bilinear_2d_safe_zone::bilinear_2d_safe_zone(double xi, double psi, double _T)
 	: T(_T), xihat(sgn(xi)), u(0.0), v(0.0)

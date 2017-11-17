@@ -24,10 +24,7 @@
 		    },
 		    "beta": 0.1
 		},
-		{
-			"name": "stat",
-			"type": "data_source_statistics"
-		},
+		//{ "name": "stat", "type": "data_source_statistics" },
 		{
 			"name": "sj0",
 			"type": "exact_query",
@@ -55,14 +52,14 @@
 		"file" : "/git/ddssim/cpp/wc_day46.h5",
 		//"dataset" : "wc_day46_1",
 		//"file" : "/src/datasets/wc_day46",
-		"hash_streams": 1,
-		"set_max_length": 1000//,
-		//"hash_sources": 4,
-		//"time_window": 28800,    // 4*3600
-		//"fixed_window": 10000000,
-		//"flush_window": false,
+		"hash_streams": 1
+		,"set_max_length": 10000000
+		//,"hash_sources": 4
+		//,"time_window": 28800    // 4*3600
+		//,"fixed_window": 10000000
+		//,"flush_window": false
 		//create with warmup. Omit to create without warmup
-		//"warmup_time": 28800
+		,"warmup_time": 28800
     },
 
 

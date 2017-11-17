@@ -34,12 +34,12 @@ public:
 
 		// Test that the eikonal and non-eikonal safe zones are equal
 
-		quorum_safezone_fast szne(zE, (zE.size()+1)/2);
+		quorum_safezone szne(zE, (zE.size()+1)/2, false);
 		TS_ASSERT_EQUALS(szne.n, 7);
 		TS_ASSERT_EQUALS(szne.k, 4);
 		TS_ASSERT_EQUALS(szne.L.size(), 6);
 
-		quorum_safezone sze(zE, (zE.size()+1)/2);
+		quorum_safezone sze(zE, (zE.size()+1)/2, true);
 		TS_ASSERT_EQUALS(szne.n, 7);
 		TS_ASSERT_EQUALS(szne.k, 4);
 		TS_ASSERT_EQUALS(szne.L.size(), 6);
@@ -65,8 +65,8 @@ public:
 		for(size_t i=0; i<10; i++) {
 			// produce a random reference point
 			Vec E = uniform_random_vector(N, 0.1, 10);
-			quorum_safezone sz(E, N);
-			quorum_safezone szf(E, N);
+			quorum_safezone sz(E, N, true);
+			quorum_safezone szf(E, N, true);
 
 			// test 100 vectors
 			for(size_t j=0; j<100; j++) {
@@ -90,8 +90,8 @@ public:
 				i--; continue;   // discard the sample vector
 			}
 
-			quorum_safezone sz(E, 1);
-			quorum_safezone_fast szf(E,1);
+			quorum_safezone sz(E, 1, true);
+			quorum_safezone szf(E,1, false);
 
 			double Epnorm = norm_L2( E[E>0.0] );
 
@@ -120,7 +120,7 @@ public:
 
 			double Emed = dot_est(E);
 
-			selfjoin_agms_safezone_upper_bound sz(E, 1.1*Emed);
+			selfjoin_agms_safezone_upper_bound sz(E, 1.1*Emed, true);
 
 			TS_ASSERT_LESS_THAN( 0.0, sz(E) );
 
@@ -165,7 +165,7 @@ public:
 
 			double Emed = dot_est(E);
 
-			selfjoin_agms_safezone_lower_bound sz(E, 0.9*Emed);
+			selfjoin_agms_safezone_lower_bound sz(E, 0.9*Emed, true);
 
 			TS_ASSERT_LESS_THAN( 0.0, sz(E) );
 
@@ -208,7 +208,7 @@ public:
 
 			double Emed = dot_est(E);
 
-			selfjoin_agms_safezone sz(E, 0.9*Emed, 1.1*Emed);
+			selfjoin_agms_safezone sz(E, 0.9*Emed, 1.1*Emed, true);
 			TS_ASSERT_LESS_THAN( 0.0, sz(E) );
 
 			// test 100 sketches from each type
@@ -289,7 +289,7 @@ public:
 		}
 		double Emed = dot_est(E);
 
-		selfjoin_agms_safezone sz(E, 0.8*Emed, 1.2*Emed);
+		selfjoin_agms_safezone sz(E, 0.8*Emed, 1.2*Emed, true);
 
 	
 		// Repeat 100 times, with different increment sequences, starting

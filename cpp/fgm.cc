@@ -24,13 +24,20 @@ void node<QType>::update_stream()
 {
 	assert(CTX.stream_record().hid == site_id());
 
-	U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
-	dS.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
+	delta_vector delta = Q.delta_update(dS, CTX.stream_record());
+
+	// oops, not an update
+	if(delta.size()==0) return;
+
+	delta.apply(U);
+
+	//U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
+	//dS.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
 
 	update_count++;
 	round_local_updates++;
 
-	zeta = szone(U, zeta_l, zeta_u);
+	zeta = szone(delta, zeta_l, zeta_u);
 	if(zeta<minzeta) minzeta = zeta;
 
 	int bwnew = floor((zeta_0-zeta)/zeta_quantum);
@@ -302,11 +309,11 @@ template <qtype QType>
 void coordinator<QType>::finish_round()
 {
 	// collect all data
-	sketch newE(query.E.proj);
+	Vec newE(0.0, Q.state_vector_size());
 	for(auto n : node_ptr) {
-		compressed_sketch csk = proxy[n].get_drift();
-		newE += csk.sk;
-		total_updates += csk.updates;
+		compressed_state cs = proxy[n].get_drift();
+		newE += cs.vec;
+		total_updates += cs.updates;
 	}
 	newE /= (double)k;
 
@@ -559,14 +566,12 @@ void coordinator<QType>::print_state()
 template <qtype QType>
 void coordinator<QType>::warmup()
 {
-	sketch dE(net()->proj);
+	Vec dE(Q.state_vector_size());
 
-	for(auto&& rec : CTX.warmup) {
-		if(rec.sid == net()->sid) 
-			dE.update(rec.key, rec.upd);
-	}
-	//query.update_estimate(dE/k);
-	query.update_estimate(dE);
+	for(auto&& rec : CTX.warmup) 
+		Q.update(dE, rec);
+
+	query.update_estimate(dE/(double)k);
 }
 
 
@@ -589,9 +594,11 @@ void coordinator<QType>::setup_connections()
 
 
 template <qtype QType>
-coordinator<QType>::coordinator(network_t* nw, const projection& proj, double beta)
+coordinator<QType>::coordinator(network_t* nw, const continuous_query_t& _Q)
 : 	process(nw), proxy(this), 
-	query(beta, proj), total_updates(0), 
+	Q(_Q),
+	query(Q.beta, Q.proj), 
+	total_updates(0), 
 	in_naive_mode(true), k(0),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
 	
@@ -615,14 +622,13 @@ coordinator<QType>::~coordinator()
 
 
 template <qtype QType>
-fgm::network<QType>::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
-: 	star_network<network<QType>, coordinator<QType>, node<QType> >(CTX.metadata().source_ids()),
-	sid(_sid), proj(_proj), beta(_beta) 
+fgm::network<QType>::network(const string& _name, const continuous_query<QType>& _Q)
+	: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
 {
 	set_name(_name);
 	this->set_protocol_name("AGMC");
-	
-	this->setup(proj, beta);
+
+	this->setup(Q);
 
 	on(START_STREAM, [&]() { 
 		process_init(); 
@@ -648,8 +654,7 @@ template <qtype QType>
 void fgm::network<QType>::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
-	if(rec.sid==sid) 
-		this->source_site(rec.hid)->update_stream();		
+	this->source_site(rec.hid)->update_stream();		
 }
 
 template <qtype QType>

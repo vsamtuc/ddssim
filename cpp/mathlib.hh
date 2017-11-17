@@ -204,6 +204,7 @@ struct delta_vector
 	Index index;		/// index of change
 	Vec xold, xnew;		/// old and new values
 
+	delta_vector() { }
 	delta_vector(size_t n) : index(n), xold(n), xnew(n) {}
 	delta_vector(const Index& i) : index(i), 
 		xold(0.0, index.size()), xnew(0.0, index.size()) {}
@@ -214,6 +215,16 @@ struct delta_vector
 	delta_vector(delta_vector&&)=default;
 	delta_vector& operator=(const delta_vector&)=default;
 	delta_vector& operator=(delta_vector&&)=default;
+
+	void resize(size_t n) {
+		if(index.size()!=n) {
+			index.resize(n);
+			xold.resize(n);
+			xnew.resize(n);
+		}
+	}
+
+	size_t size() const { return index.size(); }
 
 	// Some operations to allow convenient calculation of deltas of expressions,
 	// needed when we call an incremental function on an expression of the
@@ -229,6 +240,11 @@ struct delta_vector
 	inline delta_vector& operator/=(double a) { xold /= a; xnew /= a; return *this; }
 
 	inline delta_vector& negate() { xold = -xold; xnew = -xnew; return *this; }
+
+	/// Apply this delta to a vector, ie  a +=  xnew-xold
+	inline void apply(Vec& a) {
+		a[index] += xnew - xold;
+	}
 };
 
 

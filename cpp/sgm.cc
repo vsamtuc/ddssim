@@ -29,11 +29,13 @@ void node<QType>::update_stream()
 {
 	assert(CTX.stream_record().hid == site_id());
 
-	U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
+	delta_vector delta = Q.delta_update(U, CTX.stream_record());
+	if(delta.size()==0) return;
+
 	update_count++;
 	round_local_updates++;
 
-	zeta = szone(U, zeta_l, zeta_u);
+	zeta = szone(delta, zeta_l, zeta_u);
 
 	if(zeta <= 0)
 		coord.local_violation(this);
@@ -56,28 +58,10 @@ void node<QType>::setup_connections()
 template <qtype QType>
 void coordinator<QType>::start_round()
 {
-	// compute current parameters from query
-
-	if(0 && query.zeta_E < k*sqrt(query.E.width())) {
-		if(!in_naive_mode)
-			print("SWITCHING TO NAIVE MODE stream_count=",CTX.stream_count());
-		in_naive_mode = true;
-	} else {
-		if(in_naive_mode)
-			print("SWITCHING TO FULL MODE stream_count=",CTX.stream_count());
-		in_naive_mode = false;
-	}
-
-	has_naive.assign(k, in_naive_mode);
 
 	for(auto n : net()->sites) {
-		//variation
-		//if(!in_naive_mode) {
-			sz_sent ++;
-			proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
-		//}
-		//else
-		//	p.second->reset(safezone(query.zeta_E));
+		sz_sent ++;
+		proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
 	}
 
 	round_total_B = 0;
@@ -97,7 +81,7 @@ oneway coordinator<QType>::local_violation(sender<node_t> ctx)
 		In this function, we try to rebalance. If this fails, we
 		restart the round.
 	 */
-	if(! in_naive_mode && k>1) {
+	if(k>1) {
 		// attempt to rebalance		
 		// get rebalancing set
 		rebalance_random_limits(n);
@@ -125,8 +109,8 @@ void coordinator<QType>::rebalance_random(node_t* lvnode)
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	compressed_sketch csk = proxy[lvnode].get_drift();
-	Ubal = csk.sk;
+	compressed_state csk = proxy[lvnode].get_drift();
+	Ubal = csk.vec;
 	Ubal_updates = csk.updates;
 	Ubal_admissible = false;
 	assert(query.safe_zone(query.E + Ubal) <= 0.0);
@@ -152,8 +136,8 @@ void coordinator<QType>::rebalance_random(node_t* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_sketch csk = proxy[n].get_drift();
-			Ubal += csk.sk;
+			compressed_state cs = proxy[n].get_drift();
+			Ubal += csk.vec;
 			Ubal_updates += csk.updates;
 			zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
 			Ubal_admissible =  (zbal>0.0) ? true : false;
@@ -196,9 +180,9 @@ void coordinator<QType>::rebalance_random_limits(node_t* lvnode)
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	compressed_sketch csk = proxy[lvnode].get_drift();
-	Ubal = csk.sk;
-	Ubal_updates = csk.updates;
+	compressed_state cs = proxy[lvnode].get_drift();
+	Ubal = cs.vec;
+	Ubal_updates = cs.updates;
 	Ubal_admissible = false;
 	assert(query.safe_zone(query.E + Ubal) <= 0.0);
 
@@ -227,9 +211,9 @@ void coordinator<QType>::rebalance_random_limits(node_t* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_sketch csk = proxy[n].get_drift();
-			Ubal += csk.sk;
-			Ubal_updates += csk.updates;
+			compressed_state cs = proxy[n].get_drift();
+			Ubal += cs.vec;
+			Ubal_updates += cs.updates;
 			zbal = query.safe_zone( query.E + Ubal/((double) B.size()) );
 			Ubal_admissible =  (zbal>0.0) ? true : false;
 		}
@@ -265,10 +249,10 @@ void coordinator<QType>::rebalance()
 
 	assert(query.safe_zone(query.E + Ubal) > 0);
 
-	compressed_sketch skbal { Ubal, Ubal_updates };
+	compressed_state sbal { Ubal, Ubal_updates };
 
 	for(auto n : B) {
-		proxy[n].set_drift(skbal);
+		proxy[n].set_drift(sbal);
 	}	
 
 	round_total_B += B.size();
@@ -288,9 +272,9 @@ void coordinator<QType>::finish_round()
 {
 	// collect all data
 	for(auto n : Bcompl) {
-		compressed_sketch csk = proxy[n].get_drift();
-		Ubal += csk.sk;
-		Ubal_updates += csk.updates;
+		compressed_state cs = proxy[n].get_drift();
+		Ubal += cs.vec;
+		Ubal_updates += cs.updates;
 	}
 	Ubal /= (double)k;
 
@@ -305,43 +289,32 @@ void coordinator<QType>::finish_round()
 
 
 template <qtype QType>
-void coordinator<QType>::trace_round(sketch& newE)
+void coordinator<QType>::trace_round(const Vec& newE)
 {
+	Vec Enext = query.E + newE;
+	double zeta_Enext = query.safe_zone(Enext);
 
-	// report
-	static int skipper = 0;
-	skipper = (skipper+1)%1;
+	valarray<size_t> round_updates((size_t)0, k);
 
-	if( !in_naive_mode || skipper==0 ) {
-
-		sketch Enext = query.E + newE;
-		double zeta_Enext = query.safe_zone(Enext);
-
-		valarray<size_t> round_updates((size_t)0, k);
-
-		for(size_t i=0; i<k; i++) 
-		{
-			auto ni = node_ptr[i];
-			round_updates[i] += ni->round_local_updates;
-		}
-
-		// check the value of the next E wrt this safe zone
-		double norm_dE = norm_L2(newE);
-
-		print("GM Finish round : round updates=",round_updates.sum()," naive=",in_naive_mode, 
-			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
-			"||dE||=", norm_dE, norm_dE/query.zeta_E, 
-			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
-			//"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
-			" QEst=", query.Qest,
-			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
-
-		// print elements
-		print("                  : S= ",elements_of(round_updates));
-
-		//emit(RESULTS);
+	for(size_t i=0; i<k; i++) 
+	{
+		auto ni = node_ptr[i];
+		round_updates[i] += ni->round_local_updates;
 	}
-	
+
+	// check the value of the next E wrt this safe zone
+	double norm_dE = norm_L2(newE);
+
+	print("GM Finish round : round updates=",round_updates.sum(),
+		"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
+		"||dE||=", norm_dE, norm_dE/query.zeta_E, 
+		//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
+		//"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
+		" QEst=", query.Qest,
+		" time=", (double)CTX.stream_count() / CTX.metadata().size() );
+
+	// print elements
+	print("                  : S= ",elements_of(round_updates));	
 }
 
 
@@ -351,13 +324,12 @@ void coordinator<QType>::trace_round(sketch& newE)
 template <qtype QType>
 void coordinator<QType>::warmup()
 {
-	sketch dE(net()->proj);
+	Vec dE(Q.state_vector_size());
 
-	for(auto&& rec : CTX.warmup) {
-		if(rec.sid == net()->sid) 
-			dE.update(rec.key, rec.upd);
-	}
-	query.update_estimate(dE);
+	for(auto&& rec : CTX.warmup) 
+		Q.update(dE, rec);
+
+	query.update_estimate(dE/(double)k);
 }
 
 
@@ -375,12 +347,14 @@ void coordinator<QType>::setup_connections()
 
 
 template <qtype QType>
-coordinator<QType>::coordinator(network_t* nw, const projection& proj, double beta)
+coordinator<QType>::coordinator(network_t* nw, const continuous_query_t& _Q)
 : 	process(nw), proxy(this), 
-	query(beta, proj), total_updates(0), 
-	in_naive_mode(false), k(0),
+	Q(_Q), 
+	query(Q.beta, Q.proj), 
+	total_updates(0), 
+	k(0),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
-	Ubal(proj),
+	Ubal(0.0, Q.state_vector_size()),
 	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
 {  
 }
@@ -398,14 +372,14 @@ coordinator<QType>::~coordinator()
 
 
 template <qtype QType>
-sgm::network<QType>::network(const string& _name, stream_id _sid, const projection& _proj, double _beta)
-: 	star_network_t(CTX.metadata().source_ids()),
-	sid(_sid), proj(_proj), beta(_beta) 
+sgm::network<QType>::network(const string& _name, const continuous_query<QType>& _Q)
+: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
 {
 	set_name(_name);
 	this->set_protocol_name("GM");
 	
-	this->setup(proj, beta);
+	this->setup(Q);
+
 	on(START_STREAM, [&]() { 
 		process_init(); 
 	} );
@@ -421,8 +395,7 @@ template <qtype QType>
 void sgm::network<QType>::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
-	if(rec.sid==sid) 
-		this->source_site(rec.hid)->update_stream();		
+	this->source_site(rec.hid)->update_stream();
 }
 
 template <qtype QType>

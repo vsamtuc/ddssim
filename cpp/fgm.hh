@@ -9,11 +9,8 @@
 
 #include "dds.hh"
 #include "dsarch.hh"
-#include "agms.hh"
-#include "safezone.hh"
 #include "method.hh"
-#include "gm.hh"
-
+#include "gmutil.hh"
 
 namespace gm { namespace fgm {
 
@@ -45,15 +42,9 @@ struct network
 	typedef network<QType> network_t;
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
-	stream_id sid;
-	projection proj;
-	double beta;
+	continuous_query<QType> Q;
 
-	network(const string& name, stream_id, const projection& _proj, double _beta);
-
-	network(const string& _name, stream_id _sid, depth_type D, index_type L, double _beta) 
-	: network(_name, _sid, projection(D,L), _beta) 
-	{ }
+	network(const string& name, const continuous_query<QType>& _Q);
 
 	void process_record();
 	void process_init();
@@ -76,15 +67,18 @@ struct coordinator : process
 	typedef node<QType> node_t;
 	typedef node_proxy<QType> node_proxy_t;
 	typedef network<QType> network_t;
-
-	typedef typename continuous_query<QType>::query_type query_type;
+	typedef continuous_query<QType> continuous_query_t;
+	typedef typename continuous_query_t::query_state_type query_state_type;
 
 	proxy_map<node_proxy_t, node_t> proxy;
 
 	//
 	// protocol stuff
 	//
-	query_type query;	// current query state
+
+	continuous_query_t Q; 	// continuous query
+
+	query_state_type query;	// current query state
 	size_t total_updates;	// number of stream updates received
 
 	bool in_naive_mode;		// when true, use the naive safezone
@@ -118,7 +112,7 @@ struct coordinator : process
 	Vec alpha, beta, gamma;
 	vector<bool> md;  // the model's output;
 	
-	coordinator(network_t* nw, const projection& proj, double beta); 
+	coordinator(network_t* nw, const continuous_query_t& _Q); 
 	~coordinator();
 
 	inline network_t* net() { return static_cast<network_t*>(host::net()); }
@@ -195,14 +189,14 @@ struct node : local_site
 	typedef node_proxy<QType> node_proxy_t;
 	typedef network<QType> network_t;
 	typedef coord_proxy<QType> coord_proxy_t;
+	typedef continuous_query<QType> continuous_query_t;
 
 	typedef typename continuous_query<QType>::safezone_type safezone_type;
-	typedef typename continuous_query<QType>::state_vector_type state_vector_type;
-	typedef typename continuous_query<QType>::drift_vector_type drift_vector_type;
+
+	continuous_query_t	Q;	// the query management object
+	safezone_type szone;	// safezone object
 
 	int num_sites;			// number of sites
-
-	safezone_type szone;	// safezone object
 
 	double minzeta; 		// minimum value of zeta so far
 	double zeta_l, zeta_u;          // zetas of lower and upper bounds
@@ -212,18 +206,18 @@ struct node : local_site
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
 	int bitweight;			// equal to number of bits sent since last reset_bitweight()
 
-	drift_vector_type U;	// drift vector
+	Vec U;					// drift vector
 	size_t update_count;	// number of updates in drift vector
 
-	state_vector_type dS;		// the sketch of all updates over a round
+	Vec dS;						// the sketch of all updates over a round
 	size_t round_local_updates; // number of local stream updates since last reset
 
 	coord_proxy_t coord;
 
-	node(network_t* net, source_id hid, const projection& proj, double beta)
-	: local_site(net, hid), 
-		U(proj), update_count(0),
-		dS(proj), round_local_updates(0),
+	node(network_t* net, source_id hid, const continuous_query_t& _Q)
+	: 	local_site(net, hid), Q(_Q),
+		U(Q.state_vector_size()), update_count(0),
+		dS(Q.state_vector_size()), round_local_updates(0),
 		coord( this )
 	{ 
 		coord <<= net->hub;
@@ -242,7 +236,7 @@ struct node : local_site
 		szone = newsz;
 
 		// reset the drift vector
-		(sketch&)U = 0.0;
+		U = 0.0;
 		update_count = 0;
 		zeta = minzeta = szone.prepare_inc(U, zeta_l, zeta_u);
 		assert(zeta==szone.zeta_E);
@@ -286,12 +280,12 @@ struct node : local_site
 		bitweight = 0;
 	}
 
-	compressed_sketch get_drift() {
-		return compressed_sketch { U, update_count };
+	compressed_state get_drift() {
+		return compressed_state { U, update_count };
 	}
 
-	double set_drift(compressed_sketch newU) {
-		(sketch&)U = newU.sk;
+	double set_drift(compressed_state newU) {
+		U = newU.vec;
 		update_count = newU.updates;
 		double old_zeta = zeta;
 		zeta = szone.prepare_inc(U, zeta_l, zeta_u);
@@ -324,7 +318,9 @@ struct node_proxy : remote_proxy< node<QType> >
 namespace dds{
 	
 template <>
-inline size_t byte_size< gm::fgm::node<qtype::SELFJOIN> *>(gm::fgm::node<qtype::SELFJOIN> * const &) { return 4; }
+inline size_t byte_size< gm::fgm::node<qtype::SELFJOIN> *>
+	(gm::fgm::node<qtype::SELFJOIN> * const &) { return 4; }
+
 }
 
 

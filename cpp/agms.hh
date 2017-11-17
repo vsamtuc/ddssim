@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <type_traits>
 
 #include "dds.hh"
 #include "mathlib.hh"
@@ -143,7 +144,7 @@ template <typename IterType>
 struct sketch_view
 {
 	typedef IterType iterator;
-	typedef decltype(* iterator()) counter_type;
+	typedef typename std::decay <decltype(* iterator())>::type counter_type;
 
 	/// the projection of the sketch
 	agms::projection proj;
@@ -179,6 +180,9 @@ struct sketch_view
 	/// The depth \f$D \f$ of the sketch.
 	inline depth_type depth() const { return proj.depth(); }
 
+	/// The size of the projection which is also the size of the range
+	inline size_t size() const { return proj.size(); }
+
 	/// Return true if this sketch is compatible to sk
 	template <typename Iter>
 	inline bool compatible(const sketch_view<Iter>& sk) const {
@@ -189,14 +193,16 @@ struct sketch_view
 
 	inline iterator end() const { return __end; }
 
-	inline auto row_begin(size_t row) const {
-		return begin(*this)+row*width();
+	inline iterator row_begin(size_t row) const {
+		return __begin+(row*width());
 	}
 
-	inline auto row_end(size_t row) const {
-		return begin(*this)+(row+1)*width();
+	inline iterator row_end(size_t row) const {
+		return __begin+((row+1)*width());
 	}
 
+	inline counter_type operator[](size_t i) const { return __begin[i]; }
+	inline counter_type& operator[](size_t i) { return __begin[i]; }
 
 	/// Update the counters for key and freq
 	void update(key_type key, counter_type freq = 1) const
@@ -246,6 +252,23 @@ struct sketch_view
 
 
 /**
+	Sketch view over a vector
+  */
+typedef sketch_view<decltype(begin((Vec&) (* (Vec*)0) ))> Vec_sketch_view;
+typedef sketch_view<decltype(begin((const Vec&) Vec()))> const_Vec_sketch_view;
+
+
+/**
+	Return a sketch view on a range
+  */
+template <typename Container>
+inline auto make_sketch_view(const projection& proj, Container& c) {
+	typedef decltype(std::begin(c)) iter;
+	return sketch_view<iter>(proj, std::begin(c), std::end(c));
+}
+
+
+/**
 	AGMS sketch.
 
 	This sketch is a fast version of the well-known AMS sketch.
@@ -271,7 +294,7 @@ public:
 
 	/// Initialize by a given projection
 	inline sketch(const projection& _proj)
-	: Vec(0.0,_proj.size()), proj(_proj) 
+	: Vec(0.0,_proj.size()), proj(_proj)
 	{ }
 
 	/// Initialize to a zero sketch
@@ -283,6 +306,14 @@ public:
 	inline sketch(depth_type _D, index_type _L) 
 	: sketch(projection(_D,_L))
 	{ }
+
+	template <typename Iter>
+	inline sketch(const sketch_view<Iter>& skv)
+	: Vec(skv.size()), proj(skv.proj) 
+	{
+		std::copy(skv.begin(), skv.end(), begin(*this));
+	}
+
 
 	sketch(const sketch&) = default;
 	sketch(sketch&&) = default;
@@ -311,6 +342,14 @@ public:
 		this->Vec::operator=(other); return *this;
 	}
 
+	template <typename Iter>
+	inline sketch& operator=(const sketch_view<Iter>& skv) {
+		if(proj == skv.proj) 
+			std::copy(skv.begin(), skv.end(), std::begin(*this));
+		else
+			*this = sketch(skv);
+		return *this;
+	}
 
 	/// The hash family
 	inline hash_family* hashf() const { return proj.hashf(); }
@@ -321,11 +360,14 @@ public:
 	/// The depth \f$D \f$ of the sketch.
 	inline depth_type depth() const { return proj.depth(); }
 
-	/// A sketch view on this sketch object
 	inline auto view() { 
-		typedef decltype(std::begin(*this)) iter;
-		return sketch_view<iter>(proj, begin(*this), end(*this)); 
+		return Vec_sketch_view(proj, begin(*this), end(*this)); 
 	}
+	inline auto view() const { 
+		return const_Vec_sketch_view(proj, begin(*this), end(*this)); 
+	}
+
+	inline operator Vec_sketch_view() { return view(); }
 
 	/// Update the sketch.
 	void update(key_type key, double freq = 1.0);
@@ -365,7 +407,18 @@ public:
 	parallel rows of two sketches.
   */
 
-Vec dot_estvec(const sketch& s1, const sketch& s2);
+template <typename Iter>
+Vec dot_estvec(const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
+{
+	assert(s1.compatible(s2));
+	const depth_type D = s1.depth();
+	Vec ret(D);
+
+	for(size_t d=0;d<D;d++)
+		ret[d] = std::inner_product(s1.row_begin(d), s1.row_end(d),
+			s2.row_begin(d), 0.0);
+	return ret;
+}
 
 
 /**
@@ -377,7 +430,14 @@ Vec dot_estvec(const sketch& s1, const sketch& s2);
 
 	@see dot_estvec
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch& s2);
+template <typename Iter>
+inline Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch_view<Iter>& s2)
+{
+	for(size_t i=0; i<ds1.index.size(); i++)
+		oldvalue[i] += (ds1.xnew[i] - ds1.xold[i])*s2[ds1.index[i]];
+	return oldvalue;
+}
+
 
 /**
 	Incremental version of `dot_estvec`. 
@@ -388,13 +448,19 @@ Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch& s2);
 
 	@see dot_estvec
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const sketch& s1, const delta_vector& s2);
+template <typename Iter>
+inline Vec& dot_estvec_inc(Vec& oldvalue, const sketch_view<Iter>& s1, const delta_vector& ds2)
+{
+	return dot_estvec_inc(oldvalue, ds2, s1);
+}
 
 
 /**
 	A shorthand for dot_estvec(s,s)
   */
-inline Vec dot_estvec(const sketch& s) { 
+template <typename Iter>
+inline Vec dot_estvec(const sketch_view<Iter>& s) 
+{ 
 	return dot_estvec(s,s); 
 }
 
@@ -404,14 +470,19 @@ inline Vec dot_estvec(const sketch& s) {
 
 	The incremental state is just the previous value.
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds);
+inline Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds)
+{
+	oldvalue += ds.xnew*ds.xnew - ds.xold*ds.xold;
+	return oldvalue;
+}
 
 
 /**
 	Return the (robust) estimate of the inner product
 	of two agms sketches
   */
-inline double dot_est(const sketch& s1, const sketch& s2)
+template <typename Iter>
+inline double dot_est(const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
 {
 	return dds::median(dot_estvec(s1,s2));
 }
@@ -420,7 +491,8 @@ inline double dot_est(const sketch& s1, const sketch& s2)
 	Return the (robust) estimate of the self product
 	of an agms sketch
   */
-inline double dot_est(const sketch& sk)
+template <typename Iter>
+inline double dot_est(const sketch_view<Iter>& sk)
 {
 	return dds::median(dot_estvec(sk));
 }
@@ -430,7 +502,8 @@ inline double dot_est(const sketch& sk)
 	Return the (robust) estimate of the inner product
 	of two agms sketches and the incremental state (which is overwritten)
   */
-inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2)
+template <typename Iter>
+inline double dot_est_with_inc(Vec& incstate, const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
 {
 	incstate.resize(s1.depth());
 	incstate = dot_estvec(s1,s2);
@@ -438,12 +511,14 @@ inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2
 }
 
 
-inline double dot_est_inc(Vec& incstate, const delta_vector& ds1, const sketch& s2)
+template <typename Iter>
+inline double dot_est_inc(Vec& incstate, const delta_vector& ds1, const sketch_view<Iter>& s2)
 {
 	return dds::median(dot_estvec_inc(incstate, ds1,s2));
 }
 
-inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& ds2)
+template <typename Iter>
+inline double dot_est_inc(Vec& incstate, const sketch_view<Iter>& s1, const delta_vector& ds2)
 {
 	return dds::median(dot_estvec_inc(incstate, s1, ds2));
 }
@@ -454,7 +529,8 @@ inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& d
 	Return the (robust) incremental estimate of the inner product
 	of two agms sketches
   */
-inline double dot_est_with_inc(Vec& incstate, const sketch& sk)
+template <typename Iter>
+inline double dot_est_with_inc(Vec& incstate, const sketch_view<Iter>& sk)
 {
 	incstate.resize(sk.depth());
 	incstate = dot_estvec(sk);
@@ -466,6 +542,38 @@ inline double dot_est_inc(Vec& incstate, const delta_vector& dsk)
 {
 	return dds::median(dot_estvec_inc(incstate, dsk));
 }
+
+
+//
+// Inner product
+//
+
+inline Vec dot_estvec(const sketch& s1, const sketch& s2) { return dot_estvec(s1.view(), s2.view()); }
+inline Vec& dot_estvec_inc(Vec& inc, const delta_vector& ds1, const sketch& s2) { 
+	return dot_estvec_inc(inc,ds1,s2.view()); }
+inline Vec& dot_estvec_inc(Vec& inc, const sketch& s2, const delta_vector& ds1) { 
+	return dot_estvec_inc(inc,ds1,s2.view()); }
+
+
+inline double dot_est(const sketch& s1, const sketch& s2) { return dot_est(s1.view(), s2.view()); }
+inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2) {
+ 	return dot_est_with_inc(incstate, s1.view(), s2.view()); }
+inline double dot_est_inc(Vec& incstate, const delta_vector& s1, const sketch& s2) {
+ 	return dot_est_inc(incstate, s1, s2.view()); }
+inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& s2) {
+ 	return dot_est_inc(incstate, s1.view(), s2); }
+
+
+//
+// Self-product
+//
+
+inline Vec dot_estvec(const sketch& s) { return dot_estvec(s.view()); }
+
+inline double dot_est(const sketch& s) { return dot_est(s.view()); }
+inline double dot_est_with_inc(Vec& incstate, const sketch& s) {
+ 	return dot_est_with_inc(incstate, s.view()); }
+
 
 
 /**
@@ -562,29 +670,6 @@ public:
 	void update(key_type key, double freq=1.0);
 	inline void insert(key_type key) { update(key,1.0); }
 	inline void erase(key_type key) { update(key,-1.0); }
-};
-
-
-/**
-	Wrapper for a sketch and number of updates.
-
-	This class wraps a reference to a sketch together with 
-	a count of the updates it contains. The byte size of this 
-	object is computed to be the minimum of the size of the
-	sketch and the size of all the updates.
-
-	TODO: currently the size of the updates is overestimated.
-  */
-struct compressed_sketch
-{
-	const agms::sketch& sk;
-	size_t updates;
-
-	size_t byte_size() const {
-		size_t E_size = dds::byte_size(sk);
-		size_t Raw_size = sizeof(dds::dds_record)*updates;
-		return std::min(E_size, Raw_size);
-	}
 };
 
 
