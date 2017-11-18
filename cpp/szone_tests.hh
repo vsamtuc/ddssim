@@ -492,6 +492,65 @@ public:
 	}
 
 
+
+	void inner_product_check(bilinear_2d_safe_zone& sz2, inner_product_safe_zone& sz, const Vec& X)
+	{
+		TS_ASSERT_DELTA( 
+			sz2(sqrt(0.5)*(X[0]+X[1]),sqrt(0.5)*(X[0]-X[1])),
+			sz(X),
+			1E-12
+		  );		
+	}
+
+
+	void test_inner_product()
+	{
+
+		// Check a bunch of safe zones
+		for(double T=-10.0; T<= 10.0; T+=1.93)
+		for(double E1=-5.; E1<=5.0; E1+=0.5)
+		for(double E2=-5.; E2<=5.0; E2+=0.5) 
+		{
+			Vec E {E1,E2};
+
+			if(E1*E2 > T) 
+			{
+				auto sz2 = bilinear_2d_safe_zone(sqrt(0.5)*(E[0]+E[1]),sqrt(0.5)*(E[0]-E[1]), 2.*T);
+				auto sz = inner_product_safe_zone(E, true, T);
+
+				for(size_t i=0;i<50;i++) {
+					Vec X = uniform_random_vector(2, -10.0, 10.0);
+					TS_ASSERT_DELTA( 
+						sz2(sqrt(0.5)*(X[0]+X[1]),sqrt(0.5)*(X[0]-X[1])),
+						sz(X),
+						1E-12
+					  );		
+				}
+
+				// check that E outside the safe zone throws
+				TS_ASSERT_THROWS(inner_product_safe_zone(E, false, T), std::invalid_argument);
+			} 
+
+			if(E1*E2 < T) 
+			{
+				auto sz2 = bilinear_2d_safe_zone(sqrt(0.5)*(E[0]-E[1]),sqrt(0.5)*(E[0]+E[1]), -2.*T);
+				auto sz = inner_product_safe_zone(E, false, T);
+
+				for(size_t i=0;i<50;i++) {
+					Vec X = uniform_random_vector(2, -10.0, 10.0);
+					TS_ASSERT_DELTA( 
+						sz2(sqrt(0.5)*(X[0]-X[1]),sqrt(0.5)*(X[0]+X[1])),
+						sz(X),
+						1E-12
+					  );		
+				}
+
+				// check that E outside the safe zone throws
+				TS_ASSERT_THROWS(inner_product_safe_zone(E, true, T), std::invalid_argument);
+			} 
+		}
+	}
+
 };
 
 

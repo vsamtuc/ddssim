@@ -405,17 +405,16 @@ struct bilinear_2d_safe_zone : safezone_func
 
 
 /**
-	A safe zone function for the inner product of two vectors.
+	An eikonal safe zone function for the inner product of two vectors.
 
 	The function computes the safezone for a constraint of the form
-	\f[  \pm X_1 X_2 \geq T  \f]
-	Thus, this kind of constraint can express both upper and lower bounds on the
-	product.
-
+	\f[   X_1 X_2 \geq T  \f]
+	or
+	\f[   X_1 X_2 \leq T  \f]
   */
 struct inner_product_safe_zone
 {
-	bool minus;
+	bool geq;
 	double T;
 	Vec xihat;
 
@@ -423,18 +422,32 @@ struct inner_product_safe_zone
 
 	/**
 		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
-		for condition
-		\f[	(-1)^\text{minus} X_1 X_2 \geq T. \f]
+		for condition 
+		\f[	X_1 X_2 \geq T \f]
+		if \c _geq is \c true,
+		or
+		\f[	X_1 X_2 \leq T \f]
+		if \c _geq is \c false.
 
+		@param E the reference point
+		@param _geq a boolean, designating an upper or lower bound
+		@param T the threshold
 	  */
-	inner_product_safe_zone(const Vec& E1, const Vec& E2, bool _minus, double _T)
-	: minus(_minus), T(_T)
+	inner_product_safe_zone(const Vec& E, bool _geq, double _T)
+	: geq(_geq), T(_T)
 	{
-		assert(E1.size()==E2.size());
+		assert(E.size()%2 ==0);
 
-		Vec xi = E1+E2;
-		Vec psi = E1-E2;
-		if(minus) xi.swap(psi);
+		slice s1(0,E.size()/2,1);
+		slice s2(E.size()/2,E.size()/2,1);
+
+		Vec xi = E[s1]+E[s2];
+		Vec psi = E[s1]-E[s2];
+
+		if(!geq) {
+			xi.swap(psi);
+			T = -T;
+		}
 
 		double norm_xi = norm_L2(xi);
 		double norm_psi = norm_L2(psi);
@@ -444,20 +457,27 @@ struct inner_product_safe_zone
 		if(norm_xi>0)
 			xihat = xi/norm_xi;
 		else
-			xihat = Vec(0.0, E1.size());
+			xihat = Vec(0.0, E.size()/2);
 	}
 
-	double operator()(const Vec& X1, const Vec& X2) const
+	double operator()(const Vec& X) const
 	{
-		Vec x = X1+X2;
-		Vec y = X1-X2;
-		if(minus) x.swap(y);
+		assert(X.size() == xihat.size()*2);
+
+		slice s1(0,xihat.size(),1);
+		slice s2(xihat.size(),xihat.size(),1);
+
+		Vec x = X[s1]+X[s2];
+		Vec y = X[s1]-X[s2];
+		if(!geq) x.swap(y);
 
 		double x2 = dot(x, xihat);
 		double y2 = norm_L2(y);
 
 		return sqdiff(x2, y2) / sqrt(2);
 	}
+
+	
 
 };
 
