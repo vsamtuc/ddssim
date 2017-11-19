@@ -372,6 +372,9 @@ public:
 	/// Update the sketch.
 	void update(key_type key, double freq = 1.0);
 
+	void update(delta_vector& delta, key_type key, double freq = 1.0)
+	{ view().update(delta, key, freq); }
+
 	/// Insert a key into the sketch
 	inline void insert(key_type key) { update(key, 1.0); }
 

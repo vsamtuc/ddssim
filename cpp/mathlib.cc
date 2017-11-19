@@ -1,9 +1,50 @@
 
 #include <random>
+#include <algorithm>
+#include <vector>
 #include "mathlib.hh"
 
 using namespace dds;
 
+
+delta_vector delta_vector::operator[](const Mask& m) const 
+{
+	assert(m.size() == index.size());
+	size_t retsize = std::count(begin(m), end(m), true);
+	delta_vector ret( retsize );
+	size_t j=0;
+	for(size_t i=0;i<index.size();i++) {
+		if(m[i]) {
+			ret.index[j] = index[i];
+			ret.xold[j] = xold[i];
+			ret.xnew[j] = xnew[i];
+			j++;
+		}
+	}
+	assert(j==retsize);
+	return ret;		
+}
+
+
+void delta_vector::sort()
+{
+	// Compute a permutation of the elements of index
+	std::vector<size_t> P(size());
+	std::iota(P.begin(), P.end(), 0);
+
+	std::sort(P.begin(), P.end(), [&](size_t i, size_t j) { return index[i]<index[j]; });
+
+	// Use a temp array for the permutation of xold, xnew
+	Vec temp = xold;
+	for(size_t i=0; i<P.size(); i++) 
+		xold[i] = temp[P[i]];
+	temp = xnew;
+	for(size_t i=0; i<P.size(); i++) 
+		xnew[i] = temp[P[i]];
+	Index tmp = index;
+	for(size_t i=0; i<P.size(); i++) 
+		index[i] = tmp[P[i]];
+}
 
 
 

@@ -389,10 +389,12 @@ bilinear_2d_safe_zone::bilinear_2d_safe_zone()
 : safezone_func(false) {}
 
 bilinear_2d_safe_zone::bilinear_2d_safe_zone(double xi, double psi, double _T)
-	: T(_T), xihat(sgn(xi)), u(0.0), v(0.0)
+	: 	T(_T), 
+		xihat(sgn(xi)), //xihat(xi>=0.0 ? 1: -1), 
+		u(0.0), v(0.0)
 {
-	if(sq(xi)-sq(psi) < T)
-		throw std::invalid_argument("the reference point is non-admissible");
+	//if(sq(xi)-sq(psi) < T)
+	//	throw std::invalid_argument("the reference point is non-admissible");
 
 	// cache the conic safe zone, if applicable
 	if(T<0) {
@@ -426,5 +428,131 @@ double bilinear_2d_safe_zone::operator()(double x, double y) const
 	else {
 		return u*x - v*fabs(y) - T;
 	} 
+}
+
+
+/////////////////////////////////////////////////////////
+//
+//  inner product safe zone
+//
+/////////////////////////////////////////////////////////
+
+inner_product_safe_zone::inner_product_safe_zone(const Vec& E, bool _geq, double _T)
+: geq(_geq), T(_T)
+{
+	assert(E.size()%2 ==0);
+
+	slice s1(0,E.size()/2,1);
+	slice s2(E.size()/2,E.size()/2,1);
+
+	Vec xi = E[s1]+E[s2];
+	Vec psi = E[s1]-E[s2];
+
+	if(!geq) {
+		xi.swap(psi);
+		T = -T;
+	}
+
+	double norm_xi = norm_L2(xi);
+	double norm_psi = norm_L2(psi);
+
+	sqdiff = bilinear_2d_safe_zone(norm_xi, norm_psi, 4.*T);
+
+	if(norm_xi>0)
+		xihat = xi/norm_xi;
+	else {
+		if(T<0)
+			xihat = Vec(0.0, E.size()/2);
+		else {
+			xihat = Vec(sqrt(2./E.size()), E.size()/2);
+		}
+	}
+}
+
+double inner_product_safe_zone::operator()(const Vec& X) const
+{
+	assert(X.size() == xihat.size()*2);
+
+	slice s1(0,xihat.size(),1);
+	slice s2(xihat.size(),xihat.size(),1);
+
+	Vec x = X[s1]+X[s2];
+	Vec y = X[s1]-X[s2];
+	if(!geq) x.swap(y);
+
+	double x2 = dot(x, xihat);
+	double y2 = norm_L2(y);
+
+	return sqdiff(x2, y2)*sqrt(0.5);
+}
+
+double inner_product_safe_zone::with_inc(incremental_state& inc, const Vec& X) const
+{
+	assert(X.size() == xihat.size()*2);
+
+	slice s1(0,xihat.size(),1);
+	slice s2(xihat.size(),xihat.size(),1);
+
+	Vec x = X[s1]+X[s2];
+	Vec y = X[s1]-X[s2];
+	if(!geq) x.swap(y);
+
+	inc.x.resize(x.size());
+	inc.x = x;
+	inc.y.resize(y.size());
+	inc.y = y;
+
+	inc.x2 = dot(x, xihat);
+	double y2 = norm_L2_with_inc(inc.y2, y);
+
+	return sqdiff(inc.x2, y2)*sqrt(0.5);
+}
+
+
+double inner_product_safe_zone::inc(incremental_state& inc, const delta_vector& dX) const
+{
+/*
+	delta_vector dX1 = dX[dX.index < xihat.size()];
+	delta_vector dX2 = dX[dX.index >= xihat.size()];
+	dX2.index -= xihat.size();
+
+	delta_vector dx = dX1+dX2;
+	delta_vector dy = dX1-dX2;
+
+	if(!geq) {
+		dx.swap(dy);
+	}
+
+	dx.rebase(inc.x);
+	dy.rebase(inc.y);
+
+	inc.x[dx.index] = dx.xnew;
+	inc.y[dy.index] = dy.xnew;
+*/
+	Vec dv = dX.xnew - dX.xold;
+	
+
+	delta_vector dX1 = dX[dX.index < xihat.size()];
+	delta_vector dX2 = dX[dX.index >= xihat.size()];
+	dX2.index -= xihat.size();
+
+	delta_vector dx = dX1+dX2;
+	delta_vector dy = dX1-dX2;
+
+	if(!geq) {
+		dx.swap(dy);
+	}
+
+	dx.rebase(inc.x);
+	dy.rebase(inc.y);
+
+	inc.x[dx.index] = dx.xnew;
+	inc.y[dy.index] = dy.xnew;
+
+
+	double x2 = dot_inc(inc.x2, dx, xihat);
+	double y2 = norm_L2_inc(inc.y2, dy);
+
+	return sqdiff(x2, y2)*sqrt(0.5);	
 }
 

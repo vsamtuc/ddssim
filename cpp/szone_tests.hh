@@ -426,7 +426,7 @@ public:
 		TS_ASSERT_DELTA(zeta(-1.,0.), 1/sqrt(2), 1.E-12); //note: the SDF here would yield -1 < -1/\sqrt{2}!
 
 		// When the ref.point is not in the zone, throw!
-		TS_ASSERT_THROWS( (zeta={0,1,0}), std::invalid_argument  );
+		//TS_ASSERT_THROWS( (zeta={0,1,0}), std::invalid_argument  );
 	}
 
 	void test_bilinear_2d_T_pos()
@@ -461,7 +461,7 @@ public:
 		}
 
 		// When the ref.point is not in the zone, throw!
-		TS_ASSERT_THROWS( (zeta={-1,0.5,1}), std::invalid_argument  );		
+		//TS_ASSERT_THROWS( (zeta={-1,0.5,1}), std::invalid_argument  );		
 	}
 
 
@@ -507,49 +507,138 @@ public:
 	{
 
 		// Check a bunch of safe zones
-		for(double T=-10.0; T<= 10.0; T+=1.93)
+		for(double T=-10.0; T<= 10.0; T+=2.)
 		for(double E1=-5.; E1<=5.0; E1+=0.5)
 		for(double E2=-5.; E2<=5.0; E2+=0.5) 
 		{
 			Vec E {E1,E2};
 
-			if(E1*E2 > T) 
 			{
 				auto sz2 = bilinear_2d_safe_zone(sqrt(0.5)*(E[0]+E[1]),sqrt(0.5)*(E[0]-E[1]), 2.*T);
 				auto sz = inner_product_safe_zone(E, true, T);
 
-				for(size_t i=0;i<50;i++) {
-					Vec X = uniform_random_vector(2, -10.0, 10.0);
-					TS_ASSERT_DELTA( 
-						sz2(sqrt(0.5)*(X[0]+X[1]),sqrt(0.5)*(X[0]-X[1])),
-						sz(X),
-						1E-12
-					  );		
+				if(E1*E2 >= T) 
+				{
+					for(size_t i=0;i<150;i++) {
+						Vec X = uniform_random_vector(2, -10.0, 10.0);
+						TS_ASSERT_DELTA( 
+							sz2(sqrt(0.5)*(X[0]+X[1]),sqrt(0.5)*(X[0]-X[1])),
+							sz(X),
+							1E-12
+						  );		
+					}
+				} else {
+					TS_ASSERT( sz2(sqrt(0.5)*(E[0]+E[1]),sqrt(0.5)*(E[0]-E[1])) < 0.0 );
+					TS_ASSERT( sz(E) < 0.0 );
 				}
+			}
 
-				// check that E outside the safe zone throws
-				TS_ASSERT_THROWS(inner_product_safe_zone(E, false, T), std::invalid_argument);
-			} 
 
-			if(E1*E2 < T) 
 			{
 				auto sz2 = bilinear_2d_safe_zone(sqrt(0.5)*(E[0]-E[1]),sqrt(0.5)*(E[0]+E[1]), -2.*T);
 				auto sz = inner_product_safe_zone(E, false, T);
 
-				for(size_t i=0;i<50;i++) {
-					Vec X = uniform_random_vector(2, -10.0, 10.0);
-					TS_ASSERT_DELTA( 
-						sz2(sqrt(0.5)*(X[0]-X[1]),sqrt(0.5)*(X[0]+X[1])),
-						sz(X),
-						1E-12
-					  );		
+				if(E1*E2 <= T) 
+				{
+					for(size_t i=0;i<150;i++) {
+						Vec X = uniform_random_vector(2, -10.0, 10.0);
+						TS_ASSERT_DELTA( 
+							sz2(sqrt(0.5)*(X[0]-X[1]),sqrt(0.5)*(X[0]+X[1])),
+							sz(X),
+							1E-12
+						  );		
+					}
+				} else {
+					TS_ASSERT( sz2(sqrt(0.5)*(E[0]-E[1]),sqrt(0.5)*(E[0]+E[1])) < 0.0 );
+					TS_ASSERT( sz(E) < 0.0 );
 				}
-
-				// check that E outside the safe zone throws
-				TS_ASSERT_THROWS(inner_product_safe_zone(E, true, T), std::invalid_argument);
 			} 
 		}
 	}
+
+	void test_inner_product_inc1()
+	{
+		TS_TRACE("inner_product_inc1");
+		projection proj(3, 4);
+		sketch E(proj);
+		E = uniform_random_vector(proj.size(), -10, 10);
+
+		size_t n = proj.size()/2;
+		Vec E1 = E[slice(0,n,1)];
+		Vec E2 = E[slice(n,n,1)];
+		double T = (E1*E2).sum() - 1 ;
+
+		inner_product_safe_zone zeta(E, true, T);
+		TS_ASSERT_LESS_THAN(0 , zeta(E));
+
+		inner_product_safe_zone::incremental_state inc;
+		double zeta_from_scratch = zeta(E);
+		double zeta_with_inc = zeta.with_inc(inc, E);
+		TS_ASSERT_DELTA( zeta_from_scratch, zeta_with_inc, 1E-16 );
+		TS_ASSERT_EQUALS( inc.x.size(), proj.size()/2);
+		TS_ASSERT_EQUALS( inc.y.size(), proj.size()/2);		
+
+		delta_vector dE(proj.depth());
+		buffered_dataset dset = make_uniform_dataset(1,1,100000,100);
+		for(auto&& rec : dset) {
+			E.update(dE, rec.key, rec.upd);
+			TS_ASSERT_DELTA(zeta(E), zeta.inc(inc, dE), 1E-12);
+		}
+
+		// update just one element
+		delta_vector dE1(1);
+		for(size_t p=0; p<E.size(); p++){
+			dE1.index[0] = p; 
+			dE1.xold = E[dE1.index];
+			E[p] += 1.0;
+			dE1.xnew = E[dE1.index];
+
+			TS_ASSERT_DELTA(zeta(E), zeta.inc(inc, dE1), 1E-12);					
+		}
+	}
+
+	void test_inner_product_inc2()
+	{
+		TS_TRACE("inner_product_inc2");
+		projection proj(3, 4);
+		sketch E(proj);
+		E = uniform_random_vector(proj.size(), -10, 10);
+
+		size_t n = proj.size()/2;
+		Vec E1 = E[slice(0,n,1)];
+		Vec E2 = E[slice(n,n,1)];
+		double T = (E1*E2).sum() + 1 ;
+
+		inner_product_safe_zone zeta(E, false, T);
+		TS_ASSERT_LESS_THAN(0 , zeta(E));
+
+		inner_product_safe_zone::incremental_state inc;
+		double zeta_from_scratch = zeta(E);
+		double zeta_with_inc = zeta.with_inc(inc, E);
+		TS_ASSERT_DELTA( zeta_from_scratch, zeta_with_inc, 1E-16 );
+		TS_ASSERT_EQUALS( inc.x.size(), proj.size()/2);
+		TS_ASSERT_EQUALS( inc.y.size(), proj.size()/2);		
+
+		delta_vector dE(proj.depth());
+		buffered_dataset dset = make_uniform_dataset(1,1,100000,100);
+		for(auto&& rec : dset) {
+			E.update(dE, rec.key, rec.upd);
+			TS_ASSERT_DELTA(zeta(E), zeta.inc(inc, dE), 1E-12);
+		}
+
+		// update just one element
+		delta_vector dE1(1);
+		for(size_t p=0; p<E.size(); p++){
+			dE1.index[0] = p; 
+			dE1.xold = E[dE1.index];
+			E[p] += 1.0;
+			dE1.xnew = E[dE1.index];
+
+			TS_ASSERT_DELTA(zeta(E), zeta.inc(inc, dE1), 1E-12);					
+		}
+	}
+
+
 
 };
 

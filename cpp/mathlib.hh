@@ -89,21 +89,17 @@
 	to `dot_inc`, but this operation of repeatedly taking the square root and then squaring
 	the result yields inaccuracies (e.g., when the vector contains integers)
  
-	## Opportunistic incremental functions
+	## Large incremental state
 
-	Some functions do not provide a sure-fire incremental implementation; instead, 
-	the function may provide a best-effort incremental technique, and revert to the
-	from-scratch algorithm if the opportunity for incremental computation is missed.
-	An example would be an incremental median function (returning the median of an input vector), 
-	where the update may be checked against the old value. If the "cross overs" of the update
-	cancel out, the median is not affected. However, if they do not, a from-scratch computation
-	may need to be performed.
+	In some cases, the incremental state must save the previous input, or output, or both.
+	For example, suppose that the function is a linear mapping,
+	\f$A X\f$, where \f$ A \f$ is a matrix. The from-scratch computation takes time \f$O(n^2)\f$,
+	(where A is assumed a square matrix). This can be reduced to \f$O(kn)\f$, where \f$k\f$ is 
+	the size of the delta vector, but at a cost of \f$O(n)\f$ space for the incremental state.
+	Still, this is much better than the from-scratch time cost, if k<<n. Remember, incremental
+	computations are about saving time, not necessarily space.
 
-	When this is the case, the API shall look like
-	~~~~
-		F_inc(S, DX, Xnew)
-	~~~~
-	i.e., the new value of `X` is passed along with the change that created it.
+	In more complicated cases, even more memory must be spent.
 
 	## Functions with more than one argument
 
@@ -153,6 +149,7 @@
 #include <valarray>
 #include <iostream>
 #include <algorithm>
+#include <functional>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_sparse.hpp>
@@ -165,6 +162,7 @@
 #include <boost/accumulators/statistics/rolling_mean.hpp>
 #include <boost/accumulators/statistics/rolling_variance.hpp>
 
+#include "binc.hh"
 
 namespace dds {
 
@@ -196,8 +194,13 @@ typedef valarray<bool> Mask;
 	Assume that you have a Vec \c X, and wish to update a small
 	number of its elements, described by Index \c index.
 	Then, the triple of values  (index, xold, xnew) describe
-	the change of the vector.
+	the change of the vector. 
 
+	In particular, the semantics are as follows: for each 
+	\c 0<=i<size(), the value of the original vector's element
+	\c index[i] changed from \c xold[i] to \c xnew[i].
+
+	Important invariant: \c index must be sorted!
  */
 struct delta_vector
 {
@@ -226,6 +229,12 @@ struct delta_vector
 
 	size_t size() const { return index.size(); }
 
+	inline void swap(delta_vector& other) {
+		index.swap(other.index);
+		xold.swap(other.xold);
+		xnew.swap(other.xnew);
+	}
+
 	// Some operations to allow convenient calculation of deltas of expressions,
 	// needed when we call an incremental function on an expression of the
 	// original vector
@@ -241,11 +250,129 @@ struct delta_vector
 
 	inline delta_vector& negate() { xold = -xold; xnew = -xnew; return *this; }
 
-	/// Apply this delta to a vector, ie  a +=  xnew-xold
-	inline void apply(Vec& a) {
-		a[index] += xnew - xold;
+	/**
+		\brief Apply this delta to a vector.
+
+		That is, a +=  xnew-xold
+	  */
+	inline void apply_delta(Vec& a) {  a[index] += xnew - xold; }
+
+	/**
+	 	Reset to a new base vector plus the delta.
+		
+		This call makes \c xold equal to \c a[index] and changes \c xnew so
+		that \c xnew-xold remains unchanged.
+	 */
+	inline void rebase(const Vec& a) { 	xnew -= xold; xnew += a[index]; xold = a[index]; }
+
+	/**
+		Reset to a new base of the 0 vector.
+	  */
+	inline void rebase() { 	xnew -= xold; xold = 0.0; }
+
+
+	/**
+		\brief Return a delta vector containing only masked coordinates.
+
+		The mask size must be equal to \c size(). 
+
+		@param mask the mask denoting the elements to be selected
+		@return a new \c delta_vector with a number of elements equal to the number of \c true elements
+		  of mask
+	  */
+	delta_vector operator[](const Mask& mask) const;
+
+	/**
+		Sort the entries of this \c delta_vector
+	  */
+	void sort();
+
+ };
+
+
+
+template <typename Func>
+delta_vector combine_deltas(const delta_vector& v1, const delta_vector& v2, Func func)
+{
+	//
+	// This code makes the case that v1.index and v2.index are sorted
+	//
+
+	// make a pass over the indices to count the combined indices
+	size_t j=0;
+	size_t i1=0, i2=0;
+	while(i1 < v1.size() && i2 < v2.size()) {
+		if(v1.index[i1] < v2.index[i2]) 
+			i1++;
+		else if(v1.index[i1] > v2.index[i2]) 
+			i2++;
+		else {
+			i1++; i2++;
+		}
+
+		j ++;
 	}
-};
+	j += v1.size() - i1 + v2.size()-i2;
+
+	// now apply the function on the result
+	delta_vector res(j);
+
+	j=i1=i2=0;
+
+	while(i1 < v1.size() && i2 < v2.size()) {
+		if(v1.index[i1] < v2.index[i2]) {
+			res.index[j] = v1.index[i1];
+			res.xold[j] = func(v1.xold[i1], 0.0);
+			res.xnew[j] = func(v1.xnew[i1], 0.0);
+			i1++;
+		}
+		else if(v1.index[i1] > v2.index[i2]) {
+			res.index[j] = v2.index[i2];
+			res.xold[j] = func(0.0, v2.xold[i2]);
+			res.xnew[j] = func(0.0, v2.xnew[i2]);
+			i2++;
+		}
+		else {
+			res.index[j] = v2.index[i2];
+			res.xold[j] = func(v1.xold[i1], v2.xold[i2]);
+			res.xnew[j] = func(v1.xnew[i1], v2.xnew[i2]);
+			i1++; i2++;
+		}
+		j ++;
+	}
+
+	while(i1 < v1.size()) {
+		res.index[j] = v1.index[i1];
+		res.xold[j] = func(v1.xold[i1], 0.0);
+		res.xnew[j] = func(v1.xnew[i1], 0.0);
+		i1++;
+		j++;		
+	}	
+
+	while(i2 < v2.size()) {
+		res.index[j] = v2.index[i2];
+		res.xold[j] = func(0.0, v2.xold[i2]);
+		res.xnew[j] = func(0.0, v2.xnew[i2]);
+		i2++;
+		j++;		
+	}	
+
+	return res;
+}
+
+
+
+inline delta_vector operator+(const delta_vector& v1, const delta_vector& v2)
+{  return combine_deltas(v1, v2, std::plus<double>() );  }
+
+inline delta_vector operator-(const delta_vector& v1, const delta_vector& v2)
+{  return combine_deltas(v1, v2, std::minus<double>() );  }
+
+inline delta_vector operator*(const delta_vector& v1, const delta_vector& v2)
+{  return combine_deltas(v1, v2, std::multiplies<double>() );  }
+
+inline delta_vector operator/(const delta_vector& v1, const delta_vector& v2)
+{  return combine_deltas(v1, v2, std::divides<double>() );  }
 
 
 

@@ -141,6 +141,17 @@ public:
 		TS_ASSERT_DELTA( rolling_variance(eerr.tally), 0.0, 1e-3 );
 	}	
 
+
+	void test_mask_true_count()
+	{
+		Index idx {1,4,6};
+		Mask m { true, true, false };
+
+		TS_ASSERT_EQUALS(std::count(begin(m), end(m), true), 2);
+	}
+
+
+
 };
 
 

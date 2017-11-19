@@ -420,6 +420,12 @@ struct inner_product_safe_zone
 
 	bilinear_2d_safe_zone sqdiff;
 
+	struct incremental_state {
+		double x2;
+		double y2;
+		Vec x,y;
+	};
+
 	/**
 		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
 		for condition 
@@ -433,51 +439,12 @@ struct inner_product_safe_zone
 		@param _geq a boolean, designating an upper or lower bound
 		@param T the threshold
 	  */
-	inner_product_safe_zone(const Vec& E, bool _geq, double _T)
-	: geq(_geq), T(_T)
-	{
-		assert(E.size()%2 ==0);
+	inner_product_safe_zone(const Vec& E, bool _geq, double _T);
 
-		slice s1(0,E.size()/2,1);
-		slice s2(E.size()/2,E.size()/2,1);
+	double operator()(const Vec& X) const;
+	double with_inc(incremental_state& inc, const Vec& X) const;
+	double inc(incremental_state& inc, const delta_vector& dX) const;
 
-		Vec xi = E[s1]+E[s2];
-		Vec psi = E[s1]-E[s2];
-
-		if(!geq) {
-			xi.swap(psi);
-			T = -T;
-		}
-
-		double norm_xi = norm_L2(xi);
-		double norm_psi = norm_L2(psi);
-
-		sqdiff = bilinear_2d_safe_zone(norm_xi, norm_psi, 4.*T);
-
-		if(norm_xi>0)
-			xihat = xi/norm_xi;
-		else
-			xihat = Vec(0.0, E.size()/2);
-	}
-
-	double operator()(const Vec& X) const
-	{
-		assert(X.size() == xihat.size()*2);
-
-		slice s1(0,xihat.size(),1);
-		slice s2(xihat.size(),xihat.size(),1);
-
-		Vec x = X[s1]+X[s2];
-		Vec y = X[s1]-X[s2];
-		if(!geq) x.swap(y);
-
-		double x2 = dot(x, xihat);
-		double y2 = norm_L2(y);
-
-		return sqdiff(x2, y2) / sqrt(2);
-	}
-
-	
 
 };
 

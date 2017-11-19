@@ -29,7 +29,7 @@ void node<QType>::update_stream()
 	// oops, not an update
 	if(delta.size()==0) return;
 
-	delta.apply(U);
+	delta.apply_delta(U);
 
 	//U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
 	//dS.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
