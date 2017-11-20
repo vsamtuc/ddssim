@@ -568,6 +568,20 @@ struct twoway_join_agms_safezone : safezone_func
 		return dot_estvec(make_sketch_view(proj, v));
 	}
 
+	double zeta_bound(const Vec& u1, const Vec& u1hat, const Vec& u2, 
+		const vector<bilinear_2d_safe_zone>& zeta2bound,
+		quorum_safezone& Median)
+	{
+        Vec x2 = dot_col(u1, u1hat);
+        Vec y2 = sqrt(dot_col(u2));
+
+        Vec zetaX(proj.depth());
+        for(size_t i=0; i<proj.depth(); i++)
+        	zetaX[i] = zeta2bound[i](x2[i], y2[i])*sqrt(0.5);
+
+        return Median(zetaX);		
+	}
+
 	// from-scratch computation
 	double operator()(const Vec& X)
 	{
@@ -580,24 +594,10 @@ struct twoway_join_agms_safezone : safezone_func
         Vec y = X[s1]-X[s2];
 
         // Compute low
-        Vec x2low = dot_col(x, xihat);
-        Vec y2low = sqrt(dot_col(y));
-
-        Vec zetaXlow(proj.depth());
-        for(size_t i=0; i<proj.depth(); i++)
-        	zetaXlow[i] = zeta2low[i](x2low[i], y2low[i])*sqrt(0.5);
-
-        double zeta_low = Median_low(zetaXlow);
+        double zeta_low = zeta_bound(x, xihat, y, zeta2low, Median_low);
 
         // Compute high
-        Vec x2high = dot_col(y, psihat);
-        Vec y2high = sqrt(dot_col(x));
-
-        Vec zetaXhigh(proj.depth());
-        for(size_t i=0; i<proj.depth(); i++)
-        	zetaXhigh[i] = zeta2high[i](x2high[i], y2high[i])*sqrt(0.5);
-
-        double zeta_high = Median_high(zetaXhigh);
+        double zeta_high = zeta_bound(y, psihat, x, zeta2high, Median_high);
 
         return min(zeta_low, zeta_high);
 	}
