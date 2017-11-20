@@ -490,79 +490,107 @@ struct twoway_join_agms_safezone : safezone_func
 {
 	twoway_join_agms_safezone();
 
-	double Tlow, Thigh;
-	projection proj;
-	Vec xihat, psihat;
+	/// Holds data for constraint of the form \f$ x^2 - y^2 \geq T \f$
+	struct bound {
+		projection proj;  // Shared with base object
+		double T;
+		Vec hat;
+		vector<bilinear_2d_safe_zone> zeta_2d;
+		quorum_safezone Median;
 
-	vector<bilinear_2d_safe_zone> zeta2low, zeta2high;
+		struct incremental_state {
+			Vec x2, y2;
+		};
 
-	quorum_safezone Median_low, Median_high;
+		bound() { }
+
+		bound(const projection& _proj, double _T, bool eikonal) 
+		: proj(_proj), T(_T), 
+		  hat(_proj.size())
+		{ 
+			zeta_2d.reserve(proj.depth());
+			Median.set_eikonal(eikonal);
+		}
+
+		void setup(const Vec& norm_xi, const Vec& norm_psi) {
+			Vec zeta_E(proj.depth()); // vector to prepare the median SZ
+			Vec tmp(proj.width());
+
+			for(size_t i=0; i<proj.depth(); i++) {
+				// create the bilinear 2d safe zones 
+				zeta_2d.emplace_back(norm_xi[i], norm_psi[i], 4.0*T);
+
+				// compute the zeta_E vector for the median
+				zeta_E[i] = zeta_2d[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
+
+				// Normalize the hat vector
+				slice I(i*proj.width(), proj.width(), 1);
+				if(norm_xi[i]>0.0) {
+					tmp = norm_xi[i];
+					hat[I] /= tmp;
+				} 
+				else {
+					tmp = 0.0;
+					hat[I] = tmp;
+				}
+			}
+
+			Median.prepare(zeta_E, (proj.depth()+1)/2);
+		}
 
 
-	// make a sketch view out of a vector
-	inline const_Vec_sketch_view SK(const Vec& v) const {
-		return make_sketch_view(proj, v);
-	}
+		double zeta(incremental_state& inc, const Vec& x, const Vec& y)
+		{
+			// set inc
+	        inc.x2 = dot_estvec(proj(x), proj(hat));
+	        inc.y2 = dot_estvec(proj(y));
+	        return zeta(inc.x2, inc.y2);
+		}
 
+		double zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy)
+		{
+			// update inc
+			Vec& x2 = dot_estvec_inc(inc.x2, dx, proj(hat));
+			Vec& y2 = dot_estvec_inc(inc.y2, dy);
+			return zeta(x2, y2);
+		}
 
-	twoway_join_agms_safezone(const Vec& E, const projection& _proj, 
-								double _Tlow, double _Thigh, bool eikonal)
-		: Tlow(_Tlow), Thigh(_Thigh), proj(_proj),
-		  xihat(_proj.size()), psihat(_proj.size())
+		double zeta(const Vec& x2, const Vec& y2)
+		{
+	        Vec zeta_X(proj.depth());
+
+	        for(size_t i=0; i<proj.depth(); i++)
+	        	zeta_X[i] = zeta_2d[i]( x2[i], sqrt(y2[i]) )*sqrt(0.5);
+	        return Median(zeta_X);			
+		}
+
+	};
+
+	size_t D;
+	bound lower, upper;
+
+	twoway_join_agms_safezone(const Vec& E, const projection& proj, 
+								double Tlow, double Thigh, bool eikonal)
+		: 	D(proj.size()), 
+			lower(proj, Tlow, eikonal), 
+			upper(proj, -Thigh, eikonal)
 	{
 		assert(E.size() == 2*proj.size());
 		assert(Tlow < Thigh);
 
-		// initialize the arrays
-		xihat = E[slice(0, proj.size(),1)] + E[slice(proj.size(), proj.size(),1)];
-		psihat = E[slice(0, proj.size(),1)] - E[slice(proj.size(), proj.size(),1)];
+		// Polarize the reference vector
+		slice s1(0, D, 1);
+		slice s2(D, D, 1);
 
-		Vec norm_xi = sqrt(dot_estvec(SK(xihat)));
-		Vec norm_psi = sqrt(dot_estvec(SK(psihat)));
+		lower.hat = E[s1] + E[s2];
+		upper.hat = E[s1] - E[s2];
 
-		// create the slices and the 
-		zeta2low.reserve(proj.depth());
-		zeta2high.reserve(proj.depth());
+		// Initialize the upper and lower bound safe zone data
+		Vec norm_lower =  sqrt(dot_estvec(proj(lower.hat)));
+		Vec norm_upper = sqrt(dot_estvec(proj(upper.hat)));
 
-		Vec zeta_Elow(proj.depth());
-		Vec zeta_Ehigh(proj.depth());
-
-		Vec tmp(proj.width());
-
-		for(size_t i=0; i<proj.depth(); i++) {
-			zeta2low.emplace_back(norm_xi[i], norm_psi[i], 4.*Tlow);
-			zeta_Elow[i] = zeta2low[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
-
-			zeta2high.emplace_back(norm_psi[i], norm_xi[i], -4.*Thigh);
-			zeta_Ehigh[i] = zeta2high[i](norm_psi[i], norm_xi[i])*sqrt(0.5);
-
-			slice I(i*proj.width(), proj.width(), 1);
-
-			if(norm_xi[i]>0.0) {
-				tmp = norm_xi[i];
-				xihat[I] /= tmp;
-			} 
-			else {
-				tmp = 0.0;
-				xihat[I] = tmp;
-			}
-
-			if(norm_psi[i]>0.0) {
-				tmp = norm_psi[i];
-				psihat[I] /= tmp;
-			} 
-			else {
-				tmp = 0.0;
-				psihat[I] = tmp;
-			}
-
-		}
-
-		Median_low.prepare(zeta_Elow, (proj.depth()+1)/2);
-		Median_low.set_eikonal(eikonal);
-
-		Median_high.prepare(zeta_Ehigh, (proj.depth()+1)/2);
-		Median_high.set_eikonal(eikonal);
+		lower.setup(norm_lower, norm_upper);
+		upper.setup(norm_upper, norm_lower);
 	}
 
 	twoway_join_agms_safezone& operator=(twoway_join_agms_safezone&&)=default;
@@ -572,48 +600,33 @@ struct twoway_join_agms_safezone : safezone_func
 	{ 
 		// these are used for polarization
 		Vec x,y;
-
-		struct bound {
-			Vec x2;
-			Vec y2;
-		} Ilow, Ihigh;
+		// These are used for the bounds 
+		struct bound::incremental_state lower, upper;
 	};
 
-	double zeta_bound(incremental_state::bound& Ibound,
-		const Vec& u1, const Vec& u1hat, const Vec& u2, 
-		const vector<bilinear_2d_safe_zone>& zeta2bound,
-		quorum_safezone& Median)
+
+	double with_inc(incremental_state& inc, const Vec& U)
 	{
-        Ibound.x2 = dot_estvec(SK(u1), SK(u1hat));
-        Ibound.y2 = dot_estvec(SK(u2));
+		assert(U.size() == 2*D);
 
-        Vec zetaX(proj.depth());
-        for(size_t i=0; i<proj.depth(); i++)
-        	zetaX[i] = zeta2bound[i]( Ibound.x2[i], sqrt(Ibound.y2[i]) )*sqrt(0.5);
-        return Median(zetaX);		
-	}
+		// Polarize
+		slice s1(0, D, 1);
+		slice s2(D, D, 1);
 
-	double with_inc(incremental_state& inc, const Vec& X)
-	{
-		assert(X.size() == 2*proj.size());
+        inc.x = U[s1] + U[s2];
+        inc.y = U[s1] - U[s2];
 
-        slice s1(0,xihat.size(),1);
-        slice s2(xihat.size(),xihat.size(),1);
+        // Compute zeta of lower bound
+        double zeta_lower = lower.zeta(inc.lower, inc.x, inc.y);
 
-        inc.x = X[s1]+X[s2];
-        inc.y = X[s1]-X[s2];
+        // Compute zeta of upper bound
+        double zeta_upper = upper.zeta(inc.upper, inc.y, inc.x);
 
-        // Compute low
-        double zeta_low = zeta_bound(inc.Ilow, inc.x, xihat, inc.y, zeta2low, Median_low);
-
-        // Compute high
-        double zeta_high = zeta_bound(inc.Ihigh, inc.y, psihat, inc.x, zeta2high, Median_high);
-
-        return min(zeta_low, zeta_high);
+        return min(zeta_lower, zeta_upper);
 	}
 
 
-	// from-scratch computation
+	// from-scratch computation, just use with_inc, with a throw-away incremental state
 	double operator()(const Vec& X)
 	{
 		incremental_state inc;
@@ -621,25 +634,12 @@ struct twoway_join_agms_safezone : safezone_func
 	}
 
 
-	double zeta_bound(incremental_state::bound& Ibound,  
-			const delta_vector& du1, const Vec& u1hat, const delta_vector& du2, 
-			const vector<bilinear_2d_safe_zone>& zeta2bound, quorum_safezone& Median)
-	{
-		Vec& x2 = dot_estvec_inc(Ibound.x2, du1, SK(u1hat));
-		Vec& y2 = dot_estvec_inc(Ibound.y2, du2);
-
-        Vec zetaX(proj.depth());
-        for(size_t i=0; i<proj.depth(); i++)
-        	zetaX[i] = zeta2bound[i](x2[i], sqrt(y2[i]))*sqrt(0.5);
-
-        return Median(zetaX);
-	}
-
 	double inc(incremental_state& incstate, const delta_vector& DX)
 	{
-		delta_vector DX1 = DX[DX.index < proj.size()];
-		delta_vector DX2 = DX[DX.index >= proj.size()];
-		DX2.index -= proj.size();
+		// Polarize the delta
+		delta_vector DX1 = DX[DX.index < D];
+		delta_vector DX2 = DX[DX.index >= D];
+		DX2.index -= D;
 
 		delta_vector dx = DX1+DX2;
 		delta_vector dy = DX1-DX2;
@@ -647,16 +647,17 @@ struct twoway_join_agms_safezone : safezone_func
 		dx.rebase(incstate.x);
 		dy.rebase(incstate.y);
 
+		// update the polarization incstate
 		incstate.x[dx.index] = dx.xnew;
 		incstate.y[dy.index] = dy.xnew;
 
-        // Compute low
-        double zeta_low = zeta_bound(incstate.Ilow, dx, xihat, dy, zeta2low, Median_low);
+        // Compute zeta of lower bound
+        double zeta_lower = lower.zeta(incstate.lower, dx, dy);
 
-        // Compute high
-        double zeta_high = zeta_bound(incstate.Ihigh, dy, psihat, dx, zeta2high, Median_high);
+        // Compute zeta of upper bound
+        double zeta_upper = upper.zeta(incstate.upper, dy, dx);
 
-        return min(zeta_low, zeta_high);
+        return min(zeta_lower, zeta_upper);
 	}
 
 };

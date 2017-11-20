@@ -69,6 +69,10 @@ public:
 };
 
 
+template <typename IterType>
+struct sketch_view;
+
+
 /**
 	An AGMS projection defines a projection 
 	of a high-dimensional vector space on a
@@ -128,6 +132,14 @@ public:
 	inline void set_epsilon(double e) { eps=e; }
 	inline double ams_epsilon() const { return 4./sqrt(L); }
 	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
+
+	// Construction of  sketch view
+	template<typename Iter>
+	sketch_view<Iter> operator()(Iter from, Iter to) const;
+
+	// Construction of  sketch view
+	template<typename Container>
+	auto operator()(Container&) const;
 
 };
 
@@ -266,6 +278,22 @@ inline auto make_sketch_view(const projection& proj, Container& c) {
 	typedef decltype(std::begin(c)) iter;
 	return sketch_view<iter>(proj, std::begin(c), std::end(c));
 }
+
+
+template<typename Iter>
+inline sketch_view<Iter> projection::operator()(Iter from, Iter to) const
+{
+	return sketch_view<Iter>(*this, from, to);
+}
+
+// Construction of  sketch view
+template<typename Container>
+auto projection::operator()(Container& c) const
+{
+	typedef decltype(std::begin(c)) iter;
+	return sketch_view<iter>(*this, std::begin(c), std::end(c));
+}
+
 
 
 /**
