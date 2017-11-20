@@ -231,18 +231,6 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 }
 
 
-/////////////////////////////////////////////////////////
-//
-//  twoway_join_agms_safezone_upper_bound
-//  twoway_join_agms_safezone_lower_bound
-//  twoway_join_agms_safezone
-//
-/////////////////////////////////////////////////////////
-
-
-
-
-
 
 /////////////////////////////////////////////////////////
 //
@@ -511,26 +499,6 @@ double inner_product_safe_zone::with_inc(incremental_state& inc, const Vec& X) c
 
 double inner_product_safe_zone::inc(incremental_state& inc, const delta_vector& dX) const
 {
-/*
-	delta_vector dX1 = dX[dX.index < xihat.size()];
-	delta_vector dX2 = dX[dX.index >= xihat.size()];
-	dX2.index -= xihat.size();
-
-	delta_vector dx = dX1+dX2;
-	delta_vector dy = dX1-dX2;
-
-	if(!geq) {
-		dx.swap(dy);
-	}
-
-	dx.rebase(inc.x);
-	dy.rebase(inc.y);
-
-	inc.x[dx.index] = dx.xnew;
-	inc.y[dy.index] = dy.xnew;
-*/
-	Vec dv = dX.xnew - dX.xold;
-	
 
 	delta_vector dX1 = dX[dX.index < xihat.size()];
 	delta_vector dX2 = dX[dX.index >= xihat.size()];
@@ -548,11 +516,24 @@ double inner_product_safe_zone::inc(incremental_state& inc, const delta_vector& 
 
 	inc.x[dx.index] = dx.xnew;
 	inc.y[dy.index] = dy.xnew;
-
 
 	double x2 = dot_inc(inc.x2, dx, xihat);
 	double y2 = norm_L2_inc(inc.y2, dy);
 
 	return sqdiff(x2, y2)*sqrt(0.5);	
 }
+
+
+
+/////////////////////////////////////////////////////////
+//
+//  twoway_join_agms_safezone
+//
+/////////////////////////////////////////////////////////
+
+
+
+twoway_join_agms_safezone::twoway_join_agms_safezone() 
+	: safezone_func(false) 
+{ }
 

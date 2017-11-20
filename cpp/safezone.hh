@@ -391,8 +391,6 @@ struct bilinear_2d_safe_zone : safezone_func
 		@param xi the x-coordinate of reference point \f$(\xi,\psi)\f$.
 		@param psi the y-coordinate of reference point \f$(\xi,\psi)\f$.
 		@param _T  the safe zone threshold
-
-		@throws std::invalid_argument if \f$ \xi^2 - \psi^2 < T\f$.
 	  */
 	bilinear_2d_safe_zone(double xi, double psi, double _T);
 
@@ -411,6 +409,12 @@ struct bilinear_2d_safe_zone : safezone_func
 	\f[   X_1 X_2 \geq T  \f]
 	or
 	\f[   X_1 X_2 \leq T  \f]
+
+	The incremental state is of size \f$O(n)\f$, where \f$n\f$ is the dimension
+	of the vectors. The complexity of an incremental computation is \f$O(d)\f$ where
+	\f$d \f$ is the size of the delta vector. 
+
+	Each evaluation calls function \c hyperbola_nearest_neighbor at most once.
   */
 struct inner_product_safe_zone
 {
@@ -441,56 +445,171 @@ struct inner_product_safe_zone
 	  */
 	inner_product_safe_zone(const Vec& E, bool _geq, double _T);
 
+	/**
+		\brief From-scratch computation of the function.
+
+		The complexity is \f$ O(n) \f$.
+	  */
 	double operator()(const Vec& X) const;
+
+	/**
+		\brief From-scratch computation of the function, with initialization of incremental state.
+
+		The complexity is \f$ O(n) \f$. The size of the incremental state is also \f$ O(n) \f$.
+	  */
 	double with_inc(incremental_state& inc, const Vec& X) const;
+
+
+	/**
+		\brief Incremental computation of the function.
+
+		The complexity is \f$ O(d) \f$, where \f$d\f$ is the size of \c dX.
+	  */
 	double inc(incremental_state& inc, const delta_vector& dX) const;
 
 
 };
 
 
-struct twoway_join_query;
 
+/**
+	A safe zone function for bounding the join estimate of two AGMS sketches.
 
-struct twoway_join_agms_safezone_lower_bound
-{
+	Let \f$ X = [X_1, ... , X_d]\f$ be am AGMS sketch of depth \f$d\f$.
 
-};
+	Given sketches \f$X \f$ and \f$Y\f$, the join estimate is 
+	\f[ Q(X,Y) =  \median{X_iY_i \,|\, i=1,\ldots , D}. \f]
+	Given thresholds \f$ T_\text{low} \f$ and \f$ T_\text{high} \f$, 
+	the admissible region is 
+    \f[ A =\{ (X,Y) | T_\text{low} \leq Q(X,Y) \leq T_\text{hi} \}. \f]
 
-struct twoway_join_agms_safezone_upper_bound
-{
-
-};
-
-
-
+    The safe zone is defined per the algorithms of [Garofalakis and Samoladas, 
+    ICDT 2017].
+  */
 struct twoway_join_agms_safezone : safezone_func
 {
-
-	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
-	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
-
-	struct incremental_state
-	{
-		selfjoin_agms_safezone_lower_bound::incremental_state lower;
-		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
-	};
-
 	twoway_join_agms_safezone();
 
-	twoway_join_agms_safezone(const sketch& E, double Tlow, double Thigh);
+	double Tlow, Thigh;
+	projection proj;
+	Vec xihat, psihat;
 
-	twoway_join_agms_safezone(twoway_join_query& q);
+	vector<slice> col;
+	vector<bilinear_2d_safe_zone> zeta2low, zeta2high;
+
+	quorum_safezone Median_low, Median_high;
+
+	twoway_join_agms_safezone(const Vec& E, const projection& _proj, 
+								double _Tlow, double _Thigh, bool eikonal)
+		: Tlow(_Tlow), Thigh(_Thigh), proj(_proj),
+		  xihat(_proj.size()), psihat(_proj.size())
+	{
+		assert(E.size() == 2*proj.size());
+		assert(Tlow < Thigh);
+
+		// initialize the arrays
+		xihat = E[slice(0, proj.size(),1)] + E[slice(proj.size(), proj.size(),1)];
+		psihat = E[slice(0, proj.size(),1)] - E[slice(proj.size(), proj.size(),1)];
+
+		Vec norm_xi = sqrt(dot_estvec(make_sketch_view(proj, xihat)));
+		Vec norm_psi = sqrt(dot_estvec(make_sketch_view(proj, psihat)));
+
+		// create the slices and the 
+		col.reserve(proj.depth());
+		zeta2low.reserve(proj.depth());
+		zeta2high.reserve(proj.depth());
+
+		Vec zeta_Elow(proj.depth());
+		Vec zeta_Ehigh(proj.depth());
+
+		Vec tmp(proj.width());
+
+		for(size_t i=0; i<proj.depth(); i++) {
+			col.emplace_back(i*proj.width(), proj.width(), 1);
+			zeta2low.emplace_back(norm_xi[i], norm_psi[i], 4.*Tlow);
+			zeta_Elow[i] = zeta2low[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
+
+			zeta2high.emplace_back(norm_psi[i], norm_xi[i], -4.*Thigh);
+			zeta_Ehigh[i] = zeta2high[i](norm_psi[i], norm_xi[i])*sqrt(0.5);
+
+			if(norm_xi[i]>0.0) {
+				tmp = norm_xi[i];
+				xihat[col[i]] /= tmp;
+			} 
+			else {
+				tmp = 0.0;
+				xihat[col[i]] = tmp;
+			}
+
+			if(norm_psi[i]>0.0) {
+				tmp = norm_psi[i];
+				psihat[col[i]] /= tmp;
+			} 
+			else {
+				tmp = 0.0;
+				psihat[col[i]] = tmp;
+			}
+
+		}
+
+		Median_low.prepare(zeta_Elow, (proj.depth()+1)/2);
+		Median_low.set_eikonal(eikonal);
+
+		Median_high.prepare(zeta_Ehigh, (proj.depth()+1)/2);
+		Median_high.set_eikonal(eikonal);
+	}
+
 	twoway_join_agms_safezone& operator=(twoway_join_agms_safezone&&)=default;
 
-	// from-scratch computation
-	double operator()(const sketch& X);
+	inline Vec dot_col(const Vec& v1, const Vec& v2) const {
+		return dot_estvec(make_sketch_view(proj, v1), make_sketch_view(proj,v2));
+	}
+	inline Vec dot_col(const Vec& v) const {
+		return dot_estvec(make_sketch_view(proj, v));
+	}
 
-	double with_inc(incremental_state& incstate, const sketch& X);
+	// from-scratch computation
+	double operator()(const Vec& X)
+	{
+		assert(X.size() == 2*proj.size());
+
+        slice s1(0,xihat.size(),1);
+        slice s2(xihat.size(),xihat.size(),1);
+
+        Vec x = X[s1]+X[s2];
+        Vec y = X[s1]-X[s2];
+
+        // Compute low
+        Vec x2low = dot_col(x, xihat);
+        Vec y2low = sqrt(dot_col(y));
+
+        Vec zetaXlow(proj.depth());
+        for(size_t i=0; i<proj.depth(); i++)
+        	zetaXlow[i] = zeta2low[i](x2low[i], y2low[i])*sqrt(0.5);
+
+        double zeta_low = Median_low(zetaXlow);
+
+        // Compute high
+        Vec x2high = dot_col(y, psihat);
+        Vec y2high = sqrt(dot_col(x));
+
+        Vec zetaXhigh(proj.depth());
+        for(size_t i=0; i<proj.depth(); i++)
+        	zetaXhigh[i] = zeta2high[i](x2high[i], y2high[i])*sqrt(0.5);
+
+        double zeta_high = Median_high(zetaXhigh);
+
+        return min(zeta_low, zeta_high);
+	}
+
+
+	struct incremental_state
+	{ };
+
+
+	double with_inc(incremental_state& incstate, const Vec& X);
 
 	double inc(incremental_state& incstate, const delta_vector& DX);
-
-
 };
 
 
