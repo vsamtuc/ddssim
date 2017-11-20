@@ -5,6 +5,8 @@
 #include <iostream>
 #include <chrono>
 
+#include <boost/timer/timer.hpp>
+
 #include "data_source.hh"
 #include "safezone.hh"
 #include "binc.hh"
@@ -639,6 +641,87 @@ public:
 	}
 
 
+	void test_twoway_join_agms_safezone1()
+	{
+		projection proj(3,4);
+
+		size_t D = proj.size();
+		Vec E = uniform_random_vector(2*D, -10, 10);
+		Vec E1 = E[slice(0,D,1)];
+		Vec E2 = E[slice(D,D,1)];
+
+		double E1E2 = dot_est(proj(E1), proj(E2));
+		double Tlow = E1E2-0.1*fabs(E1E2);
+		double Thigh = E1E2+0.1*fabs(E1E2);
+
+		twoway_join_agms_safezone zeta(E, proj, Tlow, Thigh, true);
+
+		double zeta_E = zeta(E);
+		TS_ASSERT_LESS_THAN_EQUALS(0.0, zeta_E);
+		TS_ASSERT_LESS_THAN_EQUALS(zeta(2.*E), 0.0);
+
+
+		// Check safe zone conformity
+		size_t count_safe = 0, count_admissible=0;
+		size_t N = 1000;
+		double rho = fabs(zeta_E)/sqrt(2.0*D);
+		for(size_t i=0; i<N; i++) {
+			Vec X = E + uniform_random_vector(2*D, -10.0*rho, 10.0*rho);
+			Vec X1 = X[slice(0,D,1)];
+			Vec X2 = X[slice(D,D,1)];
+			double X1X2 = dot_est(proj(X1), proj(X2));
+			bool admissible = (Tlow <= X1X2) && (X1X2 <= Thigh);
+			bool safe = (zeta(X) >= 0);
+			if(admissible) count_admissible++;
+			if(safe) count_safe++;
+			TS_ASSERT( safe <= admissible );
+		}
+	}
+
+
+	void test_twoway_join_agms_safezone2()
+	{
+		projection proj(7,500);
+
+		size_t D = proj.size();
+		Vec E = uniform_random_vector(2*D, -10, 20);
+		Vec E1 = E[slice(0,D,1)];
+		Vec E2 = E[slice(D,D,1)];
+
+		double E1E2 = dot_est(proj(E1), proj(E2));
+		double Tlow = E1E2-0.1*fabs(E1E2);
+		double Thigh = E1E2+0.1*fabs(E1E2);
+
+		twoway_join_agms_safezone zeta(E, proj, Tlow, Thigh, true);
+
+		buffered_dataset dset = make_uniform_dataset(2,1,100000,10000);
+
+		delta_vector dX(proj.depth());
+
+		Vec S = E;
+
+		auto e1 = begin(S);
+		auto e2 = e1+D;
+		auto e3 = e2+D;
+		TS_ASSERT_EQUALS(e3, end(S));
+
+		Vec_sketch_view X[2] = { proj(e1,e2), proj(e2,e3) };
+		twoway_join_agms_safezone::incremental_state inc;
+
+		double zeta_E = zeta.with_inc(inc, S);
+		TS_ASSERT_LESS_THAN_EQUALS(0.0, zeta_E );
+		TS_ASSERT_EQUALS(zeta(E), zeta_E);
+
+		for(auto&& rec : dset) {
+			TS_ASSERT(rec.sid==1 || rec.sid==2);
+			X[rec.sid-1].update(dX, rec.key, rec.upd);
+			if(rec.sid==2) dX.index += D;
+
+			double z_from_scratch = zeta(S);
+			double z_inc = zeta.inc(inc, dX);
+			TS_ASSERT_DELTA( z_from_scratch , z_inc , 1E-10 );
+		}
+	}
 
 };
 

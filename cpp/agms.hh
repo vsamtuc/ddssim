@@ -133,11 +133,19 @@ public:
 	inline double ams_epsilon() const { return 4./sqrt(L); }
 	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
 
-	// Construction of  sketch view
+	/**
+		Return a sketch view of a range. 
+
+		The iterators must satisfy the RandomAccessIterator concept of STL.
+	  */
 	template<typename Iter>
 	sketch_view<Iter> operator()(Iter from, Iter to) const;
 
-	// Construction of  sketch view
+	/**
+		Return a sketch view on a container. 
+
+		The data range is obtained by calling \c std::begin and \c std::end.
+	  */
 	template<typename Container>
 	auto operator()(Container&) const;
 
@@ -169,11 +177,11 @@ struct sketch_view
 	sketch_view(const projection& _proj) : proj(_proj) { }
 	sketch_view(const projection& _proj, const iterator& b, const iterator& e)
 		: proj(_proj), __begin(b), __end(e) 
-		{ 
-			assert(valid_range(__begin, __end));
-		}
+	{ 
+		assert(valid_range(__begin, __end));
+	}
 
-	void set_range(const iterator& b, const iterator& e) {
+	inline void set_range(const iterator& b, const iterator& e) {
 		assert(valid_range(b, e));
 		__begin = b;
 		__end = e;
@@ -271,22 +279,17 @@ typedef sketch_view<decltype(begin((const Vec&) Vec()))> const_Vec_sketch_view;
 
 
 /**
-	Return a sketch view on a range
+	Return a sketch view on a range. 
   */
-template <typename Container>
-inline auto make_sketch_view(const projection& proj, Container& c) {
-	typedef decltype(std::begin(c)) iter;
-	return sketch_view<iter>(proj, std::begin(c), std::end(c));
-}
-
-
 template<typename Iter>
 inline sketch_view<Iter> projection::operator()(Iter from, Iter to) const
 {
 	return sketch_view<Iter>(*this, from, to);
 }
 
-// Construction of  sketch view
+/**
+	Return a sketch view on a container
+  */
 template<typename Container>
 auto projection::operator()(Container& c) const
 {
@@ -398,9 +401,9 @@ public:
 	inline operator Vec_sketch_view() { return view(); }
 
 	/// Update the sketch.
-	void update(key_type key, double freq = 1.0);
+	inline void update(key_type key, double freq = 1.0) { view().update(key, freq); }
 
-	void update(delta_vector& delta, key_type key, double freq = 1.0)
+	inline void update(delta_vector& delta, key_type key, double freq = 1.0)
 	{ view().update(delta, key, freq); }
 
 	/// Insert a key into the sketch
@@ -607,19 +610,6 @@ inline double dot_est_with_inc(Vec& incstate, const sketch& s) {
 
 
 
-/**
-	Incremental version of norm2_squared
-
-	Just use dot_inc
-
-inline double norm2_squared_inc(double& oldvalue, const delta_vector& dsk)
-{
-	oldvalue += dds::dot(dsk.xnew) - dds::dot(dsk.xold);
-	return oldvalue;
-}
-  */
-
-
 // Vector space operations
 
 /**
@@ -692,7 +682,7 @@ struct isketch : sketch
 {
 	delta_vector delta;
 private:
-	// temporary, used to avoid parameter passing
+	// temporary, used to avoid allocation
 	Mask mask;
 public:
 

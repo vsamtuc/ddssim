@@ -144,15 +144,13 @@ double quorum_safezone::func_non_eikonal(const Vec& zX)
 
 double selfjoin_agms_safezone_upper_bound::operator()(const Vec& X) 
 {
-	const_Vec_sketch_view x = make_sketch_view(proj, X);
-	Vec z = sqrt_T - sqrt(dot_estvec(x));
+	Vec z = sqrt_T - sqrt(dot_estvec(proj(X)));
 	return Median(z);
 }
 
 double selfjoin_agms_safezone_upper_bound::with_inc(incremental_state& incstate, const Vec& X) 
 {
-	const_Vec_sketch_view x = make_sketch_view(proj, X);
-	incstate = dot_estvec(x);
+	incstate = dot_estvec(proj(X));
 	Vec z = sqrt_T - sqrt(incstate);
 	return Median(z);
 }
@@ -166,21 +164,17 @@ double selfjoin_agms_safezone_upper_bound::inc(incremental_state& incstate, cons
 
 
 
-
-
 double selfjoin_agms_safezone_lower_bound::operator()(const Vec& X) 
 {
 	if(sqrt_T==0.0) return INFINITY;
-	const_Vec_sketch_view x = make_sketch_view(Ehat.proj,X);
-	Vec z = dot_estvec(x,Ehat) - sqrt_T ;
+	Vec z = dot_estvec(Ehat.proj(X),Ehat) - sqrt_T ;
 	return Median(z);
 }
 
 double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const Vec& X)
 {
 	if(sqrt_T==0.0) return INFINITY;
-	const_Vec_sketch_view x = make_sketch_view(Ehat.proj,X);
-	incstate = dot_estvec(x,Ehat);
+	incstate = dot_estvec(Ehat.proj(X),Ehat);
 	Vec z = incstate - sqrt_T;
 	return Median(z);
 }
@@ -270,7 +264,7 @@ void selfjoin_query_state::compute()
 	else {
 		Tlow = 0.0; Thigh=1.0;
 	}
-	safe_zone = std::move(selfjoin_agms_safezone(Eview(), Tlow, Thigh, true)); 
+	safe_zone = std::move(selfjoin_agms_safezone(proj(E), Tlow, Thigh, true)); 
 
 	zeta_E = safe_zone(E);
 }
@@ -278,7 +272,7 @@ void selfjoin_query_state::compute()
 
 double selfjoin_query_state::query_func(const Vec& x)
 {
-	return dot_est(make_sketch_view(proj, E));
+	return dot_est(proj(E));
 }
 
 
@@ -386,7 +380,7 @@ bilinear_2d_safe_zone::bilinear_2d_safe_zone(double xi, double psi, double _T)
 
 	// cache the conic safe zone, if applicable
 	if(T<0) {
-		u = hyperbola_nearest_neighbor(xi, fabs(psi), -T);
+		u = hyperbola_nearest_neighbor(xi, fabs(psi), -T, epsilon);
 		v = sqrt(sq(u)-T);
 		// eikonalize
 		double norm_u_v = sqrt(sq(u)+sq(v));
@@ -408,7 +402,7 @@ double bilinear_2d_safe_zone::operator()(double x, double y) const
 
 		int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
 
-		double v = hyperbola_nearest_neighbor(y, x_xihat, T);
+		double v = hyperbola_nearest_neighbor(y, x_xihat, T, epsilon);
 		double u = sqrt(sq(v)+T);
 
 		return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
@@ -537,3 +531,149 @@ twoway_join_agms_safezone::twoway_join_agms_safezone()
 	: safezone_func(false) 
 { }
 
+
+
+twoway_join_agms_safezone::bound::bound() { }
+
+twoway_join_agms_safezone::bound::bound(const projection& _proj, double _T, bool eikonal) 
+: proj(_proj), T(_T), 
+  hat(_proj.size())
+{ 
+	zeta_2d.reserve(proj.depth());
+	Median.set_eikonal(eikonal);
+}
+
+void twoway_join_agms_safezone::bound::setup(const Vec& norm_xi, const Vec& norm_psi) {
+	Vec zeta_E(proj.depth()); // vector to prepare the median SZ
+	Vec tmp(proj.width());
+
+	for(size_t i=0; i<proj.depth(); i++) {
+		// create the bilinear 2d safe zones 
+		zeta_2d.emplace_back(norm_xi[i], norm_psi[i], 4.0*T);
+
+		// compute the zeta_E vector for the median
+		zeta_E[i] = zeta_2d[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
+
+		// Normalize the hat vector
+		slice I(i*proj.width(), proj.width(), 1);
+		if(norm_xi[i]>0.0) {
+			tmp = norm_xi[i];
+			hat[I] /= tmp;
+		} 
+		else {
+			tmp = 0.0;
+			hat[I] = tmp;
+		}
+	}
+
+	Median.prepare(zeta_E, (proj.depth()+1)/2);
+}
+
+
+double twoway_join_agms_safezone::bound::zeta(incremental_state& inc, const Vec& x, const Vec& y)
+{
+	// set inc
+    inc.x2 = dot_estvec(proj(x), proj(hat));
+    inc.y2 = dot_estvec(proj(y));
+    //print(this, "from scratch: x2=",inc.x2,"y2=",inc.y2);
+    return zeta(inc.x2, inc.y2);
+}
+
+double twoway_join_agms_safezone::bound::zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy)
+{
+	// update inc
+	Vec& x2 = dot_estvec_inc(inc.x2, dx, proj(hat));
+	Vec& y2 = dot_estvec_inc(inc.y2, dy);
+    //print(this, "incremental: x2=",x2,"y2=",y2);
+	return zeta(x2, y2);
+}
+
+double twoway_join_agms_safezone::bound::zeta(const Vec& x2, const Vec& y2)
+{
+    Vec zeta_X(proj.depth());
+
+    for(size_t i=0; i<proj.depth(); i++)
+    	zeta_X[i] = zeta_2d[i]( x2[i], sqrt(y2[i]) )*sqrt(0.5);
+    return Median(zeta_X);			
+}
+
+twoway_join_agms_safezone::twoway_join_agms_safezone(const Vec& E, const projection& proj, 
+							double Tlow, double Thigh, bool eikonal)
+	: 	D(proj.size()), 
+		lower(proj, Tlow, eikonal), 
+		upper(proj, -Thigh, eikonal)
+{
+	assert(E.size() == 2*proj.size());
+	assert(Tlow < Thigh);
+
+	// Polarize the reference vector
+	slice s1(0, D, 1);
+	slice s2(D, D, 1);
+
+	lower.hat = E[s1] + E[s2];
+	upper.hat = E[s1] - E[s2];
+
+	// Initialize the upper and lower bound safe zone data
+	Vec norm_lower =  sqrt(dot_estvec(proj(lower.hat)));
+	Vec norm_upper = sqrt(dot_estvec(proj(upper.hat)));
+
+	lower.setup(norm_lower, norm_upper);
+	upper.setup(norm_upper, norm_lower);
+}
+
+
+double twoway_join_agms_safezone::with_inc(incremental_state& inc, const Vec& U)
+{
+	assert(U.size() == 2*D);
+
+	// Polarize
+	slice s1(0, D, 1);
+	slice s2(D, D, 1);
+
+    inc.x = U[s1] + U[s2];
+    inc.y = U[s1] - U[s2];
+
+    // Compute zeta of lower bound
+    double zeta_lower = lower.zeta(inc.lower, inc.x, inc.y);
+
+    // Compute zeta of upper bound
+    double zeta_upper = upper.zeta(inc.upper, inc.y, inc.x);
+
+    //binc::print("fromscratch zlower=",zeta_lower,"zupper",zeta_upper);
+    return min(zeta_lower, zeta_upper);
+}
+
+
+// from-scratch computation, just use with_inc, with a throw-away incremental state
+double twoway_join_agms_safezone::operator()(const Vec& X)
+{
+	incremental_state inc;
+	return with_inc(inc, X);
+}
+
+
+double twoway_join_agms_safezone::inc(incremental_state& incstate, const delta_vector& DX)
+{
+	// Polarize the delta
+	delta_vector DX1 = DX[DX.index < D];
+	delta_vector DX2 = DX[DX.index >= D];
+	DX2.index -= D;
+
+	delta_vector dx = DX1+DX2;
+	delta_vector dy = DX1-DX2;
+
+	dx.rebase(incstate.x);
+	dy.rebase(incstate.y);
+
+	// update the polarization incstate
+	incstate.x[dx.index] = dx.xnew;
+	incstate.y[dy.index] = dy.xnew;
+
+    // Compute zeta of lower bound
+    double zeta_lower = lower.zeta(incstate.lower, dx, dy);
+
+    // Compute zeta of upper bound
+    double zeta_upper = upper.zeta(incstate.upper, dy, dx);
+    //binc::print("incremental zlower=",zeta_lower,"zupper",zeta_upper);
+    return min(zeta_lower, zeta_upper);
+}

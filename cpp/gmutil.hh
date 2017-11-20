@@ -168,7 +168,7 @@ struct continuous_query<qtype::SELFJOIN>
 	{
 		if(rec.sid == sid) {
 			delta_vector delta(proj.depth());
-			auto sk = make_sketch_view(proj, S);
+			auto sk = proj(S);
 			sk.update(delta, rec.key, k*rec.upd);
 			return delta;
 		}
@@ -178,7 +178,7 @@ struct continuous_query<qtype::SELFJOIN>
 
 	bool update(state_vec_type& S, const dds_record& rec) {
 		if(rec.sid == sid) {
-			auto sk = make_sketch_view(proj, S);
+			auto sk = proj(S);
 			sk.update(rec.key, k*rec.upd);
 			return true;
 		}

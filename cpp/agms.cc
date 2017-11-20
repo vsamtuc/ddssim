@@ -115,26 +115,6 @@ void projection::update_mask(key_type key, Mask& mask) const
 }
 
 
-
-
-void sketch::update(key_type key, double freq)
-{
-	hash_family* h = proj.hashf();
-	size_t off = 0;
-	for(size_t d=0; d<depth(); d++) {
-		size_t off2 = h->hash(d, key) % width();
-		if(h->fourwise(d, key))
-			(*this)[off+off2] += freq;
-		else
-			(*this)[off+off2] -= freq;
-		off += width();
-	}
-}
-
-
-
-
-
 size_t std::hash<projection>::operator()( const projection& p) const
 {
 	using boost::hash_value;

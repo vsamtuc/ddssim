@@ -329,7 +329,7 @@ struct selfjoin_query_state : query_state
 	virtual double query_func(const Vec& x) override;
 
 private:
-	inline auto Eview() const { return make_sketch_view(proj, E); }
+	//inline auto Eview() const { return make_sketch_view(proj, E); }
 	void compute();
 };
 
@@ -376,9 +376,10 @@ double hyperbola_nearest_neighbor(double p, double q, double T, double epsilon=1
   */
 struct bilinear_2d_safe_zone : safezone_func
 {
-	double T;			///< threshold
-	int xihat;			///< cached for case T>0
-	double u, v;		//< cached for case T<=0
+	double epsilon = 1.E-13; 	///< accuracy for hyperbola distance
+	double T;					///< threshold
+	int xihat;					///< cached for case T>0
+	double u, v;				///< cached for case T<=0
 
 	/**
 		\brief Default construct an invalid safe zone
@@ -440,7 +441,7 @@ struct inner_product_safe_zone
 		if \c _geq is \c false.
 
 		@param E the reference point
-		@param _geq a boolean, designating an upper or lower bound
+		@param _geq a boolean, designating an upper (when false) or lower (when true) bound
 		@param T the threshold
 	  */
 	inner_product_safe_zone(const Vec& E, bool _geq, double _T);
@@ -473,12 +474,12 @@ struct inner_product_safe_zone
 
 
 /**
-	A safe zone function for bounding the join estimate of two AGMS sketches.
+	A safe zone function for condition Tlow <= dot_est(X,Y) <= Thigh.
 
 	Let \f$ X = [X_1, ... , X_d]\f$ be am AGMS sketch of depth \f$d\f$.
 
 	Given sketches \f$X \f$ and \f$Y\f$, the join estimate is 
-	\f[ Q(X,Y) =  \median{X_iY_i \,|\, i=1,\ldots , D}. \f]
+	\f[ Q(X,Y) =  \mathop{\mathrm{median}}\{X_iY_i \,|\, i=1,\ldots , D\}. \f]
 	Given thresholds \f$ T_\text{low} \f$ and \f$ T_\text{high} \f$, 
 	the admissible region is 
     \f[ A =\{ (X,Y) | T_\text{low} \leq Q(X,Y) \leq T_\text{hi} \}. \f]
@@ -490,175 +491,106 @@ struct twoway_join_agms_safezone : safezone_func
 {
 	twoway_join_agms_safezone();
 
-	/// Holds data for constraint of the form \f$ x^2 - y^2 \geq T \f$
-	struct bound {
-		projection proj;  // Shared with base object
-		double T;
-		Vec hat;
-		vector<bilinear_2d_safe_zone> zeta_2d;
-		quorum_safezone Median;
+	/**
+		\brief Holds data for constraint of the form \f$ x^2 - y^2 \geq T \f$.
 
+		Essentially, this object computes the ELM safe zone function for constraint
+		\f[  \mathop{\mathrm{median}}\limits_{i=1,\ldots,d} \{ X_i^2 - Y_i^2 \}  \geq T  \f]
+		where the input is a concatenation of sketches \f$ X, Y\f$ of depth \f$d \f$.
+
+		However, since it is intended as an internal helper for \c twoway_join_agms_safezone,
+		the API does not follow the normal function object conventions.
+	 */
+	struct bound {
+		projection proj;		/// The projection
+		double T;				/// The threshold
+		Vec hat;				/// \f$ \hat{\xi}\f$
+		vector<bilinear_2d_safe_zone> zeta_2d; /// d-array of 2-dimensional bilinear safe zones
+		quorum_safezone Median;	/// median quorum
+
+		/**
+			Incremental state.
+
+			These are the incremental states for \c dot_estvec_inc.
+		  */
 		struct incremental_state {
 			Vec x2, y2;
 		};
 
-		bound() { }
+		/// Used to implement uninitialized objects
+		bound();
 
-		bound(const projection& _proj, double _T, bool eikonal) 
-		: proj(_proj), T(_T), 
-		  hat(_proj.size())
-		{ 
-			zeta_2d.reserve(proj.depth());
-			Median.set_eikonal(eikonal);
-		}
+		/// Initialize properly
+		bound(const projection& _proj, double _T, bool eikonal);
 
-		void setup(const Vec& norm_xi, const Vec& norm_psi) {
-			Vec zeta_E(proj.depth()); // vector to prepare the median SZ
-			Vec tmp(proj.width());
+		/// Called during initialization
+		void setup(const Vec& norm_xi, const Vec& norm_psi);
 
-			for(size_t i=0; i<proj.depth(); i++) {
-				// create the bilinear 2d safe zones 
-				zeta_2d.emplace_back(norm_xi[i], norm_psi[i], 4.0*T);
+		/// Compute from scratch with incstate initialization
+		double zeta(incremental_state& inc, const Vec& x, const Vec& y);
 
-				// compute the zeta_E vector for the median
-				zeta_E[i] = zeta_2d[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
+		/// Compute incrementally
+		double zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy);
 
-				// Normalize the hat vector
-				slice I(i*proj.width(), proj.width(), 1);
-				if(norm_xi[i]>0.0) {
-					tmp = norm_xi[i];
-					hat[I] /= tmp;
-				} 
-				else {
-					tmp = 0.0;
-					hat[I] = tmp;
-				}
-			}
-
-			Median.prepare(zeta_E, (proj.depth()+1)/2);
-		}
-
-
-		double zeta(incremental_state& inc, const Vec& x, const Vec& y)
-		{
-			// set inc
-	        inc.x2 = dot_estvec(proj(x), proj(hat));
-	        inc.y2 = dot_estvec(proj(y));
-	        return zeta(inc.x2, inc.y2);
-		}
-
-		double zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy)
-		{
-			// update inc
-			Vec& x2 = dot_estvec_inc(inc.x2, dx, proj(hat));
-			Vec& y2 = dot_estvec_inc(inc.y2, dy);
-			return zeta(x2, y2);
-		}
-
-		double zeta(const Vec& x2, const Vec& y2)
-		{
-	        Vec zeta_X(proj.depth());
-
-	        for(size_t i=0; i<proj.depth(); i++)
-	        	zeta_X[i] = zeta_2d[i]( x2[i], sqrt(y2[i]) )*sqrt(0.5);
-	        return Median(zeta_X);			
-		}
-
+		/// Computes the safezone of the median of the 2-d safe zone functions
+		double zeta(const Vec& x2, const Vec& y2);
 	};
 
-	size_t D;
-	bound lower, upper;
+	size_t D;			//< The sketch size
+	bound lower, upper;	//< The bounds objects
 
+	/**
+		Construct a safe zone function object.
+
+		@param E is the reference point, which is the concatenation of two sketches.
+		@param proj the sketch projection
+		@param Tlow the lower bound
+		@param Thigh the upper bound
+		@param eikonal select an eikonal or non-eikonal (faster) function
+	  */
 	twoway_join_agms_safezone(const Vec& E, const projection& proj, 
-								double Tlow, double Thigh, bool eikonal)
-		: 	D(proj.size()), 
-			lower(proj, Tlow, eikonal), 
-			upper(proj, -Thigh, eikonal)
-	{
-		assert(E.size() == 2*proj.size());
-		assert(Tlow < Thigh);
+								double Tlow, double Thigh, bool eikonal);
 
-		// Polarize the reference vector
-		slice s1(0, D, 1);
-		slice s2(D, D, 1);
-
-		lower.hat = E[s1] + E[s2];
-		upper.hat = E[s1] - E[s2];
-
-		// Initialize the upper and lower bound safe zone data
-		Vec norm_lower =  sqrt(dot_estvec(proj(lower.hat)));
-		Vec norm_upper = sqrt(dot_estvec(proj(upper.hat)));
-
-		lower.setup(norm_lower, norm_upper);
-		upper.setup(norm_upper, norm_lower);
-	}
-
+	/// Move assignment
 	twoway_join_agms_safezone& operator=(twoway_join_agms_safezone&&)=default;
 
 
 	struct incremental_state
 	{ 
-		// these are used for polarization
+		/// these are used for incremental polarization
 		Vec x,y;
-		// These are used for the bounds 
+		/// These are used for the bounds 
 		struct bound::incremental_state lower, upper;
 	};
 
 
-	double with_inc(incremental_state& inc, const Vec& U)
-	{
-		assert(U.size() == 2*D);
+	/**
+		\brief Return the safe zone function value, computed from-scratch.
 
-		// Polarize
-		slice s1(0, D, 1);
-		slice s2(D, D, 1);
+		@param U the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
+	double operator()(const Vec& U);
 
-        inc.x = U[s1] + U[s2];
-        inc.y = U[s1] - U[s2];
+	/**
+		\brief Return the safe zone function value, computed from-scratch initializing 
+		incremental state.
 
-        // Compute zeta of lower bound
-        double zeta_lower = lower.zeta(inc.lower, inc.x, inc.y);
+		@param inc the incremental state to initialize
+		@param U the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
+	double with_inc(incremental_state& inc, const Vec& U);
 
-        // Compute zeta of upper bound
-        double zeta_upper = upper.zeta(inc.upper, inc.y, inc.x);
+	/**
+		\brief Return the safe zone function value, computed from-scratch initializing 
+		incremental state.
 
-        return min(zeta_lower, zeta_upper);
-	}
-
-
-	// from-scratch computation, just use with_inc, with a throw-away incremental state
-	double operator()(const Vec& X)
-	{
-		incremental_state inc;
-		return with_inc(inc, X);
-	}
-
-
-	double inc(incremental_state& incstate, const delta_vector& DX)
-	{
-		// Polarize the delta
-		delta_vector DX1 = DX[DX.index < D];
-		delta_vector DX2 = DX[DX.index >= D];
-		DX2.index -= D;
-
-		delta_vector dx = DX1+DX2;
-		delta_vector dy = DX1-DX2;
-
-		dx.rebase(incstate.x);
-		dy.rebase(incstate.y);
-
-		// update the polarization incstate
-		incstate.x[dx.index] = dx.xnew;
-		incstate.y[dy.index] = dy.xnew;
-
-        // Compute zeta of lower bound
-        double zeta_lower = lower.zeta(incstate.lower, dx, dy);
-
-        // Compute zeta of upper bound
-        double zeta_upper = upper.zeta(incstate.upper, dy, dx);
-
-        return min(zeta_lower, zeta_upper);
-	}
+		@param inc the incremental state to initialize
+		@param DX the delta_vector of the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
+	double inc(incremental_state& incstate, const delta_vector& DX);
 
 };
 

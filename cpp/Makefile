@@ -19,7 +19,7 @@ HDF5_LIB:= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhd
 	-lhdf5_serial -ldl -laec -lsz -lz
 
 INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
-LIB=  $(HDF5_LIB) -lm -ljsoncpp #-lboost_filesystem -lboost_system
+LIB=  $(HDF5_LIB) -lm -ljsoncpp -lboost_timer #-lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 #-Og
