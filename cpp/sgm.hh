@@ -179,9 +179,7 @@ struct node : local_site
 
 	int num_sites;			// number of sites
 
-
-	double zeta_l, zeta_u;  // zetas of lower and upper bounds
-	double zeta;			// current zeta = min(zeta_l, zeta_u)
+	double zeta;			// current zeta 
 
 	Vec U;					// drift vector
 	size_t update_count;	// number of updates in drift vector
@@ -213,8 +211,7 @@ struct node : local_site
 		// reset the drift vector
 		U = 0.0;
 		update_count = 0;
-		zeta = szone.prepare_inc(U, zeta_l, zeta_u);
-		assert(zeta==szone.zeta_E);
+		zeta = szone(U);
 
 		// reset round statistics
 		round_local_updates = 0;
@@ -228,7 +225,7 @@ struct node : local_site
 	void set_drift(compressed_state newU) {
 		U = newU.vec;
 		update_count = newU.updates;
-		zeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		zeta = szone(U);
 		assert(zeta>0);
 	}
 

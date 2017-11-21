@@ -2,10 +2,18 @@
 #include "binc.hh"
 #include "safezone.hh"
 
+#include <boost/math/tools/roots.hpp>
+
 using namespace gm;
 using namespace dds;
 using namespace binc;
 
+
+/////////////////////////////////////////////////////////
+//
+//  query_state
+//
+/////////////////////////////////////////////////////////
 
 
 query_state::query_state(size_t _D)
@@ -13,9 +21,6 @@ query_state::query_state(size_t _D)
 { 
 	E = 0.0;
 }
-
-
-
 
 
 /////////////////////////////////////////////////////////
@@ -228,7 +233,7 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 
 /////////////////////////////////////////////////////////
 //
-//  Query objects
+//  selfjoin_query_state
 //
 /////////////////////////////////////////////////////////
 
@@ -276,12 +281,111 @@ double selfjoin_query_state::query_func(const Vec& x)
 }
 
 
+void* selfjoin_query_state::alloc_incstate() 
+{
+	return new selfjoin_agms_safezone::incremental_state;
+}
+
+void selfjoin_query_state::free_incstate(void* ptr) 
+{
+	delete static_cast<selfjoin_agms_safezone::incremental_state*>(ptr);
+}
+
+double selfjoin_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
+{
+	auto incstate = static_cast<selfjoin_agms_safezone::incremental_state*>(inc);
+	delta_vector DU = dU;
+	DU += E;
+	return safe_zone.inc(*incstate, DU);
+}
+
+double selfjoin_query_state::compute_zeta(void* inc, const Vec& U)
+{
+	auto incstate = static_cast<selfjoin_agms_safezone::incremental_state*>(inc);
+	Vec X = U+E;
+	return safe_zone.with_inc(*incstate, X);
+}
+
+
+
 
 /////////////////////////////////////////////////////////
 //
 //  hyperbola distance routines
 //
 /////////////////////////////////////////////////////////
+
+
+#define USE_BISECTION 0
+
+#if USE_BISECTION==1
+static double __bisection(double p, double q, double T, double epsilon)
+{
+	/*  Precondition: T>0  and  p,q != 0.0 
+        Bisection up to 50 iterations and 10^-13 precision (by default)
+	*/
+#define Y(x) sqrt(sq(x)+T)
+#define g(x) (2. - p/(x) - q/Y(x))
+
+	// find upper and lower bounds for root
+	double x0 = copysign(fabs(p)/(2.5+fabs(q)/sqrt(T)), p);
+	assert(g(x0)<0);
+	double x1 = copysign(max(fabs(p),q), p);
+	assert(g(x1)>0);
+	double xm = (x0+x1)/2;
+
+	size_t loops = 50;
+	while( fabs((x1-x0)/xm) >= epsilon) {
+		if((--loops) == 0) break;
+		double gx = g(xm);
+		if(gx>0)
+			x1 = xm;
+		else if(gx<0)
+			x0 = xm;
+		else
+			break;
+		xm = (x0+x1)/2;
+	}
+
+	return xm;
+#undef Y
+#undef g
+}
+
+#else
+
+static double __toms_748(double p, double q, double T, double epsilon)
+{
+	/*  Precondition: T>0  and  p,q != 0.0 
+        Up to 50 iterations and 10^-13 precision (by default).
+        This is much faster than bisection.
+	*/
+	using boost::math::tools::toms748_solve;
+	using boost::math::tools::newton_raphson_iterate;
+	using boost::math::tools::eps_tolerance;
+
+	auto g = [p,q,T](double x) { return 2.-p/x - q/sqrt(sq(x)+T); };
+	auto tolfunc = [epsilon](const double& x0, const double& x1) {
+		return fabs( 2.*(x1-x0)/(x1+x0) ) < epsilon;
+	};
+
+	double x0 = copysign(fabs(p)/(2.5+fabs(q)/sqrt(T)), p);
+	double g0 = g(x0);
+	double x1 = copysign(max(fabs(p),q), p);
+	double g1 = g(x1);
+	assert(g0<0);
+	assert(g1>0);
+
+	if(x0>x1) {
+		swap(x0,x1);
+		swap(g0,g1);
+	}
+
+	boost::uintmax_t max_iter = 50;
+	auto soln = toms748_solve(g, x0, x1, g0, g1, tolfunc, max_iter);
+	return 0.5*(soln.first+soln.second);	
+}
+#endif
 
 double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsilon)
 {
@@ -310,6 +414,7 @@ double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsil
 		In case \(p=0\), it is easy to see that, if \(q>2\sqrt{T}\), then the nearest point is
 		\( (\sqrt{(q/2)^2 - T}, q/2)\), and for \( q\leq 2\sqrt{T} \), the answer is \( (0, \sqrt{T}) \).
 	*/
+
 	using std::max;
 
 	if(T<0)
@@ -332,32 +437,12 @@ double gm::hyperbola_nearest_neighbor(double p, double q, double T, double epsil
 	if(q==0.0)
 		return p/2.;
 
-#define Y(x) sqrt(sq(x)+T)
-#define g(x) (2. - p/(x) - q/Y(x))
+#if USE_BISECTION==1
+	return __bisection(p, q, T, epsilon);
+#else
+	return __toms_748(p, q, T, epsilon);
+#endif
 
-	// find upper and lower bounds for root
-	double x1 = copysign(max(fabs(p),q), p);
-	assert(g(x1)>0);
-	double x0 = 0;
-	double xm = (x0+x1)/2;
-
-	size_t loops = 100;
-	while( fabs((x1-x0)/xm) >= epsilon) {
-		if((--loops) == 0) break;
-		double gx = g(xm);
-		if(gx>0)
-			x1 = xm;
-		else if(gx<0)
-			x0 = xm;
-		else
-			break;
-		xm = (x0+x1)/2;
-	}
-	//binc::print("loop=",loops," \\xi=",xm, " x0=",x0, " x1=",x1);
-
-#undef Y
-#undef g
-	return xm;
 }
 
 
@@ -677,3 +762,74 @@ double twoway_join_agms_safezone::inc(incremental_state& incstate, const delta_v
     //binc::print("incremental zlower=",zeta_lower,"zupper",zeta_upper);
     return min(zeta_lower, zeta_upper);
 }
+
+
+twoway_join_query_state::twoway_join_query_state(double _beta, projection _proj)
+    : query_state(_proj.size()),
+      proj(_proj), beta(_beta),
+      epsilon(_proj.epsilon())
+{
+	if( epsilon >= beta )
+		throw std::invalid_argument("total error is less than sketch error");
+	compute();	
+}
+
+void twoway_join_query_state::update_estimate(const Vec& newE)
+{
+    // compute the admissible region
+    E += newE;
+    compute();
+}
+
+double twoway_join_query_state::query_func(const Vec& x)
+{
+	assert(x.size() == E.size());
+	auto x0 = std::begin(x);
+	auto x1 = x0 + E.size()/2;
+	auto x2 = x1 + E.size()/2;
+	return dot_est(proj(x0,x1), proj(x1,x2));
+}
+
+void twoway_join_query_state::compute()
+{
+    Qest = query_func(E);
+
+    if(Qest!=0.0) {
+            Tlow =  Qest - (beta-epsilon)*fabs(Qest)/(1.0+beta);
+            Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
+    }
+    else {
+            Tlow = 0.0; Thigh=1.0;
+    }
+    safe_zone = std::move(twoway_join_agms_safezone(E, proj, Tlow, Thigh, true));
+    zeta_E = safe_zone(E);
+}
+
+
+void* twoway_join_query_state::alloc_incstate() 
+{
+	return new twoway_join_agms_safezone::incremental_state;
+}
+
+void twoway_join_query_state::free_incstate(void* ptr)
+{
+	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(ptr);
+	delete incstate;
+}
+
+double twoway_join_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
+{
+	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(inc);
+	delta_vector DU = dU;
+	DU += E;
+	return safe_zone.inc(*incstate, DU);
+}
+
+double twoway_join_query_state::compute_zeta(void* inc, const Vec& U) 
+{
+	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(inc);
+	Vec X = U+E;
+	return safe_zone.with_inc(*incstate, X);
+}
+
+

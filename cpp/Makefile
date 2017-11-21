@@ -19,7 +19,7 @@ HDF5_LIB:= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhd
 	-lhdf5_serial -ldl -laec -lsz -lz
 
 INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
-LIB=  $(HDF5_LIB) -lm -ljsoncpp -lboost_timer #-lboost_filesystem -lboost_system
+LIB=  $(HDF5_LIB) -lm -ljsoncpp  #-lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
 DEBUGFLAGS=  -g3 #-Og
@@ -42,7 +42,7 @@ endif
 
 DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	accurate.cc dds.cc query.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc fgm.cc sgm.cc \
+	tods.cc  safezone.cc gmutil.cc fgm.cc sgm.cc \
 	cfgfile.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
@@ -50,7 +50,7 @@ UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	tods_tests.hh szone_tests.hh method_tests.hh \
 	cfg_tests.hh gm_tests.hh 
 
-TEST_SOURCES= unit_tests.cc data_tests.cc
+TEST_SOURCES= unit_tests.cc data_tests.cc timing_tests.cc
 
 CXX_SOURCES= $(DDS_SOURCES) dssim.cc dds_module.cc
 
@@ -104,6 +104,14 @@ data_tests.cc: data_tests.hh
 
 data_tests: data_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
+
+timing_tests.cc: timing_tests.hh
+	cxxtestgen --error-printer -o $@ $<	
+
+timing_tests: timing_tests.o libdds.a
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_timer
+
+
 
 %_tests.cc : %_tests.hh
 	cxxtestgen --part --error-printer -o $@ $<

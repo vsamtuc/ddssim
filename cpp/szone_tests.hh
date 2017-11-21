@@ -5,7 +5,6 @@
 #include <iostream>
 #include <chrono>
 
-#include <boost/timer/timer.hpp>
 
 #include "data_source.hh"
 #include "safezone.hh"
@@ -365,7 +364,7 @@ public:
 	void test_hyperbola_nn_scale()
 	{
 
-		for(double xi=-10; xi<=10; xi+=0.1) {
+		for(double xi=-10; xi<=10; xi+=0.11) {
 			double psi = sqrt(xi*xi+1.0);
 			for(double t=0.49; t>=-100.0; t+=((t>=-1.0)?-0.01:t) ) {
 				double p = xi-2.0*t*xi;
@@ -375,7 +374,7 @@ public:
 
 				TS_ASSERT_DELTA(xi_ret, xi, 1E-9);
 
-				//binc::print("p=",p," q=",q," xi=",xi);
+				//binc::print("p=",p," q=",q," xi=",xi,"xi_ret=",xi_ret);
 
 				for(double T = 1E-5; T<= 1E5; T*=10.) {
 					double sqrtT = sqrt(T);

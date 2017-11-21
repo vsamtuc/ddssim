@@ -58,6 +58,21 @@ struct network
 //
 //////////////////////////////////
 
+// Ball safezone implementation
+struct ball_safezone : safezone_func_wrapper
+{
+	query_state* query;
+	ball_safezone(query_state* q) : query(q) { }
+
+	inline double zeta_E() const { return query->zeta_E; }
+
+	virtual void* alloc_incstate() override;
+    virtual void free_incstate(void*) override;
+    virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
+    virtual double compute_zeta(void* inc, const Vec& U) override;
+    virtual size_t state_size() const override;
+};
+
 
 
 template <qtype QType>
@@ -79,6 +94,8 @@ struct coordinator : process
 	continuous_query_t Q; 	// continuous query
 
 	query_state_type query;	// current query state
+	ball_safezone ballsz;	// the compressed ball safezone
+	
 	size_t total_updates;	// number of stream updates received
 
 	bool in_naive_mode;		// when true, use the naive safezone
@@ -199,8 +216,7 @@ struct node : local_site
 	int num_sites;			// number of sites
 
 	double minzeta; 		// minimum value of zeta so far
-	double zeta_l, zeta_u;          // zetas of lower and upper bounds
-	double zeta;			// current zeta = min(zeta_l, zeta_u)
+	double zeta;			// current zeta 
 
 	double zeta_0;			// start value for discretization, equal to zeta at last reset_bitweight()
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
@@ -238,11 +254,9 @@ struct node : local_site
 		// reset the drift vector
 		U = 0.0;
 		update_count = 0;
-		zeta = minzeta = szone.prepare_inc(U, zeta_l, zeta_u);
-		assert(zeta==szone.zeta_E);
-
-		// reset for the first subround
-		reset_bitweight(szone.zeta_E/2);
+		zeta = minzeta = szone(U);
+		// reset for the first subround		
+		reset_bitweight(zeta);
 
 		// reset round statistics
 		dS = 0.0;
@@ -253,7 +267,7 @@ struct node : local_site
 	int set_safezone(const safezone& newsz) {
 		// reset the safezone object
 		szone = newsz;
-		double newzeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		double newzeta = szone(U);
 		assert(newzeta >= zeta);
 		zeta = newzeta;
 
@@ -268,9 +282,6 @@ struct node : local_site
 		return zeta;
 	}
 
-	double get_zeta_lu() {
-		return zeta_l - zeta_u;
-	}
 
 	// called at the start a new subrounds
 	oneway reset_bitweight(double Z)
@@ -288,7 +299,7 @@ struct node : local_site
 		U = newU.vec;
 		update_count = newU.updates;
 		double old_zeta = zeta;
-		zeta = szone.prepare_inc(U, zeta_l, zeta_u);
+		zeta = szone(U);
 		return zeta-old_zeta;
 	}
 
@@ -306,7 +317,6 @@ struct node_proxy : remote_proxy< node<QType> >
 	REMOTE_METHOD(node_t, get_drift);
 	REMOTE_METHOD(node_t, set_drift);
 	REMOTE_METHOD(node_t, get_zeta);
-	REMOTE_METHOD(node_t, get_zeta_lu);
 	node_proxy(process* p) : remote_proxy< node<QType> >(p) {}
 };
 

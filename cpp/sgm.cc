@@ -35,7 +35,7 @@ void node<QType>::update_stream()
 	update_count++;
 	round_local_updates++;
 
-	zeta = szone(delta, zeta_l, zeta_u);
+	zeta = szone(delta, U);
 
 	if(zeta <= 0)
 		coord.local_violation(this);
@@ -61,7 +61,7 @@ void coordinator<QType>::start_round()
 
 	for(auto n : net()->sites) {
 		sz_sent ++;
-		proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
+		proxy[n].reset(safezone(&query));
 	}
 
 	round_total_B = 0;

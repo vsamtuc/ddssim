@@ -37,7 +37,7 @@ void node<QType>::update_stream()
 	update_count++;
 	round_local_updates++;
 
-	zeta = szone(delta, zeta_l, zeta_u);
+	zeta = szone(delta, U);
 	if(zeta<minzeta) minzeta = zeta;
 
 	int bwnew = floor((zeta_0-zeta)/zeta_quantum);
@@ -79,20 +79,7 @@ void coordinator<QType>::start_round()
 	num_rounds++;
 	num_subrounds++;
 	
-#if 0
-	// heuristic rule to harden the system in times of high variability
-	if(query.zeta_E < k*sqrt(query.E.width())) {
-		if(!in_naive_mode)
-			print("SWITCHING TO NAIVE MODE stream_count=",CTX.stream_count());
-		in_naive_mode = true;
-	} else {
-		if(in_naive_mode)
-			print("SWITCHING TO FULL MODE stream_count=",CTX.stream_count());
-		in_naive_mode = false;
-	}
-#else
 	in_naive_mode = false;
-#endif 	
 
 	//has_naive.assign(k, in_naive_mode);
 	has_naive.assign(k, true);
@@ -101,10 +88,10 @@ void coordinator<QType>::start_round()
 		// based on the above line this is unnecessary
 		if(! has_naive[node_index[n]]) {
 			sz_sent++;
-			proxy[n].reset(safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E));
+			proxy[n].reset(safezone(&query));
 		}
 		else
-			proxy[n].reset(safezone(query.zeta_E));
+			proxy[n].reset(safezone(&ballsz));
 	}
 }	
 
@@ -133,8 +120,7 @@ oneway coordinator<QType>::threshold_crossed(sender<node_t> ctx, int delta_bits)
 		sz_sent++;
 		round_sz_sent++;
 		delta_bits += 
-			proxy[n].set_safezone(
-				safezone(&query.safe_zone, &query.E, total_updates, query.zeta_E) );
+			proxy[n].set_safezone( safezone(&query) );
 		has_naive[nid] = false;
 	}
 
@@ -177,128 +163,12 @@ void coordinator<QType>::finish_subround()
 }
 
 
-#if 0
-template <qtype QType>
-double coordinator<QType>::rebalance(const set<node_proxy_t*> B)
-{
-	assert(B.size());
-
-	sketch Ubal(query.E.proj);
-	size_t upd = 0;
-
-	for(auto n : B) {
-		compressed_sketch csk = n->get_drift();
-		Ubal += csk.sk;
-		upd += csk.updates;
-	}
-	Ubal /= B.size();
-
-	compressed_sketch skbal { Ubal, upd };
-
-	double delta_zeta = 0.0;
-	for(auto n : B) {
-		delta_zeta += n->set_drift(skbal);
-	}
-
-	total_rbl_size += B.size();	
-
-	return delta_zeta;
-}
-
-
-template <qtype QType>
-set<node_proxy*> coordinator<QType>::rebalance_pairs()
-{
-	vector< node_double > hvalue = compute_hvalue();
-
-	auto Cmp = [](const node_double& a, const node_double& b) -> bool {
-		return get<1>(a)<get<1>(b);
-	};
-
-	using std::min_element;
-	using std::max_element;
-	auto nmin = min_element(hvalue.begin(), hvalue.end(), Cmp);
-	auto nmax = max_element(hvalue.begin(), hvalue.end(), Cmp);
-
-	double minh = get<1>(*nmin);
-	double maxh = get<1>(*nmax);
-
-	set<node_proxy*> B;
-
-	if(  minh*maxh < 0) {
-		double g = min(-minh, maxh);
-
-		if(g > 0.1*query.zeta_E) {
-			B.insert(get<0>(*nmin));
-			B.insert(get<0>(*nmax));
-		} else {
-			print("       No rebalancing, max gain=",g,
-			      " with g/zeta_E=", g/query.zeta_E, " zeta_E=",query.zeta_E);
-		}
-	}
-	return B;
-}
-
-
-template <qtype QType>
-set<node_proxy*> coordinator<QType>::rebalance_light()
-{
-	set<node_proxy*> B;
-
-	// Compute new E
-	sketch newU(query.E.proj);
-	for(auto ni : node_ptr) {
-		newU += ni->U;
-	}
-	newU /= k;
-
-	sketch Enext = query.E + newU;
-	double zeta_Enext = query.safe_zone(Enext);
-
-	if(zeta_Enext > 0.05 * query.zeta_E)
-		for(auto n : node_ptr) B.insert(& proxy[n]);
-
-	return B;
-}
-
-
-template <qtype QType>
-vector<node_double> coordinator<QType>::compute_hvalue()
-{
-	vector<node_double> hvalue;
-	hvalue.reserve(k);
-
-	for(auto n : node_ptr) {
-		double h = proxy[n].get_zeta_lu();
-		hvalue.push_back(make_tuple(& proxy[n], h));
-	}
-
-	return hvalue;
-}
-#endif
-
 template <qtype QType>
 void coordinator<QType>::finish_subrounds(double total_zeta)
 {
 	/* 
-		In this function, we try to rebalance.
+		In this function, we may add code to try to rebalance.
 	 */
-#if 0
-	if(! in_naive_mode && k>1) {
-		// attempt to rebalance		
-		// get rebalancing set
-		set<node_proxy*> B;
-		// B = rebalance_pairs();
-		// B = rebalance_light();
-
-		if(B.size()>1) {
-			// rebalance
-			double delta_zeta = rebalance(B);
-			start_subround(total_zeta + delta_zeta);
-			return;
-		}
-	}
-#endif
 	finish_round();
 }
 
@@ -598,6 +468,7 @@ coordinator<QType>::coordinator(network_t* nw, const continuous_query_t& _Q)
 : 	process(nw), proxy(this), 
 	Q(_Q),
 	query(Q.beta, Q.proj), 
+	ballsz(&query),
 	total_updates(0), 
 	in_naive_mode(true), k(0),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
@@ -682,4 +553,30 @@ void fgm::network<QType>::output_results()
 }
 
 gm::p_component_type< gm::fgm::network > gm::fgm::fgm_comptype("FGM");
+void* ball_safezone::alloc_incstate()
+{
+	return new double;
+}
+
+void ball_safezone::free_incstate(void* ptr)
+{
+	delete static_cast<double*>(ptr);
+}
+
+double ball_safezone::compute_zeta(void* inc, const delta_vector& dU, const Vec& U) 
+{
+	double* incstate = static_cast<double*>(inc);
+	return zeta_E() - norm_L2_inc(*incstate, dU);
+}
+
+double ball_safezone::compute_zeta(void* inc, const Vec& U) 
+{
+	double* incstate = static_cast<double*>(inc);
+	return zeta_E() - norm_L2_with_inc(*incstate, U);
+}
+
+size_t ball_safezone::state_size() const
+{
+	return 1;
+}
 
