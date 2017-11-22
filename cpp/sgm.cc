@@ -257,8 +257,7 @@ void coordinator<QType>::rebalance()
 
 	round_total_B += B.size();
 	
-	for(auto n : node_ptr)
-		assert(n->zeta > 0);
+	assert(std::all_of(node_ptr.begin(), node_ptr.end(), [](auto n) { return n->zeta > 0; }));
 
 	num_subrounds++; 
 	total_rbl_size += B.size();

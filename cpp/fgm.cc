@@ -31,9 +31,6 @@ void node<QType>::update_stream()
 
 	delta.apply_delta(U);
 
-	//U.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
-	//dS.update(CTX.stream_record().key, num_sites * (CTX.stream_record().upd));
-
 	update_count++;
 	round_local_updates++;
 

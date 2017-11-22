@@ -6,9 +6,8 @@
 # Compiler flags
 #################################
 
-ifndef DEBUG
-# Default: compile for debug
-DEBUG=1
+ifndef MODE
+MODE=DEBUG
 endif
 
 PYTHON_INCLUDE:= $(shell /usr/bin/python3-config --includes)
@@ -22,13 +21,18 @@ INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
 LIB=  $(HDF5_LIB) -lm -ljsoncpp  #-lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
 
-DEBUGFLAGS=  -g3 #-Og
-OPTFLAGS= -g3 -Ofast #-DNDEBUG
+DEBUG_FLAGS=  -g3 -Og
+OPT_FLAGS= -g3 -Ofast #-DNDEBUG
+PRODUCTION_FLAGS = -Ofast -DNDEBUG
 
-ifeq ($(DEBUG),1)
-CXXFLAGS+=  $(DEBUGFLAGS)
+ifeq ($(MODE),DEBUG)
+CXXFLAGS+=  $(DEBUG_FLAGS)
+else ifeq ($(MODE),OPT)
+CXXFLAGS+= $(OPT_FLAGS)
+else ifeq ($(MODE),PRODUCTION)
+CXXFLAGS+= $(PRODUCTION_FLAGS)
 else
-CXXFLAGS+=  $(OPTFLAGS)
+$(error Unknown mode $(MODE))
 endif
 
 ifdef GPROF

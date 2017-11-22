@@ -56,8 +56,9 @@ void quorum_safezone::prepare(const Vec& zE, size_t _k)
 	zetaE = zE[L];
 
 	assert(1<=k && k<=n);
-	if(L.size()<k)
-		throw std::length_error("The reference vector is non-admissible");
+	if(L.size()<k) {
+		throw std::length_error(binc::sprint("The reference vector is non-admissible:",zE));
+	}
 }
 
 
@@ -369,12 +370,15 @@ static double __toms_748(double p, double q, double T, double epsilon)
 		return fabs( 2.*(x1-x0)/(x1+x0) ) < epsilon;
 	};
 
-	double x0 = copysign(fabs(p)/(2.5+fabs(q)/sqrt(T)), p);
+	double x0 = copysign(fabs(p)/(2.1+fabs(q)/sqrt(T)), p);
 	double g0 = g(x0);
-	double x1 = copysign(max(fabs(p),q), p);
+	double x1 = copysign(0.51*(fabs(p)+max(0.0,q)), p);
 	double g1 = g(x1);
-	assert(g0<0);
-	assert(g1>0);
+	assert(g0<=0);
+	assert(g1>=0);
+
+	if(g0==0) return x0;
+	if(g1==0) return x1;
 
 	if(x0>x1) {
 		swap(x0,x1);
@@ -765,7 +769,7 @@ double twoway_join_agms_safezone::inc(incremental_state& incstate, const delta_v
 
 
 twoway_join_query_state::twoway_join_query_state(double _beta, projection _proj)
-    : query_state(_proj.size()),
+    : query_state(2*_proj.size()),
       proj(_proj), beta(_beta),
       epsilon(_proj.epsilon())
 {
@@ -799,7 +803,7 @@ void twoway_join_query_state::compute()
             Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
     }
     else {
-            Tlow = 0.0; Thigh=1.0;
+            Tlow = -1.0; Thigh=1.0;
     }
     safe_zone = std::move(twoway_join_agms_safezone(E, proj, Tlow, Thigh, true));
     zeta_E = safe_zone(E);

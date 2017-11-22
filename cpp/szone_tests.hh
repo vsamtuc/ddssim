@@ -575,7 +575,7 @@ public:
 		inner_product_safe_zone::incremental_state inc;
 		double zeta_from_scratch = zeta(E);
 		double zeta_with_inc = zeta.with_inc(inc, E);
-		TS_ASSERT_DELTA( zeta_from_scratch, zeta_with_inc, 1E-16 );
+		TS_ASSERT_DELTA( zeta_from_scratch, zeta_with_inc, 1E-14 );
 		TS_ASSERT_EQUALS( inc.x.size(), proj.size()/2);
 		TS_ASSERT_EQUALS( inc.y.size(), proj.size()/2);		
 

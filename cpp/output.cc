@@ -389,7 +389,7 @@ formatter* formatter::create(output_c_file* f, output_table& t, text_format fmt)
 	case text_format::csvrel:
 		return new csvrel_formatter(f,t);
 	default:
-		assert(0);
+		throw std::runtime_error("Unhandled text format");
 	}
 }
 

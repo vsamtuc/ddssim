@@ -10,6 +10,7 @@
 #include "mathlib.hh"
 #include "gm.hh"
 #include "safezone.hh"
+#include "binc.hh"
 
 namespace gm {
 
@@ -121,7 +122,7 @@ struct continuous_query<qtype::SELFJOIN>
 	stream_id sid;
 	projection proj;
 	double beta;
-	size_t k;
+	long int k;
 
 	inline size_t state_vector_size() const {
 		return proj.size();
@@ -161,9 +162,67 @@ struct continuous_query<qtype::SELFJOIN>
 
 
 template <>
-struct continuous_query<qtype::JOIN> : continuous_query<qtype::SELFJOIN>
+struct continuous_query<qtype::JOIN> 
 {
-	using continuous_query<qtype::SELFJOIN>::continuous_query;
+	typedef twoway_join_query_state query_state_type;
+	typedef Vec state_vec_type;
+	typedef safezone safezone_type;
+
+	std::array<stream_id,2> sid;
+	projection proj;
+	double beta;
+	long int k;
+
+	inline size_t state_vector_size() const {
+		return 2*proj.size();
+	}
+
+	continuous_query(const std::array<stream_id,2>& _sid, 
+						const projection& _proj, double _beta)
+		: sid(_sid), proj(_proj), beta(_beta)
+	{
+		k = CTX.metadata().source_ids().size();
+	}
+
+	inline size_t stream_operand(stream_id _sid) const {
+		return std::find(sid.begin(), sid.end(), _sid)-sid.begin();
+	}
+
+	delta_vector delta_update(state_vec_type& S, const dds_record& rec) 
+	{
+		size_t opno = stream_operand(rec.sid);
+		assert(opno >=0 && opno<=2);
+		if(opno != 2) 
+		{
+			delta_vector delta(proj.depth());
+			auto S_b = begin(S) + opno*proj.size();
+			auto S_e = S_b + proj.size();
+			auto sk = proj(S_b, S_e);
+			sk.update(delta, rec.key, k*rec.upd);
+
+			// Remember to re-base delta
+			if(opno == 1) delta.index += proj.size();
+			return delta;
+		}
+		return delta_vector();
+	}
+
+
+	bool update(state_vec_type& S, const dds_record& rec) {
+		size_t opno = stream_operand(rec.sid);
+		assert(opno >=0 && opno<=2);
+		if(opno != 2) 
+		{
+			auto S_b = begin(S) + opno*proj.size();
+			auto S_e = S_b + proj.size();
+			auto sk = proj(S_b, S_e);
+			sk.update(rec.key, k*rec.upd);
+			return true;
+		}
+		return false;
+	}
+
+	basic_stream_query query() const { return join(sid[0], sid[1], beta); }
 };
 
 
@@ -176,7 +235,7 @@ component* p_component_type<GMProto>::create(const Json::Value& js)
 	using agms::projection;
 
 	string _name = js["name"].asString();
-    stream_id _sid = js["stream"].asInt();
+    vector<stream_id> sids = get_streams(js);
     projection _proj = get_projection(js);
     double _beta = js["beta"].asDouble();
 
@@ -186,12 +245,19 @@ component* p_component_type<GMProto>::create(const Json::Value& js)
 
     switch(qt) {
     	case qtype::SELFJOIN:
+    		
+    		if(sids.size()!=1) 
+    			throw std::invalid_argument(binc::sprint("One stream expected, got ",sids.size()));
+
     		return new GMProto<qtype::SELFJOIN>(_name, 
-    			continuous_query<qtype::SELFJOIN>(_sid, _proj, _beta)
+    			continuous_query<qtype::SELFJOIN>(sids[0], _proj, _beta)
     			);
     	case qtype::JOIN:
+    		if(sids.size()!=2) 
+    			throw std::invalid_argument(binc::sprint("Two streams expected, got ",sids.size()));
+
     		return new GMProto<qtype::JOIN>(_name, 
-    			continuous_query<qtype::JOIN>(_sid, _proj, _beta)
+    			continuous_query<qtype::JOIN>(std::array<stream_id,2> {sids[0], sids[1]}, _proj, _beta)
     			);
 		default:
 			throw std::runtime_error("Query type `"+qtype_repr[qt]+"' not supported");
