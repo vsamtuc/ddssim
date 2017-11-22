@@ -7,6 +7,7 @@
 
 #include "data_source.hh"
 #include "fgm.hh"
+#include "gm_query.hh"
 #include "binc.hh"
 
 #include <cxxtest/TestSuite.h>
@@ -29,14 +30,17 @@ public:
 		// metadata
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
-		continuous_query<qtype::SELFJOIN> Q(0, projection(5, 400), 0.5);
-		fgm::network<qtype::SELFJOIN> net("foo",Q);
+		auto Q = new agms_continuous_query<selfjoin_query_state,1>(
+			vector<stream_id> { 0 }, 
+			projection(5, 400), 0.5, qtype::SELFJOIN
+			);
+		fgm::network net("foo", Q);
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);
 
 		for(auto p : net.sites) {
-			fgm::node_proxy<qtype::SELFJOIN> *np = & net.hub->proxy[p];
+			fgm::node_proxy *np = & net.hub->proxy[p];
 			TS_ASSERT_EQUALS(np->proc(), p);
 			TS_ASSERT_EQUALS(np->_r_owner, net.hub);
 			TS_ASSERT_EQUALS( net.hub->node_ptr[net.hub->node_index[p]] , p);

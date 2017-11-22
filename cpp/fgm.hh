@@ -10,41 +10,36 @@
 #include "dds.hh"
 #include "dsarch.hh"
 #include "method.hh"
-#include "gmutil.hh"
+#include "gm_proto.hh"
 
 namespace gm { namespace fgm {
 
 using std::cout;
 using std::endl;
 using std::vector;
-using namespace agms;
 using namespace dds;
 
-using dds::qtype;
 
-template <qtype QType>
 struct coordinator;
 
-template <qtype QType>
 struct node;
 
-template <qtype QType>
 struct node_proxy;
 
 
-template <qtype QType>
 struct network 
-	: 	star_network<network<QType> , coordinator<QType> , node<QType> >, 
+	: 	star_network<network , coordinator , node>, 
 		component
 {
-	typedef coordinator<QType> coordinator_t;
-	typedef node<QType> node_t;
-	typedef network<QType> network_t;
+	typedef coordinator coordinator_t;
+	typedef node node_t;
+	typedef network network_t;
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
-	continuous_query<QType> Q;
+	continuous_query* Q;
 
-	network(const string& name, const continuous_query<QType>& _Q);
+	network(const string& name, continuous_query* _Q);
+	~network();
 
 	void process_record();
 	void process_init();
@@ -70,20 +65,17 @@ struct ball_safezone : safezone_func_wrapper
     virtual void free_incstate(void*) override;
     virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
     virtual double compute_zeta(void* inc, const Vec& U) override;
-    virtual size_t state_size() const override;
+    virtual size_t zeta_size() const override;
 };
 
 
 
-template <qtype QType>
 struct coordinator : process
 {
-	typedef coordinator<QType> coordinator_t;
-	typedef node<QType> node_t;
-	typedef node_proxy<QType> node_proxy_t;
-	typedef network<QType> network_t;
-	typedef continuous_query<QType> continuous_query_t;
-	typedef typename continuous_query_t::query_state_type query_state_type;
+	typedef coordinator coordinator_t;
+	typedef node node_t;
+	typedef node_proxy node_proxy_t;
+	typedef network network_t;
 
 	proxy_map<node_proxy_t, node_t> proxy;
 
@@ -91,16 +83,14 @@ struct coordinator : process
 	// protocol stuff
 	//
 
-	continuous_query_t Q; 	// continuous query
+	continuous_query* Q; 		// continuous query
 
-	query_state_type query;	// current query state
-	ball_safezone ballsz;	// the compressed ball safezone
+	query_state* query;			// current query state
+	ball_safezone* ballsz;		// the compressed ball safezone
 	
-	size_t total_updates;	// number of stream updates received
-
-	bool in_naive_mode;		// when true, use the naive safezone
-
-	size_t k;				// number of sites
+	size_t total_updates;		// number of stream updates received
+	bool in_naive_mode;			// when true, use the naive safezone
+	size_t k;					// number of sites
 
 	// index the nodes
 	map<node_t*, size_t> node_index;
@@ -129,7 +119,7 @@ struct coordinator : process
 	Vec alpha, beta, gamma;
 	vector<bool> md;  // the model's output;
 	
-	coordinator(network_t* nw, const continuous_query_t& _Q); 
+	coordinator(network_t* nw, continuous_query* _Q); 
 	~coordinator();
 
 	inline network_t* net() { return static_cast<network_t*>(host::net()); }
@@ -180,7 +170,7 @@ struct coordinator : process
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning
 	//
-	void trace_round(sketch& newE);
+	void trace_round(const Vec& newE);
 	// this is used to print the state of nodes
 	void print_state();
 	
@@ -188,30 +178,24 @@ struct coordinator : process
 
 
 
-template <qtype QType>
-struct coord_proxy : remote_proxy< coordinator<QType> >
+struct coord_proxy : remote_proxy< coordinator >
 {
-	typedef coordinator<QType> coordinator_t;
+	typedef coordinator coordinator_t;
 	REMOTE_METHOD(coordinator_t, threshold_crossed);
-	coord_proxy(process* c) : remote_proxy< coordinator<QType> >(c) { }
+	coord_proxy(process* c) : remote_proxy< coordinator_t >(c) { }
 };
 
 
-
-template <qtype QType>
 struct node : local_site
 {
-	typedef coordinator<QType> coordinator_t;
-	typedef node<QType> node_t;
-	typedef node_proxy<QType> node_proxy_t;
-	typedef network<QType> network_t;
-	typedef coord_proxy<QType> coord_proxy_t;
-	typedef continuous_query<QType> continuous_query_t;
+	typedef coordinator coordinator_t;
+	typedef node node_t;
+	typedef node_proxy node_proxy_t;
+	typedef network network_t;
+	typedef coord_proxy coord_proxy_t;
 
-	typedef typename continuous_query<QType>::safezone_type safezone_type;
-
-	continuous_query_t	Q;	// the query management object
-	safezone_type szone;	// safezone object
+	continuous_query* Q;	// the query management object
+	safezone szone;			// safezone object
 
 	int num_sites;			// number of sites
 
@@ -230,10 +214,10 @@ struct node : local_site
 
 	coord_proxy_t coord;
 
-	node(network_t* net, source_id hid, const continuous_query_t& _Q)
+	node(network_t* net, source_id hid, continuous_query* _Q)
 	: 	local_site(net, hid), Q(_Q),
-		U(Q.state_vector_size()), update_count(0),
-		dS(Q.state_vector_size()), round_local_updates(0),
+		U(Q->state_vector_size()), update_count(0),
+		dS(Q->state_vector_size()), round_local_updates(0),
 		coord( this )
 	{ 
 		coord <<= net->hub;
@@ -306,10 +290,9 @@ struct node : local_site
 
 };
 
-template <qtype QType>
-struct node_proxy : remote_proxy< node<QType> >
+struct node_proxy : remote_proxy< node >
 {
-	typedef node<QType> node_t;
+	typedef node node_t;
 
 	REMOTE_METHOD(node_t, reset);
 	REMOTE_METHOD(node_t, set_safezone);
@@ -317,7 +300,7 @@ struct node_proxy : remote_proxy< node<QType> >
 	REMOTE_METHOD(node_t, get_drift);
 	REMOTE_METHOD(node_t, set_drift);
 	REMOTE_METHOD(node_t, get_zeta);
-	node_proxy(process* p) : remote_proxy< node<QType> >(p) {}
+	node_proxy(process* p) : remote_proxy< node_t >(p) {}
 };
 
 } // end namespace gm::fgm
@@ -328,8 +311,8 @@ struct node_proxy : remote_proxy< node<QType> >
 namespace dds{
 	
 template <>
-inline size_t byte_size< gm::fgm::node<qtype::SELFJOIN> *>
-	(gm::fgm::node<qtype::SELFJOIN> * const &) { return 4; }
+inline size_t byte_size< gm::fgm::node *>
+	(gm::fgm::node * const &) { return 4; }
 
 }
 

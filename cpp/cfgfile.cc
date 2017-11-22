@@ -24,7 +24,6 @@ using std::initializer_list;
 using Json::Value;
 using agms::projection;
 using agms::depth_type;
-using agms::index_type;
 
 using binc::print;
 using binc::elements_of;
@@ -136,7 +135,7 @@ projection dds::get_projection(const Value& js)
 	const Value& jp = js["projection"];
 
 	depth_type d = jp["depth"].asUInt();
-	index_type w = jp["width"].asUInt();
+	size_t w = jp["width"].asUInt();
 	assert(d>0 && w>0);
 	
 	projection proj(d,w);

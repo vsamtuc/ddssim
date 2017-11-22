@@ -24,6 +24,7 @@ using std::mt19937;
 
 using namespace dds;
 using namespace agms;
+using namespace hdv;
 namespace u = boost::numeric::ublas;
 
 mt19937 rng(123122);
@@ -97,7 +98,7 @@ public:
 	}
 
 	bool selfjoin_agms_accuracy(
-		depth_type D, index_type L,
+		depth_type D, size_t L,
 		size_t N, 
 		key_type maxkey, size_t length)
 	{
@@ -136,8 +137,8 @@ public:
 	{
 		cout << endl;
 		for(depth_type D=3; D<=7; D+=2)
-		for(index_type L=500; L<=2500; L+=500)
-		for(key_type mk = 1000; mk<=100000; mk*=10) {			
+		for(size_t L=500; L<=2500; L+=500)
+		for(size_t mk = 1000; mk<=100000; mk*=10) {			
 			for(size_t len=1000; len <=100000; len*=10) 
 			{
 				TS_ASSERT(selfjoin_agms_accuracy(D, L, 100, mk, len));

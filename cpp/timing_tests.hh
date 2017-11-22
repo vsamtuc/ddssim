@@ -12,6 +12,7 @@
 
 #include <boost/timer/timer.hpp>
 
+#include "data_source.hh"
 #include "safezone.hh"
 #include "binc.hh"
 
@@ -20,7 +21,9 @@
 using namespace std;
 using namespace dds;
 using namespace agms;
+using namespace hdv;
 using namespace gm; 
+
 using binc::print;
 using binc::sprint;
 

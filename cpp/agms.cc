@@ -82,13 +82,13 @@ inline int64_t hash31(int64_t a, int64_t b, int64_t x) {
 	return ((result>>31)^result) & 2147483647ll;
 }
 
-long long hash_family::hash(depth_type d, key_type x) const {
+size_t hash_family::hash(depth_type d, size_t x) const {
 	assert(d<D);
 	return hash31(F[0][d], F[1][d], x);
 }
 
 /// Return a 4-wise independent bit
-bool hash_family::fourwise(depth_type d, key_type x) const {
+bool hash_family::fourwise(depth_type d, size_t x) const {
 	return 
 		hash31(hash31(hash31(x,F[2][d],F[3][d]), x, F[4][d]),x,F[5][d]) 
 		& (1<<15);
@@ -96,7 +96,7 @@ bool hash_family::fourwise(depth_type d, key_type x) const {
 
 
 
-void projection::update_index(key_type key, Index& idx) const
+void projection::update_index(size_t key, Index& idx) const
 {
 	assert(idx.size()==depth());
 	size_t stride = 0;
@@ -106,7 +106,7 @@ void projection::update_index(key_type key, Index& idx) const
 	}
 }
 
-void projection::update_mask(key_type key, Mask& mask) const 
+void projection::update_mask(size_t key, Mask& mask) const 
 {
 	assert(mask.size()==depth());
 	for(size_t d=0; d<depth(); d++) {
@@ -145,7 +145,7 @@ inc_sketch_updater::inc_sketch_updater(sketch& _sk)
 	{ 	}
 
 
-void inc_sketch_updater::update(key_type key, double freq)
+void inc_sketch_updater::update(size_t key, double freq)
 {
 	sk.proj.update_index(key, delta.index);
 	sk.proj.update_mask(key, mask);
@@ -172,7 +172,7 @@ isketch::isketch(const projection& _proj)
 
 
 
-void isketch::update(key_type key, double freq)
+void isketch::update(size_t key, double freq)
 {
 	proj.update_index(key, delta.index);
 	proj.update_mask(key, mask);

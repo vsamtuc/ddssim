@@ -259,7 +259,7 @@ factory<agms_sketch_updater, stream_id, agms::projection>
 
 
 selfjoin_agms_method::selfjoin_agms_method(const string& n, stream_id sid,
-	agms::depth_type D, agms::index_type L) 
+	agms::depth_type D, size_t L) 
 : selfjoin_agms_method(n, sid, agms::projection(D,L))
 {}
 
@@ -301,7 +301,7 @@ void selfjoin_agms_method::process_record()
 
 
 twoway_join_agms_method::twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, 
-	agms::depth_type D, agms::index_type L) 
+	agms::depth_type D, size_t L) 
 : twoway_join_agms_method(n, s1, s2, agms::projection(D,L))
 { }
 

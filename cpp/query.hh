@@ -45,9 +45,8 @@ public:
 	}
 
 	inline const operand_tuple& operands() const { return op_sids; }
-	inline void set_operands(const operand_tuple& ops) {		
-		op_sids = ops;
-	}
+	inline void set_operands(const operand_tuple& ops) { op_sids = ops; }
+	inline void set_operands(operand_tuple&& ops) { op_sids = ops; }
 
 	inline bool exact() const { return __approx==0.0; }
 	inline size_t arity() const { return op_sids.size(); }

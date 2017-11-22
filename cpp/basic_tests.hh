@@ -18,7 +18,7 @@
 
 #include "dds.hh"
 #include "output.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "binc.hh"
 #include "callbacks.hh"
 #include "query.hh"
@@ -30,7 +30,7 @@ using namespace std;
 using namespace dds;
 using namespace binc;
 using namespace Simple;
-
+using namespace hdv;
 
 
 

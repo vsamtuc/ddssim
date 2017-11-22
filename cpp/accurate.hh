@@ -9,7 +9,7 @@
 
 #include "dds.hh"
 #include "method.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "results.hh"
 #include "agms.hh"
 #include "query.hh"
@@ -23,6 +23,7 @@ using std::cout;
 using std::endl;
 
 using namespace std::string_literals;
+using namespace hdv;
 
 class data_source_statistics : public component
 {
@@ -170,7 +171,7 @@ class selfjoin_agms_method : public query_method
 	void process_record();
 public:
 	selfjoin_agms_method(const string& n, stream_id sid, const agms::projection& proj);
-	selfjoin_agms_method(const string& n, stream_id sid, agms::depth_type D, agms::index_type L);
+	selfjoin_agms_method(const string& n, stream_id sid, agms::depth_type D, size_t L);
 
 };
 
@@ -189,7 +190,7 @@ class twoway_join_agms_method : public query_method
 	void process_record();
 public:
 	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, const agms::projection& proj);
-	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
+	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, agms::depth_type D, size_t L);
 
 };
 

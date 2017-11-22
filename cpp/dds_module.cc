@@ -6,7 +6,7 @@
 #include "dds.hh"
 #include "data_source.hh"
 #include "method.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "cfgfile.hh"
 #include "dsarch.hh"
 #include "accurate.hh"
@@ -255,41 +255,41 @@ BOOST_PYTHON_MODULE(_dds)
 
     /**********************************************
      *
-     *  mathlib.hh
+     *  hdv.hh
      *
      **********************************************/
 
-    class_< dds::Vec >
+    class_< hdv::Vec >
     	("Vec", init<size_t>())
-    	.def(init<const dds::Vec&>())
+    	.def(init<const hdv::Vec&>())
     	.def(init<double, size_t>())
-    	.def("__len__", & dds::Vec::size)
-    	.def("resize", &dds::Vec::resize)
+    	.def("__len__", & hdv::Vec::size)
+    	.def("resize", &hdv::Vec::resize)
     	.add_property("arr", &make_array)
-    	.def("__getitem__", +[](dds::Vec& self, size_t idx){
+    	.def("__getitem__", +[](hdv::Vec& self, size_t idx){
 			if(idx>=self.size()) 
 				throw std::out_of_range("index too large");		
 			return self[idx];
 		})
-    	.def("__setitem__", +[](dds::Vec& self, size_t idx, double val) {
+    	.def("__setitem__", +[](hdv::Vec& self, size_t idx, double val) {
     		if(idx>=self.size()) 
     			throw std::out_of_range("index too large");
     		self[idx] = val;
     	})
-    	.add_property("sum", &dds::Vec::sum)
-    	.add_property("min", &dds::Vec::min)
-    	.add_property("max", &dds::Vec::max)
+    	.add_property("sum", &hdv::Vec::sum)
+    	.add_property("min", &hdv::Vec::min)
+    	.add_property("max", &hdv::Vec::max)
     	//.def(self_ns::repr(self_ns::self))
-    	.def("__repr__", +[](dds::Vec& self)->std::string {
+    	.def("__repr__", +[](hdv::Vec& self)->std::string {
     		std::ostringstream s;
     		s << self;
     		return s.str();
     	})
     	/* These don't work, because of expression templates !
-    	.def( self + other<dds::Vec>())
-    	.def( self - other<dds::Vec>())
-    	.def( self * other<dds::Vec>())
-    	.def( self / other<dds::Vec>())
+    	.def( self + other<hdv::Vec>())
+    	.def( self - other<hdv::Vec>())
+    	.def( self * other<hdv::Vec>())
+    	.def( self / other<hdv::Vec>())
     	.def( self * other<double>() )
     	.def( other<double>() * self )
     	*/
@@ -1035,7 +1035,7 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 	//object numpy = import("numpy");
 	//numeric::array::set_module_and_type("numpy","ndarray");
 
-	class_< agms::sketch, bases<dds::Vec> >("agms_sketch",
+	class_< agms::sketch, bases<hdv::Vec> >("agms_sketch",
 			init<agms::projection>())
 		.def(init<agms::depth_type, agms::index_type>())
 		.def("hashf", &agms::sketch::hashf, return_internal_reference<>())

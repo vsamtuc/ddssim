@@ -19,7 +19,7 @@ using namespace dds;
 
 
 
-template <template <qtype QType> class GMProto >
+template <class GMProto>
 class p_component_type : public dds::basic_component_type
 {
 public:
@@ -34,14 +34,15 @@ public:
 // Component type declarations
 //
 namespace sgm {
-	template <qtype QType> struct network;
+	struct network;
 	extern p_component_type<network> sgm_comptype;
 }
 
 namespace fgm {
-	template <qtype QType> struct network;
+	struct network;
 	extern p_component_type<network> fgm_comptype;
 }
+
 
 } // end namespace gm
 

@@ -19,12 +19,11 @@ using binc::elements_of;
 	node
 *********************************************/
 
-template <qtype QType>
-void node<QType>::update_stream() 
+void node::update_stream() 
 {
 	assert(CTX.stream_record().hid == site_id());
 
-	delta_vector delta = Q.delta_update(dS, CTX.stream_record());
+	delta_vector delta = Q->delta_update(dS, CTX.stream_record());
 
 	// oops, not an update
 	if(delta.size()==0) return;
@@ -46,8 +45,7 @@ void node<QType>::update_stream()
 }
 
 
-template <qtype QType>
-void node<QType>::setup_connections()
+void node::setup_connections()
 {
 	num_sites = coord.proc()->k;
 }
@@ -62,8 +60,7 @@ void node<QType>::setup_connections()
 // invariant sum(zeta) > Threshold
 
 // initialize a new round
-template <qtype QType>
-void coordinator<QType>::start_round()
+void coordinator::start_round()
 {
 	// compute current parameters from query
 	bitweight.assign(k, 0);
@@ -85,16 +82,15 @@ void coordinator<QType>::start_round()
 		// based on the above line this is unnecessary
 		if(! has_naive[node_index[n]]) {
 			sz_sent++;
-			proxy[n].reset(safezone(&query));
+			proxy[n].reset(safezone(query));
 		}
 		else
-			proxy[n].reset(safezone(&ballsz));
+			proxy[n].reset(safezone(ballsz));
 	}
 }	
 
 
-template <qtype QType>
-void coordinator<QType>::start_subround(double total_zeta)
+void coordinator::start_subround(double total_zeta)
 {
 	num_subrounds++;
 	bit_budget = k;
@@ -106,8 +102,7 @@ void coordinator<QType>::start_subround(double total_zeta)
 
 
 // remote call on host violation
-template <qtype QType>
-oneway coordinator<QType>::threshold_crossed(sender<node_t> ctx, int delta_bits)
+oneway coordinator::threshold_crossed(sender<node_t> ctx, int delta_bits)
 {
 	node_t* n = ctx.value;
 	size_t nid = node_index[n];
@@ -117,7 +112,7 @@ oneway coordinator<QType>::threshold_crossed(sender<node_t> ctx, int delta_bits)
 		sz_sent++;
 		round_sz_sent++;
 		delta_bits += 
-			proxy[n].set_safezone( safezone(&query) );
+			proxy[n].set_safezone( safezone(query) );
 		has_naive[nid] = false;
 	}
 
@@ -131,8 +126,7 @@ oneway coordinator<QType>::threshold_crossed(sender<node_t> ctx, int delta_bits)
 
 }
 
-template <qtype QType>
-void coordinator<QType>::finish_subround()
+void coordinator::finish_subround()
 {
 	const int MAX_LEVEL = 300;
 
@@ -145,7 +139,7 @@ void coordinator<QType>::finish_subround()
 			total_zeta += proxy[n].get_zeta();
 		}
 
-		if(total_zeta < query.zeta_E * 0.05 ) {
+		if(total_zeta < query->zeta_E * 0.05 ) {
 			// we are done!
 			//assert(total_zeta<0);
 			finish_subrounds(total_zeta);
@@ -160,8 +154,7 @@ void coordinator<QType>::finish_subround()
 }
 
 
-template <qtype QType>
-void coordinator<QType>::finish_subrounds(double total_zeta)
+void coordinator::finish_subrounds(double total_zeta)
 {
 	/* 
 		In this function, we may add code to try to rebalance.
@@ -172,11 +165,10 @@ void coordinator<QType>::finish_subrounds(double total_zeta)
 
 
 // initialize a new round
-template <qtype QType>
-void coordinator<QType>::finish_round()
+void coordinator::finish_round()
 {
 	// collect all data
-	Vec newE(0.0, Q.state_vector_size());
+	Vec newE(0.0, Q->state_vector_size());
 	for(auto n : node_ptr) {
 		compressed_state cs = proxy[n].get_drift();
 		newE += cs.vec;
@@ -193,7 +185,7 @@ void coordinator<QType>::finish_round()
 	}
 	assert(round_updates > 0.0);
 	
-	const double kzeta = k*query.zeta_E;
+	const double kzeta = k*query->zeta_E;
 
 	for(size_t i=0;i<k;i++) {
 		auto n = node_ptr[i];
@@ -205,7 +197,7 @@ void coordinator<QType>::finish_round()
 				alpha[i] = beta[i] = 0.0;
 			else {
 				beta[i] = norm_L2(n->dS)/round_updates;
-				alpha[i] = (query.zeta_E - query.safe_zone(query.E + n->dS))/round_updates;
+				alpha[i] = (query->zeta_E - query->compute_zeta(n->dS))/round_updates;
 				// just a guess
 				if(alpha[i]<0.0) alpha[i]=beta[i]/50.0;
 
@@ -223,17 +215,16 @@ void coordinator<QType>::finish_round()
 #endif
 
 	// new round
-	query.update_estimate(newE);
+	query->update_estimate(newE);
 	start_round();
 }
 
 
 
-template <qtype QType>
-void coordinator<QType>::compute_model()
+void coordinator::compute_model()
 {
 	// size of state vector
-	const size_t D = query.E.size();
+	const size_t D = query->E.size();
 
 	// compute I, vector of non-trivial indices
 	vector<size_t> I;
@@ -326,8 +317,7 @@ void coordinator<QType>::compute_model()
 }
 
 
-template <qtype QType>
-void coordinator<QType>::print_model() 
+void coordinator::print_model() 
 {
 	print("        Model alpha=", elements_of(alpha));
 	print("        Model  beta=", elements_of(beta));
@@ -335,8 +325,7 @@ void coordinator<QType>::print_model()
 }
 
 
-template <qtype QType>
-void coordinator<QType>::trace_round(sketch& newE)
+void coordinator::trace_round(const Vec& newE)
 {
 
 	// report
@@ -345,8 +334,8 @@ void coordinator<QType>::trace_round(sketch& newE)
 
 	if( !in_naive_mode || skipper==0 ) {
 
-		sketch Enext = query.E + newE;
-		double zeta_Enext = query.safe_zone(Enext);
+		Vec Enext = query->E + newE;
+		double zeta_Enext = query->zeta(Enext);
 
 		double zeta_total=0.0;
 		double minzeta_total=0.0;
@@ -368,17 +357,17 @@ void coordinator<QType>::trace_round(sketch& newE)
 		double norm_dE = norm_L2(newE);
 
 		print("AGM Finish round: round updates=",round_updates_total," naive=",in_naive_mode, 
-			"zeta_E=",query.zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query.zeta_E,
-			"||dE||=", norm_dE, norm_dE/query.zeta_E, 
-			"zeta_total=", zeta_total/k, zeta_total/(k*query.zeta_E),
+			"zeta_E=",query->zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query->zeta_E,
+			"||dE||=", norm_dE, norm_dE/query->zeta_E, 
+			"zeta_total=", zeta_total/k, zeta_total/(k*query->zeta_E),
 		        "sz_sent=", round_sz_sent,
-			//"minzeta_min=", minzeta_total, minzeta_total/(k*query.zeta_E),
-			//"minzeta_min/zeta_E=",minzeta_min/query.zeta_E,
-			" QEst=", query.Qest,
+			//"minzeta_min=", minzeta_total, minzeta_total/(k*query->zeta_E),
+			//"minzeta_min/zeta_E=",minzeta_min/query->zeta_E,
+			" QEst=", query->Qest,
    			" time=", (double)CTX.stream_count() / CTX.metadata().size() );
 
 		// print the round comm gain
-		const size_t D = query.E.size();
+		const size_t D = query->E.size();
 		long int commcost = 0;
 		for(size_t i=0; i<k; i++) {
 			commcost += min(round_updates[i], D);
@@ -401,8 +390,7 @@ void coordinator<QType>::trace_round(sketch& newE)
 	
 }
 
-template <qtype QType>
-void coordinator<QType>::print_state()
+void coordinator::print_state()
 {
 	printf("nid zeta.... c... zeta_0..\n");
 	double zeta_t = 0.0;
@@ -430,20 +418,18 @@ void coordinator<QType>::print_state()
 
 
 
-template <qtype QType>
-void coordinator<QType>::warmup()
+void coordinator::warmup()
 {
-	Vec dE(Q.state_vector_size());
+	Vec dE(Q->state_vector_size());
 
 	for(auto&& rec : CTX.warmup) 
-		Q.update(dE, rec);
+		Q->update(dE, rec);
 
-	query.update_estimate(dE/(double)k);
+	query->update_estimate(dE/(double)k);
 }
 
 
-template <qtype QType>
-void coordinator<QType>::setup_connections()
+void coordinator::setup_connections()
 {
 	using boost::adaptors::map_values;
 	proxy.add_sites(net()->sites);
@@ -460,16 +446,14 @@ void coordinator<QType>::setup_connections()
 }
 
 
-template <qtype QType>
-coordinator<QType>::coordinator(network_t* nw, const continuous_query_t& _Q)
+coordinator::coordinator(network_t* nw, continuous_query* _Q)
 : 	process(nw), proxy(this), 
 	Q(_Q),
-	query(Q.beta, Q.proj), 
-	ballsz(&query),
+	query(Q->create_query_state()), 
+	ballsz(new ball_safezone(query)),
 	total_updates(0), 
 	in_naive_mode(true), k(0),
-	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query.Qest;} ),
-	
+	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query->Qest;} ),
 	num_rounds(0),
 	num_subrounds(0),
 	sz_sent(0),
@@ -477,9 +461,9 @@ coordinator<QType>::coordinator(network_t* nw, const continuous_query_t& _Q)
 {  
 }
 
-template <qtype QType>
-coordinator<QType>::~coordinator()
+coordinator::~coordinator()
 {
+	delete ballsz;
 }
 
 /*********************************************
@@ -489,8 +473,7 @@ coordinator<QType>::~coordinator()
 *********************************************/
 
 
-template <qtype QType>
-fgm::network<QType>::network(const string& _name, const continuous_query<QType>& _Q)
+fgm::network::network(const string& _name, continuous_query* _Q)
 	: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
 {
 	set_name(_name);
@@ -516,17 +499,19 @@ fgm::network<QType>::network(const string& _name, const continuous_query<QType>&
 }
 
 
+network::~network()
+{
+	delete Q;
+}
 
 
-template <qtype QType>
-void fgm::network<QType>::process_record()
+void fgm::network::process_record()
 {
 	const dds_record& rec = CTX.stream_record();
 	this->source_site(rec.hid)->update_stream();		
 }
 
-template <qtype QType>
-void fgm::network<QType>::process_init()
+void fgm::network::process_init()
 {
 	// let the coordinator initialize the nodes
 	this->hub->warmup();
@@ -534,8 +519,7 @@ void fgm::network<QType>::process_init()
 }
 
 
-template <qtype QType>
-void fgm::network<QType>::output_results()
+void fgm::network::output_results()
 {
 	//network_comm_results.netname = "GM2";
 
@@ -550,6 +534,8 @@ void fgm::network<QType>::output_results()
 }
 
 gm::p_component_type< gm::fgm::network > gm::fgm::fgm_comptype("FGM");
+
+
 void* ball_safezone::alloc_incstate()
 {
 	return new double;
@@ -572,7 +558,7 @@ double ball_safezone::compute_zeta(void* inc, const Vec& U)
 	return zeta_E() - norm_L2_with_inc(*incstate, U);
 }
 
-size_t ball_safezone::state_size() const
+size_t ball_safezone::zeta_size() const
 {
 	return 1;
 }

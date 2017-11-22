@@ -1,12 +1,11 @@
 
 #include <cxxtest/TestSuite.h>
 
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "binc.hh"
 
-using namespace dds;
 using namespace std;
-
+using namespace hdv;
 
 
 /**

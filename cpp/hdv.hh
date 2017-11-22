@@ -2,9 +2,9 @@
 #define __MATHLIB_HH__
 
 /**
-	\file mathlib.hh
+	\file hdv.hh
 
-	Data analytics and mathematical routines.
+	Mathematical routines for high-dimensional vectors.
 
 	# API pattern for inremental computations
 
@@ -164,7 +164,7 @@
 
 #include "binc.hh"
 
-namespace dds {
+namespace hdv {
 
 /*
 	Vector functions based on valarray
@@ -748,7 +748,7 @@ public:
 
 
 
-} // end namespace dds
+} // end namespace hdv
 
 
 

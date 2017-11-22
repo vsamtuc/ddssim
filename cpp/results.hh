@@ -104,10 +104,10 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 		comm_results::fill(nw);
 		name = nw->name();
 		protocol = nw->rpc().name();
-		query = repr(nw->Q.query());
+		query = repr(nw->Q->query());
 
-		max_error = nw->Q.beta;
-		statevec_size = nw->Q.proj.size();
+		max_error = nw->Q->theta();
+		statevec_size = nw->Q->state_vector_size();
 		sites = nw->sites.size();
 
 		auto hub = nw->hub;

@@ -2,9 +2,10 @@
 #include <random>
 #include <algorithm>
 #include <vector>
-#include "mathlib.hh"
 
-using namespace dds;
+#include "hdv.hh"
+
+using namespace hdv;
 
 
 delta_vector delta_vector::operator[](const Mask& m) const 
@@ -48,7 +49,7 @@ void delta_vector::sort()
 
 
 
-double dds::order_select(size_t k, Vec v)
+double hdv::order_select(size_t k, Vec v)
 {
 	if(k>=v.size()) throw std::length_error("order exceeds vector length");
 	std::nth_element(begin(v), begin(v)+k, end(v));
@@ -56,7 +57,7 @@ double dds::order_select(size_t k, Vec v)
 }
 
 
-double dds::median(Vec v)
+double hdv::median(Vec v)
 {
 	const auto n = v.size();
 	if(n==0) throw std::length_error("median called on 0-size vector");
@@ -76,7 +77,7 @@ double dds::median(Vec v)
 }
 
 
-double dds::norm_L1(const Vec& v)
+double hdv::norm_L1(const Vec& v)
 {
 	double sum=0.0;
 	for(double x : v)
@@ -84,14 +85,14 @@ double dds::norm_L1(const Vec& v)
 	return sum;
 }
 
-double dds::norm_L1_inc(double& S, const delta_vector& dv)
+double hdv::norm_L1_inc(double& S, const delta_vector& dv)
 {
 	S += norm_L1(dv.xnew) - norm_L1(dv.xold);
 	return S;
 }
 
 
-double dds::norm_L2(const Vec& v)
+double hdv::norm_L2(const Vec& v)
 {
 	double sum=0.0;
 	for(double x : v) sum+=x*x;
@@ -99,21 +100,21 @@ double dds::norm_L2(const Vec& v)
 }
 
 
-double dds::norm_L2_with_inc(double& S, const Vec& v)
+double hdv::norm_L2_with_inc(double& S, const Vec& v)
 {
 	S=0.0;
 	for(double x : v) S+=x*x;
 	return sqrt(S);
 }
 
-double dds::norm_L2_inc(double& S, const delta_vector& dv)
+double hdv::norm_L2_inc(double& S, const delta_vector& dv)
 {
 	return sqrt(dot_inc(S, dv));
 }
 
 
 
-double dds::norm_Linf(const Vec& v)
+double hdv::norm_Linf(const Vec& v)
 {
 	double l = 0.0;
 	for(double x : v) {
@@ -126,7 +127,7 @@ double dds::norm_Linf(const Vec& v)
 
 static std::mt19937 RNG(24534623);
 
-Vec dds::uniform_random_vector(size_t n, double a, double b)
+Vec hdv::uniform_random_vector(size_t n, double a, double b)
 {	
 	using namespace std;
 	Vec v(n);

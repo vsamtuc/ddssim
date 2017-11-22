@@ -44,13 +44,13 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc query.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc gmutil.cc fgm.cc sgm.cc \
-	cfgfile.cc
+DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
+	cfgfile.cc dsarch.cc \
+	accurate.cc query.cc results.cc\
+	tods.cc  safezone.cc gm_proto.cc gm_szone.cc gm_query.cc fgm.cc sgm.cc 
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
-	mathlib_tests.hh exec_tests.hh output_tests.hh \
+	hdv_tests.hh exec_tests.hh output_tests.hh \
 	tods_tests.hh szone_tests.hh method_tests.hh \
 	cfg_tests.hh gm_tests.hh 
 
