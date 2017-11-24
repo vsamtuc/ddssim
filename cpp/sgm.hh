@@ -40,7 +40,7 @@ struct network
 	protocol_config cfg;
 	network(const string& _name, continuous_query* Q, const protocol_config& c);
 	~network();
-	
+
 	void process_record();
 	void process_init();
 	void output_results();
@@ -64,7 +64,7 @@ struct coordinator : process
 	//
     continuous_query* Q;   		// continuous query
     query_state* query; 		// current query state
- 	safezone_func_wrapper* safe_zone; // the safe zone wrapper
+ 	safezone_func* safe_zone; 	// the safe zone wrapper
  	size_t total_updates;		// number of stream updates received
 
 	size_t k;					// number of sites

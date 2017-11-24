@@ -16,7 +16,7 @@ safezone::safezone()
 { }
 
 // valid safezone
-safezone::safezone(safezone_func_wrapper* sz)
+safezone::safezone(safezone_func* sz)
 : szone(sz), inc(nullptr)
 {
 	assert(sz != nullptr);

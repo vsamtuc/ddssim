@@ -14,14 +14,19 @@ using namespace hdv;
 /**
 	Abstract base class for a safe zone function wrapper.
 
-	This class is specialized by subclasses to access different safe zone functions.
-	It abstracts safe zone computations by being a factory incremental state objects and
-	providing access to a function. Also, it provides communication cost information to
-	the middleware.
+	This class is specialized by subclasses to wrap different safe zone functions.
+	Its compute_zeta methods take as arguments drift vectors (NOT actual state vectors!).
+
+	The class provides a factory for incremental state objects. Also, it returns the
+	dimension of the function space, that is, the amount of data needed to
+	construct the function. For example, for a ball safe zone, this is 1 (the radius).
+
+	This is used to, e.g., compute the cost of transmitting the wrapped function over 
+	the network.
  */
-struct safezone_func_wrapper
+struct safezone_func
 {
-	virtual ~safezone_func_wrapper();
+	virtual ~safezone_func();
 
 	/**
 		\brief Return a new instance of the incremental state for this function.
@@ -121,16 +126,16 @@ struct query_state
 	virtual void update_estimate(const Vec& dE)=0;
 
 	/**
-	 	\brief Return a safezone_func_wrapper for the safe zone function.
+	 	\brief Return a safezone_func for the safe zone function.
 
 	 	The returned object shares state with this object.
 	 	It is the caller's responsibility to delete the returned object, and do
 	 	so before this object is destroyed.
 	 */
-	virtual safezone_func_wrapper* safezone() =0;
+	virtual safezone_func* safezone() =0;
 
 	/**
-	 	\brief Return a safezone_func_wrapper for a low-parametric safe zone function.
+	 	\brief Return a safezone_func for a low-parametric safe zone function.
 
 	 	The returned object shares state with this object.
 	 	It is the caller's responsibility to delete the returned object, and do
@@ -146,7 +151,7 @@ struct query_state
 
 		The default implementation returns null.
 	 */
-	virtual safezone_func_wrapper* radial_safezone();
+	virtual safezone_func* radial_safezone();
 
 
 	/// A functional interface to the query function
@@ -161,7 +166,7 @@ struct query_state
 	This is provided for convenience.
   */
 template <typename SZFunc, typename IncState = typename SZFunc::incremental_state >
-struct std_safezone_func_wrapper : safezone_func_wrapper
+struct std_safezone_func : safezone_func
 {
 	typedef SZFunc function_type;
 	typedef IncState incremental_state;
@@ -170,7 +175,7 @@ struct std_safezone_func_wrapper : safezone_func_wrapper
 	size_t zsize;
 	const Vec& E;
 
-	std_safezone_func_wrapper(SZFunc& _func, size_t _zsize, const Vec& _E) 
+	std_safezone_func(SZFunc& _func, size_t _zsize, const Vec& _E) 
 		: func(_func), zsize(_zsize), E(_E)
 	{ }
 
@@ -198,7 +203,7 @@ struct std_safezone_func_wrapper : safezone_func_wrapper
 		incremental_state* incstate = static_cast<incremental_state*>(inc);
 		delta_vector DU = dU;
 		DU += E;
-		return func.inc(*incstate, dU);
+		return func.inc(*incstate, DU);
 	}
 };
 

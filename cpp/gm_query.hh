@@ -26,8 +26,8 @@ struct selfjoin_query_state : query_state
 	virtual void update_estimate(const Vec& dE) override;
 	virtual double query_func(const Vec& x) override;
 	virtual double zeta(const Vec& X) override;
-	virtual safezone_func_wrapper* safezone() override;
-	virtual safezone_func_wrapper* radial_safezone() override;
+	virtual safezone_func* safezone() override;
+	virtual safezone_func* radial_safezone() override;
 
 private:
 	void compute();
@@ -49,8 +49,8 @@ struct twoway_join_query_state : query_state
     virtual void update_estimate(const Vec& newE) override;
 	virtual double query_func(const Vec& x) override;
 	virtual double zeta(const Vec& X) override;
-	virtual safezone_func_wrapper* safezone() override;
-	virtual safezone_func_wrapper* radial_safezone() override;
+	virtual safezone_func* safezone() override;
+	virtual safezone_func* radial_safezone() override;
 
 protected:
 	void compute();
@@ -153,7 +153,7 @@ struct agms_continuous_query : continuous_query
 
 
 // Ball safezone wrapper implementation
-struct ball_safezone : safezone_func_wrapper
+struct ball_safezone : safezone_func
 {
 	query_state* query;
 	ball_safezone(query_state* q) : query(q) { }

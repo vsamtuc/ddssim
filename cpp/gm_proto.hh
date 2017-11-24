@@ -1,5 +1,5 @@
-#ifndef __GMUTIL_HH__
-#define __GMUTIL_HH__
+#ifndef __GM_PROTO_HH__
+#define __GM_PROTO_HH__
 
 /**
 	\file Protocol-related classes common to all geometric method 
@@ -49,11 +49,16 @@ struct compressed_state
 
 
 /**
-	This class transmits and accesses safezone functions.
+	This class wraps safezone_funct objects for transmission and access.
+
+	It is essentially a wrapper for the more verbose, polymorphic \c safezone_func API,
+	but it conforms to the standard functional API. It is copyable and moveable
+	In addition, it provides a byte_size() method, making it suitable for integration
+	with the middleware.
   */
 class safezone
 {
-	safezone_func_wrapper* szone;		// the safezone function, if any
+	safezone_func* szone;		// the safezone function, if any
 	void*  inc; 						// pointer to inc state if any
 
 	inline void* get_inc() {
@@ -75,7 +80,7 @@ public:
 	safezone();
 
 	/// valid safezone
-	safezone(safezone_func_wrapper* sz);
+	safezone(safezone_func* sz);
 	~safezone();
 
 	/// Movable
@@ -169,7 +174,6 @@ struct continuous_query
 		\brief Appl
 	  */
 	virtual bool update(Vec& S, const dds_record& rec)=0;
-
 
 };
 

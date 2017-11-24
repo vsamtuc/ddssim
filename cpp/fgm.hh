@@ -117,9 +117,8 @@ struct coordinator : process
 
 	query_state* query;			// current query state
 
-	safezone_func_wrapper 
-		*safe_zone, 			// the safe zone proper
-		*radial_safe_zone;		// the cheap safezone (maybe null)
+	safezone_func *safe_zone;			// the safe zone proper
+	safezone_func *radial_safe_zone;	// the cheap safezone (maybe null)
 	
 	size_t total_updates;		// number of stream updates received
 	size_t k;					// number of sites

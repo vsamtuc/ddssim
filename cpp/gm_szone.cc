@@ -24,7 +24,7 @@ double query_state::compute_zeta(const Vec& U)
 	return zeta(U+E);
 }
 
-safezone_func_wrapper* query_state::radial_safezone()
+safezone_func* query_state::radial_safezone()
 {
 	return nullptr;
 }
@@ -32,9 +32,10 @@ safezone_func_wrapper* query_state::radial_safezone()
 
 /////////////////////////////////////////////////////////
 //
-//  safezone_func_wrapper
+//  safezone_func
 //
 /////////////////////////////////////////////////////////
 
-safezone_func_wrapper::~safezone_func_wrapper() 
+safezone_func::~safezone_func() 
 { }
+

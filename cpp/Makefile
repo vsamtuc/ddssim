@@ -21,7 +21,7 @@ INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
 LIB=  $(HDF5_LIB) -lm -ljsoncpp  #-lboost_filesystem -lboost_system
 CXXFLAGS= -Wall -std=gnu++17 $(INCLUDE) # -fPIC
 
-DEBUG_FLAGS=  -g3 -Og
+DEBUG_FLAGS=  -g3
 OPT_FLAGS= -g3 -Ofast #-DNDEBUG
 PRODUCTION_FLAGS = -Ofast -DNDEBUG
 

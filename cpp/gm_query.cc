@@ -62,44 +62,17 @@ double selfjoin_query_state::zeta(const Vec& x)
 }
 
 
-safezone_func_wrapper* selfjoin_query_state::safezone()
+safezone_func* selfjoin_query_state::safezone()
 {
-	return new std_safezone_func_wrapper<selfjoin_agms_safezone>(safe_zone, E.size(), E);
+	return new std_safezone_func<selfjoin_agms_safezone>(safe_zone, E.size(), E);
 }
 
-safezone_func_wrapper* selfjoin_query_state::radial_safezone()
+safezone_func* selfjoin_query_state::radial_safezone()
 {
 	// IF EIKONAL
 	return new ball_safezone(this);
 }
 
-
-#if 0
-void* selfjoin_query_state::alloc_incstate() 
-{
-	return new selfjoin_agms_safezone::incremental_state;
-}
-
-void selfjoin_query_state::free_incstate(void* ptr) 
-{
-	delete static_cast<selfjoin_agms_safezone::incremental_state*>(ptr);
-}
-
-double selfjoin_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
-{
-	auto incstate = static_cast<selfjoin_agms_safezone::incremental_state*>(inc);
-	delta_vector DU = dU;
-	DU += E;
-	return safe_zone.inc(*incstate, DU);
-}
-
-double selfjoin_query_state::compute_zeta(void* inc, const Vec& U)
-{
-	auto incstate = static_cast<selfjoin_agms_safezone::incremental_state*>(inc);
-	Vec X = U+E;
-	return safe_zone.with_inc(*incstate, X);
-}
-#endif
 
 /////////////////////////////////////////////////////////
 //
@@ -156,45 +129,16 @@ double twoway_join_query_state::zeta(const Vec& x)
 }
 
 
-safezone_func_wrapper* twoway_join_query_state::safezone()
+safezone_func* twoway_join_query_state::safezone()
 {
-	return new std_safezone_func_wrapper<twoway_join_agms_safezone>(safe_zone, E.size(), E);
+	return new std_safezone_func<twoway_join_agms_safezone>(safe_zone, E.size(), E);
 }
 
-safezone_func_wrapper* twoway_join_query_state::radial_safezone()
+safezone_func* twoway_join_query_state::radial_safezone()
 {
 	// IF EIKONAL
 	return new ball_safezone(this);
 }
-
-
-#if 0
-void* twoway_join_query_state::alloc_incstate() 
-{
-	return new twoway_join_agms_safezone::incremental_state;
-}
-
-void twoway_join_query_state::free_incstate(void* ptr)
-{
-	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(ptr);
-	delete incstate;
-}
-
-double twoway_join_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
-{
-	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(inc);
-	delta_vector DU = dU;
-	DU += E;
-	return safe_zone.inc(*incstate, DU);
-}
-
-double twoway_join_query_state::compute_zeta(void* inc, const Vec& U) 
-{
-	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(inc);
-	Vec X = U+E;
-	return safe_zone.with_inc(*incstate, X);
-}
-#endif
 
 
 /////////////////////////////////////////////////////////
