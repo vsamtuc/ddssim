@@ -63,6 +63,12 @@ safezone& safezone::operator=(const safezone& other)
 //////////////////////////////////////
 
 
+static void configure_query(continuous_query* Q, const Json::Value& js)
+{
+
+}
+
+
 continuous_query* gm::create_continuous_query(const Json::Value& js)
 {
 	qtype qt = qtype_repr[js["query"].asString()];
@@ -70,13 +76,29 @@ continuous_query* gm::create_continuous_query(const Json::Value& js)
     projection proj = get_projection(js);
     double beta = js["beta"].asDouble();
 
+    query_config cfg;
+
+    if(js.isMember("safezone")) {
+		Json::Value sz = js["safezone"];
+		cfg.eikonal = sz.get("eikonal", cfg.eikonal).asBool();
+    }
+
     switch(qt)
     {
     	case qtype::SELFJOIN:
-    		return new agms_continuous_query<selfjoin_query_state, 1>(sids, proj, beta, qt);
+    		return new agms_continuous_query< 
+    				agms_join_query_state<qtype::SELFJOIN, selfjoin_agms_safezone>
+    			>
+    			(sids, proj, beta, qtype::SELFJOIN, cfg);
+
+    		//return new agms_continuous_query<selfjoin_query_state, 1>(sids, proj, beta, qt);
 
     	case qtype::JOIN:
-    		return new agms_continuous_query<twoway_join_query_state, 2>(sids, proj, beta, qt);
+    		return new agms_continuous_query< 
+    				agms_join_query_state<qtype::JOIN, twoway_join_agms_safezone>
+    			>
+    			(sids, proj, beta, qtype::JOIN, cfg);
+    		//return new agms_continuous_query<twoway_join_query_state, 2>(sids, proj, beta, qt);
 
     	default:
     		throw std::runtime_error("Could not process the query type");

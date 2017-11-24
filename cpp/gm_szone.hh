@@ -168,7 +168,7 @@ struct query_state
 template <typename SZFunc, typename IncState = typename SZFunc::incremental_state >
 struct std_safezone_func : safezone_func
 {
-	typedef SZFunc function_type;
+	typedef SZFunc   function_type;
 	typedef IncState incremental_state;
 
 	SZFunc& func;
@@ -206,10 +206,6 @@ struct std_safezone_func : safezone_func
 		return func.inc(*incstate, DU);
 	}
 };
-
-
-
-
 
 } // end namespace gm
 

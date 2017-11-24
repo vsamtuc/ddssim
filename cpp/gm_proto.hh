@@ -112,6 +112,17 @@ public:
 };
 
 
+/**
+	A class containing configuration about the query answering algorithm.
+
+	This is information which is protocol-agnostic, e.g., the safe zone
+	function class to use.
+  */
+struct query_config
+{		
+	bool eikonal;	// select an eikonal safezone function
+};
+
 
 /**
 	\brief Helper to set up a GM network for answering a query.
@@ -121,6 +132,10 @@ public:
   */
 struct continuous_query
 {
+	// These are attributes requested by the user
+	query_config config;
+
+
 	virtual ~continuous_query() { }
 
 	/**
@@ -177,11 +192,22 @@ struct continuous_query
 
 };
 
+/**
+	This function retrieves a \c query_config object from json.
 
+	This is called internally by \create_continuous_query.
+ */
+query_config get_query_config(const Json::Value& js);
 
+/**
+	Returns a \c continuous_query object specified by the given component json.
+ */
 continuous_query* create_continuous_query(const Json::Value& js);
 
 
+/**
+	Query-independent configuration
+  */
 struct protocol_config
 {
 	bool use_cost_model = true;

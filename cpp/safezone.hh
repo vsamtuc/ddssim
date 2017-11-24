@@ -128,7 +128,7 @@ struct selfjoin_agms_safezone_lower_bound
 				// else, if dest[d]==0, then Ehat[slice(d)] == 0! leave it
 			}
 		}
-
+		// else, the function returns INFINITY
 	}
 
 	selfjoin_agms_safezone_lower_bound(const sketch& E, double T, bool eikonal)
@@ -180,9 +180,12 @@ struct selfjoin_agms_safezone
 	: selfjoin_agms_safezone(E.view(), Tlow, Thigh, eikonal)
 	{ }
 
+	selfjoin_agms_safezone(const Vec& E, const projection& proj, double Tlow, double Thigh, bool eikonal)
+	: selfjoin_agms_safezone(proj(E), Tlow, Thigh, eikonal)
+	{ }
+
 
 	selfjoin_agms_safezone& operator=(selfjoin_agms_safezone&&)=default;
-
 
 	// from-scratch computation, storing upper and lower bounds into
 	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)

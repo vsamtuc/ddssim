@@ -14,72 +14,133 @@ namespace gm {
 //////////////////////////////////////
 
 
-struct selfjoin_query_state : query_state
+
+// Ball safezone wrapper implementation
+struct ball_safezone : safezone_func
 {
-	double beta; 	// the overall precision
-	projection proj;// the sketch projection
-	double epsilon; // the **assumed** precision of the sketch
+	query_state* query;
+	ball_safezone(query_state* q) : query(q) { }
 
-	selfjoin_agms_safezone safe_zone;
-	selfjoin_query_state(double _beta, projection _proj);
+	inline double zeta_E() const { return query->zeta_E; }
 
-	virtual void update_estimate(const Vec& dE) override;
-	virtual double query_func(const Vec& x) override;
-	virtual double zeta(const Vec& X) override;
-	virtual safezone_func* safezone() override;
-	virtual safezone_func* radial_safezone() override;
+	virtual void* alloc_incstate() override;
+    virtual void free_incstate(void*) override;
+    virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
+    virtual double compute_zeta(void* inc, const Vec& U) override;
+    virtual double compute_zeta(const Vec& U) override;
+    virtual size_t zeta_size() const override;
+};
+
+
+struct agms_query_state : query_state
+{
+	double beta; 		// the overall precision
+	projection proj;	// the sketch projection
+	double epsilon; 	// the **assumed** precision of the sketch
+
+	agms_query_state(double _beta, projection _proj, size_t arity);
+};
+
+
+template <qtype QType, typename SafezoneFunc>
+struct agms_join_query_state : agms_query_state
+{
+	static constexpr size_t arity = (QType==qtype::JOIN)? 2 : 1;
+
+	bool eikonal;	
+
+	agms_join_query_state(double _beta, projection _proj, bool _eikonal)
+	: agms_query_state(_beta, _proj, arity), eikonal(_eikonal)
+	{ 
+		compute();
+	}
+
+	SafezoneFunc safe_zone;
+
+	virtual double query_func(const Vec& x) override
+	{
+		switch(QType) {
+			case qtype::SELFJOIN:
+				return dot_est(proj(E));	
+			case qtype::JOIN: 
+			{
+				auto x0 = std::begin(x);
+				auto x1 = x0 + x.size()/2;
+				auto x2 = x1 + x.size()/2;
+				return dot_est(proj(x0,x1), proj(x1,x2));
+			}
+		}
+	}
+
+	virtual void update_estimate(const Vec& dE) override
+	{
+	    E += dE;
+	    compute();
+	}
+
+	virtual double zeta(const Vec& X) override
+	{
+		return safe_zone(X);
+	}
+
+	virtual safezone_func* safezone() override
+	{
+		return new std_safezone_func<SafezoneFunc>(safe_zone, E.size(), E);
+	}
+
+	virtual safezone_func* radial_safezone() override
+	{
+		// IF EIKONAL
+		return eikonal ? new ball_safezone(this) : nullptr;
+	}
 
 private:
-	void compute();
+	void compute() 
+	{
+		Qest = query_func(E);
+
+		if(Qest>0) {
+			Tlow =  Qest - (beta-epsilon)*fabs(Qest)/(1.0+beta);
+			Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
+		}
+		else {
+			Tlow = -1.0; Thigh=1.0;
+		}
+		safe_zone = std::move(SafezoneFunc(E, proj, Tlow, Thigh, eikonal));
+
+		zeta_E = safe_zone(E);
+	}
 };
 
+typedef agms_join_query_state<qtype::SELFJOIN, selfjoin_agms_safezone> selfjoin_query_state;
+typedef agms_join_query_state<qtype::SELFJOIN, twoway_join_agms_safezone> twoway_join_query_state;
 
 
 
-struct twoway_join_query_state : query_state
-{
-	projection proj;	/// the projection
-	double beta;		/// the overall precision
-	double epsilon;		/// the **assumed** sketch precision
-
-	twoway_join_agms_safezone safe_zone;	/// the safe zone object
-
-	twoway_join_query_state(double _beta, projection _proj);
-
-    virtual void update_estimate(const Vec& newE) override;
-	virtual double query_func(const Vec& x) override;
-	virtual double zeta(const Vec& X) override;
-	virtual safezone_func* safezone() override;
-	virtual safezone_func* radial_safezone() override;
-
-protected:
-	void compute();
-
-};
-
-
-template <typename QueryState, size_t QArity>
+template <typename QueryState>
 struct agms_continuous_query : continuous_query
 {
 	typedef QueryState query_state_type;
+	static constexpr size_t arity = query_state_type::arity;
 
-	std::array<stream_id, QArity> sids;	// Operand streams
+	std::array<stream_id, arity> sids;	// Operand streams
 	projection proj;					// projection
 	double beta;						// beta
 	long int k;							// number of sites (for scaling)
 	qtype query_type;					// for query information!
 
 	inline size_t state_vector_size() const {
-		return QArity*proj.size();
+		return arity*proj.size();
 	}
 
 	agms_continuous_query(const std::vector<stream_id>& _sid, 
 						const projection& _proj, double _beta,
-						qtype _qtype)
+						qtype _qtype, const query_config& _cfg)
 		: proj(_proj), beta(_beta), query_type(_qtype)
 	{
-		if(_sid.size()!=QArity)
-			throw std::length_error(binc::sprint("Expected ",QArity,"operands, got",_sid.size()));
+		config = _cfg;
+		if(_sid.size()!=arity)
+			throw std::length_error(binc::sprint("Expected ",arity,"operands, got",_sid.size()));
 		std::copy(_sid.begin(), _sid.end(), sids.begin());
 		k = CTX.metadata().source_ids().size();
 	}
@@ -95,9 +156,9 @@ struct agms_continuous_query : continuous_query
 
 	delta_vector delta_update(Vec& S, const dds_record& rec) override
 	{
-		assert(S.size() == QArity*proj.size());
+		assert(S.size() == arity*proj.size());
 		size_t opno = stream_operand(rec.sid);
-		if(opno != QArity) 
+		if(opno != arity) 
 		{
 			delta_vector delta(proj.depth());
 			auto S_b = begin(S) + opno*proj.size();
@@ -118,9 +179,9 @@ struct agms_continuous_query : continuous_query
 
 	bool update(Vec& S, const dds_record& rec) override
 	{
-		assert(S.size() == QArity*proj.size());
+		assert(S.size() == arity*proj.size());
 		size_t opno = stream_operand(rec.sid);
-		if(opno != QArity) 
+		if(opno != arity) 
 		{
 			auto S_b = begin(S) + opno*proj.size();
 			auto S_e = S_b + proj.size();
@@ -141,7 +202,7 @@ struct agms_continuous_query : continuous_query
 		// So far, all query state types are constructed thus!
 		// N.B. will need to change in order to support eikonality selection!
 
-		return new query_state_type(beta, proj);
+		return new query_state_type(beta, proj, config.eikonal);
 	}
 
 	double theta() const override {
@@ -150,24 +211,6 @@ struct agms_continuous_query : continuous_query
 	}
 
 };
-
-
-// Ball safezone wrapper implementation
-struct ball_safezone : safezone_func
-{
-	query_state* query;
-	ball_safezone(query_state* q) : query(q) { }
-
-	inline double zeta_E() const { return query->zeta_E; }
-
-	virtual void* alloc_incstate() override;
-    virtual void free_incstate(void*) override;
-    virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
-    virtual double compute_zeta(void* inc, const Vec& U) override;
-    virtual double compute_zeta(const Vec& U) override;
-    virtual size_t zeta_size() const override;
-};
-
 
 
 

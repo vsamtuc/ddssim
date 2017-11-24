@@ -30,9 +30,9 @@ public:
 		// metadata
 		CTX.data_feed(uniform_datasrc(1, 10, 1000, 1000));
 
-		auto Q = new agms_continuous_query<selfjoin_query_state,1>(
+		auto Q = new agms_continuous_query<selfjoin_query_state>(
 			vector<stream_id> { 0 }, 
-			projection(5, 400), 0.5, qtype::SELFJOIN
+			projection(5, 400), 0.5, qtype::SELFJOIN, query_config()
 			);
 		fgm::network net("foo", Q, protocol_config());
 
