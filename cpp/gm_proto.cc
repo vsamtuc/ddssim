@@ -56,9 +56,6 @@ safezone& safezone::operator=(const safezone& other)
 }
 
 
-namespace gm  {
-
-
 //////////////////////////////////////
 //
 // Creation of query 
@@ -66,7 +63,7 @@ namespace gm  {
 //////////////////////////////////////
 
 
-continuous_query* create_continuous_query(const Json::Value& js)
+continuous_query* gm::create_continuous_query(const Json::Value& js)
 {
 	qtype qt = qtype_repr[js["query"].asString()];
     vector<stream_id> sids = get_streams(js);
@@ -88,6 +85,19 @@ continuous_query* create_continuous_query(const Json::Value& js)
 }
 
 
+//////////////////////////////////////
+//
+// Protocol configuration
+//
+//////////////////////////////////////
 
-} // end namespace gm
+protocol_config gm::get_protocol_config(const Json::Value& js)
+{
+	protocol_config cfg;
+
+	cfg.use_cost_model = js.get("use_cost_model", cfg.use_cost_model).asBool();
+
+	return cfg;
+}
+
 

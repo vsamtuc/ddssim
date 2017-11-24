@@ -21,11 +21,8 @@ using namespace dds;
 
 
 struct coordinator;
-
 struct node;
-
 struct node_proxy;
-
 
 struct network 
 	: 	star_network<network , coordinator , node>, 
@@ -37,8 +34,9 @@ struct network
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
 	continuous_query* Q;
+	protocol_config cfg;
 
-	network(const string& name, continuous_query* _Q);
+	network(const string& name, continuous_query* _Q, const protocol_config& _cfg);
 	~network();
 
 	void process_record();
@@ -53,21 +51,53 @@ struct network
 //
 //////////////////////////////////
 
-// Ball safezone implementation
-struct ball_safezone : safezone_func_wrapper
+
+/**
+	This is an implementation of a cost model for deciding whether to ship 
+	a full safe zone \f$\zeta\f$ or just a cheap safe \f$\zeta_B\f$ zone to the local sites.
+
+	The inputs to the model are three arrays (i=0...k-1)
+	- alpha[i] is the rate at which \f$\zeta(U_i)\f$ decreases as a function of "time"
+	- beta[i] is the rate at which \f$\zeta_B(U_i)\f$ decreases as a function of "time"
+	- gamma[i] is the percent of stream updates 
+
+	The output is a boolean array d[i] which is true iff the full safe zone should be
+	sent to site i.
+  */
+struct cost_model 
 {
-	query_state* query;
-	ball_safezone(query_state* q) : query(q) { }
+	coordinator* coord;
+	size_t k;
 
-	inline double zeta_E() const { return query->zeta_E; }
+	// model input
+	size_t D;				// The cost of shipping full safezones
+	vector<bool> proper;    // designates which sites to process
+	double total_alpha, total_beta, round_updates; // totals
+	Vec alpha, beta, gamma; // source models
 
-	virtual void* alloc_incstate() override;
-    virtual void free_incstate(void*) override;
-    virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
-    virtual double compute_zeta(void* inc, const Vec& U) override;
-    virtual size_t zeta_size() const override;
+	// model output
+	vector<bool> d;		// the model's output plan
+	double max_gain;	// predicted gain for plan
+	double tau_opt;		// predicted tau for plan
+
+	// Initialize the vectors holding the model parameters
+	cost_model(coordinator* _coord);
+
+	/**
+		Called at the end of a round to update the model input arrays.
+	  */
+	void update_model();	// update the model statistics
+
+	/**
+		Given values in the model arrays, computes the model output d[]
+	  */
+	void compute_model();	// compute the model statistics
+
+	/**
+		Simply prints the arrays
+	  */
+	void print_model();		// print the model
 };
-
 
 
 struct coordinator : process
@@ -86,10 +116,12 @@ struct coordinator : process
 	continuous_query* Q; 		// continuous query
 
 	query_state* query;			// current query state
-	ball_safezone* ballsz;		// the compressed ball safezone
+
+	safezone_func_wrapper 
+		*safe_zone, 			// the safe zone proper
+		*radial_safe_zone;		// the cheap safezone (maybe null)
 	
 	size_t total_updates;		// number of stream updates received
-	bool in_naive_mode;			// when true, use the naive safezone
 	size_t k;					// number of sites
 
 	// index the nodes
@@ -97,7 +129,7 @@ struct coordinator : process
 	vector<node_t*> node_ptr;
 
 	// protocol related
-	vector<bool> has_naive;
+	vector<bool> has_cheap_safezone;
 	vector<int> bitweight, total_bitweight;
 
 	int bit_budget;
@@ -111,18 +143,16 @@ struct coordinator : process
 	size_t num_subrounds;    // number of subrounds
 	size_t sz_sent;          // safe zones sent
 	size_t total_rbl_size; 	 // total size of rebalance sets
-
 	size_t round_sz_sent;    // safezones sent in curren
 
-
-	// source models
-	Vec alpha, beta, gamma;
-	vector<bool> md;  // the model's output;
+	// cost model
+	cost_model cmodel;
 	
-	coordinator(network_t* nw, continuous_query* _Q); 
+	coordinator(network_t* nw, continuous_query* _Q);
 	~coordinator();
 
-	inline network_t* net() { return static_cast<network_t*>(host::net()); }
+	inline network_t* net() const { return static_cast<network_t*>(host::net()); }
+	inline const protocol_config& cfg() const { return net()->cfg; }
 
 	void setup_connections() override;
 
@@ -144,28 +174,14 @@ struct coordinator : process
 	void finish_subround();                    // finish the subround
 	void finish_subrounds(double total_zeta);  // try to rebalance (optional)
 
-	//
-	// rebalancing
-	//
-#if 0
-	// This method performs the actual rebalancing and returns the delta_zeta
-	// of the rebalanced nodes.
-	double rebalance(const set<node_proxy_t*> B);
-
-	// Returns a rebalancing set two nodes, or empty.
-	set<node_proxy*> rebalance_pairs();
-	// Returns a rebalancing set of high-h, low stream traffic nodes
-	set<node_proxy*> rebalance_light();
-	
-	// used in rebalancing heuristics: return the vector of zeta_lu for each node
-	vector<node_double> compute_hvalue();
-#endif
+	void collect_updates();		// collect all updates from local sites
 
 	// 
 	// model routines
 	//
-	void compute_model();
-	void print_model();
+	void update_model();	// update the model statistics
+	void compute_model();	// compute the model statistics
+	void print_model();		// print the model
 
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning
@@ -231,62 +247,23 @@ struct node : local_site
 	// Remote methods
 	//
 
-	oneway reset(const safezone& newsz) { 
-		// reset the safezone object
-		szone = newsz;
+	// Called at the start of a round
+	oneway reset(const safezone& newsz);
 
-		// reset the drift vector
-		U = 0.0;
-		update_count = 0;
-		zeta = minzeta = szone(U);
-		// reset for the first subround		
-		reset_bitweight(zeta);
+	// Called to upgrade the safezone from naive to full
+	int set_safezone(const safezone& newsz);
 
-		// reset round statistics
-		dS = 0.0;
-		round_local_updates = 0;
-	}
+	// Get the current zeta		
+	double get_zeta();
 
-// Called to upgrade the safezone from naive to full
-	int set_safezone(const safezone& newsz) {
-		// reset the safezone object
-		szone = newsz;
-		double newzeta = szone(U);
-		assert(newzeta >= zeta);
-		zeta = newzeta;
+	// called at the start a new subround
+	oneway reset_bitweight(double Z);
 
-		// reset the bit count
-		int delta_bitweight = floor((zeta_0-zeta)/zeta_quantum) - bitweight;
-		bitweight += delta_bitweight;
-		assert(delta_bitweight <= 0);
-		return delta_bitweight;
-	}
-		
-	double get_zeta() {
-		return zeta;
-	}
+	// Get the data
+	compressed_state get_drift();
 
-
-	// called at the start a new subrounds
-	oneway reset_bitweight(double Z)
-	{
-		zeta_0 = zeta;
-		zeta_quantum = Z;
-		bitweight = 0;
-	}
-
-	compressed_state get_drift() {
-		return compressed_state { U, update_count };
-	}
-
-	double set_drift(compressed_state newU) {
-		U = newU.vec;
-		update_count = newU.updates;
-		double old_zeta = zeta;
-		zeta = szone(U);
-		return zeta-old_zeta;
-	}
-
+	// This can be used for rebalancing
+	double set_drift(compressed_state newU);
 
 };
 

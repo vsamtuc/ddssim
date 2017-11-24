@@ -1,7 +1,7 @@
 {
     "components" : [
 		{
-			"name": "agm",
+			"name": "fgm",
 		    "type": "FGM",
 		    "query": "JOIN",
 		    "streams": [0,1],
@@ -13,7 +13,20 @@
 		    "beta": 0.1
 		},
 		{
-			"name": "gm",			
+			"name": "fgm_nocm",
+		    "type": "FGM",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1,
+		    "use_cost_model": false
+		},
+		{
+			"name": "sgm",
 		    "type": "SGM",
 		    "query": "JOIN",
 		    "streams": [0,1],
@@ -43,7 +56,6 @@
 		    },
 		    "beta": 0.1			
 		}
-
     ],
 
     "dataset" : {
@@ -55,7 +67,7 @@
 		"hash_streams": 2
 		//,"set_max_length": 10000
 		//,"set_max_length": 10000000
-		,"hash_sources": 4
+		//,"hash_sources": 4
 		,"time_window": 28800    // 4*3600
 		//,"fixed_window": 10000000
 		//,"flush_window": false
@@ -84,6 +96,4 @@
     "sample" : {
 		"timeseries": 1000
     }
-
-    
 }

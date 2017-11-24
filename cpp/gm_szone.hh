@@ -21,7 +21,7 @@ using namespace hdv;
  */
 struct safezone_func_wrapper
 {
-	virtual ~safezone_func_wrapper() { }
+	virtual ~safezone_func_wrapper();
 
 	/**
 		\brief Return a new instance of the incremental state for this function.
@@ -32,6 +32,11 @@ struct safezone_func_wrapper
 		\brief Release a new instance of the incremental state for this function.
 	  */
 	virtual void free_incstate(void*)=0;
+
+	/**
+		\brief Compute the function on a drift vector
+	  */
+	virtual double compute_zeta(const Vec& U)=0;
 
 	/**
 		\brief Compute the function on a drift vector and set incremental state.
@@ -61,38 +66,6 @@ struct safezone_func_wrapper
 };
 
 
-/**
-	Template for providing a standard implementation for safezone wrapping.
-
-	This is provided for convenience.
-  */
-template <typename SZFunc, typename IncState = typename SZFunc::incremental_state >
-struct std_safezone_func_wrapper : safezone_func_wrapper
-{
-	typedef SZFunc function_type;
-	typedef IncState incremental_state;
-
-	SZFunc& func;
-	size_t ssize;
-
-	std_safezone_func_wrapper(SZFunc& _func, size_t _ssize) 
-		: func(_func), ssize(_ssize) 
-	{ }
-
-	virtual void* alloc_incstate() override 
-	{
-		return new incremental_state;
-	}
-	virtual void free_incstate(void* ptr) override 
-	{
-		delete static_cast<incremental_state*>(ptr);
-	}
-	virtual size_t state_size() const override 
-	{
-		return ssize;
-	}
-};
-
 
 
 /**
@@ -102,9 +75,9 @@ struct std_safezone_func_wrapper : safezone_func_wrapper
 	provides the query function as a virtual method,
 	and maintains the current accuracy levels.
 
-	Also, it is a factory for safe zone objects.
+	Also, it is a factory for safe zone wrapper objects.
  */
-struct query_state : safezone_func_wrapper
+struct query_state
 {
 	double Qest; 	// current estimate
 	double Tlow;    // admissible region: Tlow <= Q(t) <= Thigh
@@ -125,17 +98,6 @@ struct query_state : safezone_func_wrapper
 	  */
 	virtual ~query_state();
 
-	/**
-		\brief The dimension of the safe zone function space.
-
-		This quantity represents the amount of data needed to
-		describe the safe zone function. It is used in computing the
-		network cost of transmitting the safe zone.
-
-		Note that this is not related to the dimension of the (input)
-		state vector.
-	  */
-	virtual size_t zeta_size() const override { return E.size(); }
 
 	/// The query function
 	virtual double query_func(const Vec& x)=0;
@@ -143,14 +105,101 @@ struct query_state : safezone_func_wrapper
 	/// The safezone function 
 	virtual double zeta(const Vec& x) =0;
 
-	/// Compute the safezone function given drift vector
-	inline double compute_zeta(const Vec& U) {  return zeta(E+U); }
+	/**
+		\brief Compute the safezone function given drift vector. 
 
-	/// Resetting the state
-	virtual void update_estimate(const Vec& newE)=0;
+		This function simply returns the result of zeta(U+E).
+	  */
+	virtual double compute_zeta(const Vec& U);
 
-	/// A functional interface
+	/**
+		 Reset the state by adding \c dE to E.
+
+		 After this function, the query estimate, bounds and safezone are
+		 adjusted to the new estimate vector.
+	  */
+	virtual void update_estimate(const Vec& dE)=0;
+
+	/**
+	 	\brief Return a safezone_func_wrapper for the safe zone function.
+
+	 	The returned object shares state with this object.
+	 	It is the caller's responsibility to delete the returned object, and do
+	 	so before this object is destroyed.
+	 */
+	virtual safezone_func_wrapper* safezone() =0;
+
+	/**
+	 	\brief Return a safezone_func_wrapper for a low-parametric safe zone function.
+
+	 	The returned object shares state with this object.
+	 	It is the caller's responsibility to delete the returned object, and do
+	 	so before this object is destroyed.
+
+	 	This function may return \c nullptr. However, if it returns a non-null value,
+	 	the wrapped function \f$\zeta_R\f$ should have the following attributes:
+		- it should be dominated everywhere by the safezone \f$\zeta\f$.
+		- it should be $\zeta_R(E)=\zeta(E)$.
+		- the \c zeta_size() method should return a 'small' value (this is purposely vague,
+		  but in practice it should be a small constant, in particular much smaller than
+		  E.size()).
+
+		The default implementation returns null.
+	 */
+	virtual safezone_func_wrapper* radial_safezone();
+
+
+	/// A functional interface to the query function
 	inline double operator()(const Vec& x) { return query_func(x); }
+};
+
+
+
+/**
+	Template for providing a standard implementation for safezone wrapping.
+
+	This is provided for convenience.
+  */
+template <typename SZFunc, typename IncState = typename SZFunc::incremental_state >
+struct std_safezone_func_wrapper : safezone_func_wrapper
+{
+	typedef SZFunc function_type;
+	typedef IncState incremental_state;
+
+	SZFunc& func;
+	size_t zsize;
+	const Vec& E;
+
+	std_safezone_func_wrapper(SZFunc& _func, size_t _zsize, const Vec& _E) 
+		: func(_func), zsize(_zsize), E(_E)
+	{ }
+
+	virtual void* alloc_incstate() override 
+	{
+		return new incremental_state;
+	}
+	virtual void free_incstate(void* ptr) override 
+	{
+		delete static_cast<incremental_state*>(ptr);
+	}
+	virtual size_t zeta_size() const override 
+	{
+		return zsize;
+	}
+	virtual double compute_zeta(const Vec& U) {
+		return func(U+E);
+	}
+	virtual double compute_zeta(void* inc, const Vec& U) {
+		incremental_state* incstate = static_cast<incremental_state*>(inc);		
+		return func.with_inc(*incstate, U+E);
+	}
+	virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
+	{
+		incremental_state* incstate = static_cast<incremental_state*>(inc);
+		delta_vector DU = dU;
+		DU += E;
+		return func.inc(*incstate, dU);
+	}
 };
 
 

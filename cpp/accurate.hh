@@ -83,6 +83,7 @@ public:
 	: 	component(_name),
 		Q(_Q), series {_name+".qest", "%.0f", curest}
 	{
+		set_name(_name);
 		CTX.timeseries.add(series);
 	}
 

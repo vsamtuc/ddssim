@@ -23,14 +23,11 @@ struct selfjoin_query_state : query_state
 	selfjoin_agms_safezone safe_zone;
 	selfjoin_query_state(double _beta, projection _proj);
 
-	void update_estimate(const Vec& newE) override;
+	virtual void update_estimate(const Vec& dE) override;
 	virtual double query_func(const Vec& x) override;
-
-	virtual void* alloc_incstate() override;
-	virtual void free_incstate(void*) override;
-	virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
-	virtual double compute_zeta(void* inc, const Vec& U) override;
 	virtual double zeta(const Vec& X) override;
+	virtual safezone_func_wrapper* safezone() override;
+	virtual safezone_func_wrapper* radial_safezone() override;
 
 private:
 	void compute();
@@ -49,14 +46,11 @@ struct twoway_join_query_state : query_state
 
 	twoway_join_query_state(double _beta, projection _proj);
 
-    void update_estimate(const Vec& newE) override;
+    virtual void update_estimate(const Vec& newE) override;
 	virtual double query_func(const Vec& x) override;
-
-	virtual void* alloc_incstate() override;
-	virtual void free_incstate(void*) override;
-	virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
-	virtual double compute_zeta(void* inc, const Vec& U) override;
 	virtual double zeta(const Vec& X) override;
+	virtual safezone_func_wrapper* safezone() override;
+	virtual safezone_func_wrapper* radial_safezone() override;
 
 protected:
 	void compute();
@@ -157,6 +151,22 @@ struct agms_continuous_query : continuous_query
 
 };
 
+
+// Ball safezone wrapper implementation
+struct ball_safezone : safezone_func_wrapper
+{
+	query_state* query;
+	ball_safezone(query_state* q) : query(q) { }
+
+	inline double zeta_E() const { return query->zeta_E; }
+
+	virtual void* alloc_incstate() override;
+    virtual void free_incstate(void*) override;
+    virtual double compute_zeta(void* inc, const delta_vector& dU, const Vec& U) override;
+    virtual double compute_zeta(void* inc, const Vec& U) override;
+    virtual double compute_zeta(const Vec& U) override;
+    virtual size_t zeta_size() const override;
+};
 
 
 

@@ -22,7 +22,6 @@ selfjoin_query_state::selfjoin_query_state(double _beta, projection _proj)
 	if( epsilon >= beta )
 		throw std::invalid_argument("total error is less than sketch error");
 	compute();
-	assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
 }
 
 
@@ -38,8 +37,8 @@ void selfjoin_query_state::compute()
 	Qest = query_func(E);
 
 	if(Qest>0) {
-		Tlow = (1+epsilon)*Qest/(1.0+beta);
-		Thigh = (1-epsilon)*Qest/(1.0-beta);
+		Tlow =  Qest - (beta-epsilon)*fabs(Qest)/(1.0+beta);
+		Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
 	}
 	else {
 		Tlow = 0.0; Thigh=1.0;
@@ -56,6 +55,26 @@ double selfjoin_query_state::query_func(const Vec& x)
 }
 
 
+
+double selfjoin_query_state::zeta(const Vec& x)
+{
+	return safe_zone(x);
+}
+
+
+safezone_func_wrapper* selfjoin_query_state::safezone()
+{
+	return new std_safezone_func_wrapper<selfjoin_agms_safezone>(safe_zone, E.size(), E);
+}
+
+safezone_func_wrapper* selfjoin_query_state::radial_safezone()
+{
+	// IF EIKONAL
+	return new ball_safezone(this);
+}
+
+
+#if 0
 void* selfjoin_query_state::alloc_incstate() 
 {
 	return new selfjoin_agms_safezone::incremental_state;
@@ -64,11 +83,6 @@ void* selfjoin_query_state::alloc_incstate()
 void selfjoin_query_state::free_incstate(void* ptr) 
 {
 	delete static_cast<selfjoin_agms_safezone::incremental_state*>(ptr);
-}
-
-double selfjoin_query_state::zeta(const Vec& x)
-{
-	return safe_zone(x);
 }
 
 double selfjoin_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
@@ -85,7 +99,7 @@ double selfjoin_query_state::compute_zeta(void* inc, const Vec& U)
 	Vec X = U+E;
 	return safe_zone.with_inc(*incstate, X);
 }
-
+#endif
 
 /////////////////////////////////////////////////////////
 //
@@ -116,8 +130,8 @@ double twoway_join_query_state::query_func(const Vec& x)
 {
 	assert(x.size() == E.size());
 	auto x0 = std::begin(x);
-	auto x1 = x0 + E.size()/2;
-	auto x2 = x1 + E.size()/2;
+	auto x1 = x0 + x.size()/2;
+	auto x2 = x1 + x.size()/2;
 	return dot_est(proj(x0,x1), proj(x1,x2));
 }
 
@@ -126,17 +140,35 @@ void twoway_join_query_state::compute()
     Qest = query_func(E);
 
     if(Qest!=0.0) {
-            Tlow =  Qest - (beta-epsilon)*fabs(Qest)/(1.0+beta);
-            Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
+		Tlow =  Qest - (beta-epsilon)*fabs(Qest)/(1.0+beta);
+		Thigh = Qest + (beta-epsilon)*fabs(Qest)/(1.0-beta);
     }
     else {
-            Tlow = -1.0; Thigh=1.0;
+		Tlow = -1.0; Thigh=1.0;
     }
     safe_zone = std::move(twoway_join_agms_safezone(E, proj, Tlow, Thigh, true));
     zeta_E = safe_zone(E);
 }
 
+double twoway_join_query_state::zeta(const Vec& x)
+{
+	return safe_zone(x);
+}
 
+
+safezone_func_wrapper* twoway_join_query_state::safezone()
+{
+	return new std_safezone_func_wrapper<twoway_join_agms_safezone>(safe_zone, E.size(), E);
+}
+
+safezone_func_wrapper* twoway_join_query_state::radial_safezone()
+{
+	// IF EIKONAL
+	return new ball_safezone(this);
+}
+
+
+#if 0
 void* twoway_join_query_state::alloc_incstate() 
 {
 	return new twoway_join_agms_safezone::incremental_state;
@@ -146,11 +178,6 @@ void twoway_join_query_state::free_incstate(void* ptr)
 {
 	auto incstate = static_cast<twoway_join_agms_safezone::incremental_state*>(ptr);
 	delete incstate;
-}
-
-double twoway_join_query_state::zeta(const Vec& x)
-{
-	return safe_zone(x);
 }
 
 double twoway_join_query_state::compute_zeta(void* inc, const delta_vector& dU, const Vec& U)
@@ -167,5 +194,46 @@ double twoway_join_query_state::compute_zeta(void* inc, const Vec& U)
 	Vec X = U+E;
 	return safe_zone.with_inc(*incstate, X);
 }
+#endif
 
+
+/////////////////////////////////////////////////////////
+//
+//  ball_safezone
+//
+/////////////////////////////////////////////////////////
+
+
+
+void* ball_safezone::alloc_incstate()
+{
+	return new double;
+}
+
+void ball_safezone::free_incstate(void* ptr)
+{
+	delete static_cast<double*>(ptr);
+}
+
+double ball_safezone::compute_zeta(void* inc, const delta_vector& dU, const Vec& U) 
+{
+	double* incstate = static_cast<double*>(inc);
+	return zeta_E() - norm_L2_inc(*incstate, dU);
+}
+
+double ball_safezone::compute_zeta(void* inc, const Vec& U) 
+{
+	double* incstate = static_cast<double*>(inc);
+	return zeta_E() - norm_L2_with_inc(*incstate, U);
+}
+
+double ball_safezone::compute_zeta(const Vec& U) 
+{
+	return zeta_E() - norm_L2(U);
+}
+
+size_t ball_safezone::zeta_size() const
+{
+	return 1;
+}
 

@@ -37,8 +37,10 @@ struct network
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
 	continuous_query* Q;
-	network(const string& _name, continuous_query* Q);
-
+	protocol_config cfg;
+	network(const string& _name, continuous_query* Q, const protocol_config& c);
+	~network();
+	
 	void process_record();
 	void process_init();
 	void output_results();
@@ -60,12 +62,12 @@ struct coordinator : process
 	//
 	// protocol stuff
 	//
-    continuous_query* Q;   // continuous query
-    query_state* query; // current query state
- 
- 	size_t total_updates;	// number of stream updates received
+    continuous_query* Q;   		// continuous query
+    query_state* query; 		// current query state
+ 	safezone_func_wrapper* safe_zone; // the safe zone wrapper
+ 	size_t total_updates;		// number of stream updates received
 
-	size_t k;				// number of sites
+	size_t k;					// number of sites
 
 	// index the nodes
 	map<node_t*, size_t> node_index;
@@ -99,12 +101,12 @@ struct coordinator : process
 
 	// used during rebalancing
 
-	set<node_t*> B;			// initialized by local_violation(), 
+	set<node_t*> B;				// initialized by local_violation(), 
 								// updated by rebalancing algo
 
-	set<node_t*> Bcompl;	// complement of B, updated by rebalancing algo
+	set<node_t*> Bcompl;		// complement of B, updated by rebalancing algo
 
-	Vec Ubal;				// contains \sum_{i\in B} U_i
+	Vec Ubal;					// contains \sum_{i\in B} U_i
 	size_t Ubal_updates;		// Ubal updates
 
 	bool Ubal_admissible;		// contains zeta(Ubal)>0
@@ -189,31 +191,14 @@ struct node : local_site
 	// Remote methods
 	//
 
-	oneway reset(const safezone& newsz) { 
-		// reset the safezone object
-		szone = newsz;
+	// called at the start of a round
+	oneway reset(const safezone& newsz); 
 
-		// reset the drift vector
-		U = 0.0;
-		update_count = 0;
-		zeta = szone(U);
+	// transfer data to the coordinator
+	compressed_state get_drift();
 
-		// reset round statistics
-		round_local_updates = 0;
-	}
-
-
-	compressed_state get_drift() {
-		return compressed_state { U, update_count };
-	}
-
-	void set_drift(compressed_state newU) {
-		U = newU.vec;
-		update_count = newU.updates;
-		zeta = szone(U);
-		assert(zeta>0);
-	}
-
+	// set the drift vector (for rebalancing)
+	void set_drift(compressed_state newU);
 
 };
 

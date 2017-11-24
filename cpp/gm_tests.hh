@@ -34,7 +34,7 @@ public:
 			vector<stream_id> { 0 }, 
 			projection(5, 400), 0.5, qtype::SELFJOIN
 			);
-		fgm::network net("foo", Q);
+		fgm::network net("foo", Q, protocol_config());
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);

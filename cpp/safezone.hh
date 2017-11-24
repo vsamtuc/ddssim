@@ -2,84 +2,21 @@
 #define __SAFEZONE_HH__
 
 #include "agms.hh"
-#include "gm_szone.hh"
+#include "sz_quorum.hh"
+#include "sz_bilinear.hh"
+
 
 /**
 	This file contains computational code for defining admissible
-	regions, safe zone functions, distance functions, etc.
+	regions, safe zone functions, distance functions, for queries
+	on AGMS sketches
   */
+
 
 namespace gm { 
 
 using namespace hdv;
 using namespace agms;
-
-
-/**
-	A base class for safe zone functions, marking them
-	as valid or not. Invalid safe zones are e.g. not-initialized
-  */
-struct safezone_func
-{
-	bool isvalid;
-	safezone_func() : isvalid(true){}
-	safezone_func(bool v) : isvalid(v) {}
-};
-
-
-/**
-	Safezone for boolean quorum queries.
-
-	A \f$(n,k)\f$-quorum boolean function is the boolean function 
-	which is true if and only if \f$k\f$ or more of its
-	inputs are true. In particular:
-	* For \f$k=1\f$ this function is the logical OR.
-	* For \f$k=n\f$ it is the logical AND.
-	* For \f$k=(n+1)/2\f$, it is the majority function.
-
-	This implementation computes an expensive version of the
-	safe zone function. In particular, it preserves eikonality
-	and non-redundancy of the inputs. 
-
-	Because of its complexity, evaluating this function is expensive:
-	each invocation takes time \f$O(k\binom{l}{k-1})\f$ which can
-	be quite high (\f$l \leq n \f$ is the number of true components
-	in the original estimate vector, or, equivalently, the number
-	of positive elements of vector \f$zE\f$ passed at construction). 
-
-	Because it is so expensive for large \f$n\f$, a fast implementation
-	is also available. Its advantage is that it is quite efficient: 
-	each call takes \f$O(l)\f$ time.
-	Its drawback is that it is not eikonal in general.
-
-
-	@see quorum_safezone_fast
-  */
-struct quorum_safezone : safezone_func
-{
-	size_t n;	/// the number of inputs
-	size_t k;	/// the lower bound on true inputs
-	Index L;  	/// the legal inputs index from n to zetaE
-	Vec zetaE;	/// the reference vector's zetas, where zE >= 0.
-	bool eikonal = true; /// The eikonality flag
-
-	quorum_safezone();
-	quorum_safezone(const Vec& zE, size_t _k, bool _eik);
-
-
-	void prepare(const Vec& zE, size_t _k);
-	void set_eikonal(bool _eik) { eikonal = _eik; }
-
-
-	double func_eikonal(const Vec& zX);
-	double func_non_eikonal(const Vec& zX);
-
-	inline double operator()(const Vec& zX) {
-		return (eikonal) ? func_eikonal(zX) : func_non_eikonal(zX);
-	}
-
-};
-
 
 
 /**
@@ -100,7 +37,7 @@ struct quorum_safezone : safezone_func
 	values.
 
   */
-struct selfjoin_agms_safezone_upper_bound : safezone_func
+struct selfjoin_agms_safezone_upper_bound 
 {
 	double sqrt_T;		// threshold above
 	projection proj;
@@ -108,7 +45,7 @@ struct selfjoin_agms_safezone_upper_bound : safezone_func
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_upper_bound() : safezone_func(false) {}
+	selfjoin_agms_safezone_upper_bound() {}
 
 	template<typename Iter>
 	selfjoin_agms_safezone_upper_bound(const sketch_view<Iter>& E, double T, bool eikonal) 
@@ -155,7 +92,7 @@ struct selfjoin_agms_safezone_upper_bound : safezone_func
 	Note: if \f$ T\leq 0\f$, the function returns \f$+\infty \f$. 
 
   */
-struct selfjoin_agms_safezone_lower_bound : safezone_func
+struct selfjoin_agms_safezone_lower_bound
 {
 	sketch Ehat;		// normalized reference vector
 	double sqrt_T;			// threshold above
@@ -164,7 +101,7 @@ struct selfjoin_agms_safezone_lower_bound : safezone_func
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_lower_bound() : safezone_func(false) {}
+	selfjoin_agms_safezone_lower_bound() {}
 
 	template<typename Iter>
 	selfjoin_agms_safezone_lower_bound(const sketch_view<Iter>& E, double T, bool eikonal)
@@ -218,7 +155,7 @@ struct selfjoin_agms_safezone_lower_bound : safezone_func
 	@see selfjoin_agms_safezone_upper_bound
 	@see selfjoin_agms_safezone_lower_bound
  */
-struct selfjoin_agms_safezone : safezone_func
+struct selfjoin_agms_safezone 
 {
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
 	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
@@ -229,7 +166,7 @@ struct selfjoin_agms_safezone : safezone_func
 		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
 	};
 
-	selfjoin_agms_safezone() : safezone_func(false) {}
+	selfjoin_agms_safezone() {}
 
 	template <typename Iter>
 	selfjoin_agms_safezone(const sketch_view<Iter>& E, double Tlow, double Thigh, bool eikonal)
@@ -271,139 +208,6 @@ struct selfjoin_agms_safezone : safezone_func
  */
 
 
-/**
-	Return the nearest point to the hyperbola.
-
-	Given point \f$ (p,q) \f$, and \f$T \geq 0 \f$, 
-	this method returns a value \f$\xi\f$, such that the distance
-	to the curve \f$y(x) = \sqrt{x^2+T}\f$ is minimum.
-
-	The method used to find the root is classic bisection (aka binary search),
-	for finding the root of function
-	\f[  g(x) = 2 - p/x - q/y(x)  \f]
-
-	The accuracy \f$ \epsilon >0 \f$ is relative: if \f$x_r\f$ is returned, then
-	the actuall value will lie in
-	an interval of size \f$ x_r\cdot (1\pm \epsilon/2)\f$.
-
-	Accuracy is set to \f$\epsilon = 10^{-13}\f$ by default. This is close to the accuracy
-	of IEEE 754 `double`.
-
-	This method converges in about 40 iterations on average.
-  */
-double hyperbola_nearest_neighbor(double p, double q, double T, double epsilon=1.E-13 );
-
-
-/**
-	A safe zone for the problem \f$x^2 - y^2 \geq T\f$ in 2 dimensions.
-	
-	The reference point for this safezone is given as \f$(\xi, \psi)\f$, and
-	must satisfy the condition \f$\xi^2 - \psi^2 \geq T\f$. If this is not the case,
-	an \c std::invalid_argument is thrown.
-
-	When \f$T=0\f$, there is ambiguity if \f$ \xi = 0\f$: there are two candidate safe
-	zones, one is \f$ Z_{+} =  \{ x\geq |y| \} \f$ and the other is \f$ Z_{-} = \{ x \leq -|y| \} \f$. In
-	this case, the function will select zone \f$ Z_{+} \f$.
-
-  */
-struct bilinear_2d_safe_zone : safezone_func
-{
-	double epsilon = 1.E-13; 	///< accuracy for hyperbola distance
-	double T;					///< threshold
-	int xihat;					///< cached for case T>0
-	double u, v;				///< cached for case T<=0
-
-	/**
-		\brief Default construct an invalid safe zone
-	  */
-	bilinear_2d_safe_zone();
-
-	/**
-		\brief Construct a valid safe zone.
-
-		@param xi the x-coordinate of reference point \f$(\xi,\psi)\f$.
-		@param psi the y-coordinate of reference point \f$(\xi,\psi)\f$.
-		@param _T  the safe zone threshold
-	  */
-	bilinear_2d_safe_zone(double xi, double psi, double _T);
-
-	/**
-		\brief The value of the safe zone function at \f$(x,y)\f$.
-	  */
-	double operator()(double x, double y) const;
-};
-
-
-
-/**
-	An eikonal safe zone function for the inner product of two vectors.
-
-	The function computes the safezone for a constraint of the form
-	\f[   X_1 X_2 \geq T  \f]
-	or
-	\f[   X_1 X_2 \leq T  \f]
-
-	The incremental state is of size \f$O(n)\f$, where \f$n\f$ is the dimension
-	of the vectors. The complexity of an incremental computation is \f$O(d)\f$ where
-	\f$d \f$ is the size of the delta vector. 
-
-	Each evaluation calls function \c hyperbola_nearest_neighbor at most once.
-  */
-struct inner_product_safe_zone
-{
-	bool geq;
-	double T;
-	Vec xihat;
-
-	bilinear_2d_safe_zone sqdiff;
-
-	struct incremental_state {
-		double x2;
-		double y2;
-		Vec x,y;
-	};
-
-	/**
-		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
-		for condition 
-		\f[	X_1 X_2 \geq T \f]
-		if \c _geq is \c true,
-		or
-		\f[	X_1 X_2 \leq T \f]
-		if \c _geq is \c false.
-
-		@param E the reference point
-		@param _geq a boolean, designating an upper (when false) or lower (when true) bound
-		@param T the threshold
-	  */
-	inner_product_safe_zone(const Vec& E, bool _geq, double _T);
-
-	/**
-		\brief From-scratch computation of the function.
-
-		The complexity is \f$ O(n) \f$.
-	  */
-	double operator()(const Vec& X) const;
-
-	/**
-		\brief From-scratch computation of the function, with initialization of incremental state.
-
-		The complexity is \f$ O(n) \f$. The size of the incremental state is also \f$ O(n) \f$.
-	  */
-	double with_inc(incremental_state& inc, const Vec& X) const;
-
-
-	/**
-		\brief Incremental computation of the function.
-
-		The complexity is \f$ O(d) \f$, where \f$d\f$ is the size of \c dX.
-	  */
-	double inc(incremental_state& inc, const delta_vector& dX) const;
-
-
-};
-
-
 
 /**
 	A safe zone function for condition Tlow <= dot_est(X,Y) <= Thigh.
@@ -419,7 +223,7 @@ struct inner_product_safe_zone
     The safe zone is defined per the algorithms of [Garofalakis and Samoladas, 
     ICDT 2017].
   */
-struct twoway_join_agms_safezone : safezone_func
+struct twoway_join_agms_safezone 
 {
 	twoway_join_agms_safezone();
 

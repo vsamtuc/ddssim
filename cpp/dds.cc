@@ -17,6 +17,18 @@ ostream& dds::operator<<(ostream& s, dds_record const & rec)
 }
 
 
+
+named::named() 
+	: n() 
+{ }
+
+named::named(const std::string& _n) 
+	: n(_n) 
+{ }
+
+
+
+
 std::string named::anon(named const * ptr)
 {
 	using namespace std;

@@ -24,6 +24,34 @@ using binc::elements_of;
 	node
 *********************************************/
 
+oneway node::reset(const safezone& newsz) 
+{
+	// reset the safezone object
+	szone = newsz;
+
+	// reset the drift vector
+	U = 0.0;
+	update_count = 0;
+	zeta = szone(U);
+
+	// reset round statistics
+	round_local_updates = 0;
+}
+
+
+compressed_state node::get_drift() 
+{
+	return compressed_state { U, update_count };
+}
+
+void node::set_drift(compressed_state newU) 
+{
+	U = newU.vec;
+	update_count = newU.updates;
+	zeta = szone(U);
+	assert(zeta>0);
+}
+
 
 void node::update_stream() 
 {
@@ -61,7 +89,7 @@ void coordinator::start_round()
 
 	for(auto n : net()->sites) {
 		sz_sent ++;
-		proxy[n].reset(safezone(query));
+		proxy[n].reset(safezone(safe_zone));
 	}
 
 	round_total_B = 0;
@@ -357,11 +385,13 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 	Ubal(0.0, Q->state_vector_size()),
 	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
 {  
+	safe_zone = query->safezone();
 }
 
 
 coordinator::~coordinator()
 {
+	delete safe_zone;
 	delete query;
 }
 
@@ -372,9 +402,8 @@ coordinator::~coordinator()
 ********************************************/
 
 
-
-sgm::network::network(const string& _name, continuous_query* _Q)
-: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
+sgm::network::network(const string& _name, continuous_query* _Q, const protocol_config& _cfg)
+: 	star_network_t(CTX.metadata().source_ids()), Q(_Q), cfg(_cfg)
 {
 	set_name(_name);
 	this->set_protocol_name("GM");
@@ -383,15 +412,19 @@ sgm::network::network(const string& _name, continuous_query* _Q)
 
 	on(START_STREAM, [&]() { 
 		process_init(); 
-	} );
+	});
 	on(START_RECORD, [&]() { 
 		process_record(); 
-	} );
+	});
 	on(RESULTS, [&](){ 
 		output_results();
 	});
 }
 
+sgm::network::~network()
+{
+	delete Q;
+}
 
 void sgm::network::process_record()
 {

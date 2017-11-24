@@ -2,8 +2,8 @@
 #define __GMUTIL_HH__
 
 /**
-	\file Utilities common to Geometric method protocols
-
+	\file Protocol-related classes common to all geometric method 
+	protocols.
  */
 
 #include "dds.hh"
@@ -178,13 +178,22 @@ struct continuous_query
 continuous_query* create_continuous_query(const Json::Value& js);
 
 
+struct protocol_config
+{
+	bool use_cost_model = true;
+};
+
+protocol_config get_protocol_config(const Json::Value& js);
+
+
 template <class GMProto>
 component* p_component_type<GMProto>::create(const Json::Value& js) 
 {
 	string name = js["name"].asString();
 	continuous_query* cq = create_continuous_query(js);
+	protocol_config cfg = get_protocol_config(js);
 
-	return new GMProto(name, cq);
+	return new GMProto(name, cq, cfg);
 }
 
 

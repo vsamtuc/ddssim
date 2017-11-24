@@ -1,7 +1,7 @@
 {
     "components" : [
 		{
-			"name": "agm",
+			"name": "fgm",
 		    "type": "FGM",
 		    "query": "SELFJOIN",
 		    "stream": 0,
@@ -11,6 +11,19 @@
 				"epsilon": 0.05
 		    },
 		    "beta": 0.1
+		},
+		{
+			"name": "fgm_nocm",
+		    "type": "FGM",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1,
+		    "use_cost_model": false
 		},
 		{
 			"name": "gm",			

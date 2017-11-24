@@ -141,18 +141,18 @@ ostream& operator<<(ostream& s, dds_record const & rec);
   */
 class named
 {
-	mutable std::string n;
+	std::string n;
 public:
 	/// Make a name from a pointer
 	static std::string anon(named const * ptr);
 
-	named() : n() { }
-	named(const std::string& _n) : n(_n) {}
-	virtual ~named() {}
+	named();
+	named(const std::string& _n);
+
 	inline void set_name(const std::string& _name) { n=_name; }
-	inline const std::string& name() const { 
+	inline std::string name() const { 
 		if(n.empty()) 
-			n = anon(this);
+			return anon(this);
 		return n; 
 	}
 };

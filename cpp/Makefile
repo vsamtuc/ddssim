@@ -19,7 +19,7 @@ HDF5_LIB:= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhd
 
 INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
 LIB=  $(HDF5_LIB) -lm -ljsoncpp  #-lboost_filesystem -lboost_system
-CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
+CXXFLAGS= -Wall -std=gnu++17 $(INCLUDE) # -fPIC
 
 DEBUG_FLAGS=  -g3 -Og
 OPT_FLAGS= -g3 -Ofast #-DNDEBUG
@@ -36,7 +36,8 @@ $(error Unknown mode $(MODE))
 endif
 
 ifdef GPROF
-CXXFLAGS += -pg
+CXXFLAGS += -pg -no-pie
+LDFLAGS += -pg  -no-pie
 endif
 
 
@@ -47,6 +48,7 @@ endif
 DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	cfgfile.cc dsarch.cc \
 	accurate.cc query.cc results.cc\
+	sz_quorum.cc sz_bilinear.cc\
 	tods.cc  safezone.cc gm_proto.cc gm_szone.cc gm_query.cc fgm.cc sgm.cc 
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
@@ -79,7 +81,7 @@ libdds.a: $(DDS_OBJ)
 	ranlib $@
 
 dssim: dssim.o libdds.a
-	$(CXX) -o $@ $< -L. -ldds $(LIB)
+	$(CXX) $(LDFLAGS) -o $@ $< -L. -ldds $(LIB)
 
 dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
