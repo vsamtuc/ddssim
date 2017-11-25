@@ -3,11 +3,75 @@
 #include <boost/polymorphic_pointer_cast.hpp>
 
 #include "method.hh"
-//#include "mathlib.hh"
 
 using namespace dds;
 
 context dds::CTX;
+
+std::map<std::string, basic_component_type*>& basic_component_type::ctype_map()
+{
+	static std::map<std::string, basic_component_type*> foo;
+	return foo;
+}
+
+basic_component_type::basic_component_type(const string& _name) 
+	: named(_name) 
+{
+	if(ctype_map().count(_name)>0)
+		throw std::logic_error("Component type called `"+_name+"' already exists");
+	ctype_map()[_name] = this;
+}
+
+basic_component_type::basic_component_type(const std::type_info& ti)
+	: basic_component_type(boost::core::demangle(ti.name()))
+{	}
+
+const std::map<string, basic_component_type*>& basic_component_type::component_types()
+{
+	return ctype_map();
+}
+
+set<string> basic_component_type::aliases(basic_component_type* ctype)
+{
+	set<string> _aliases;
+	for(auto&& entry : ctype_map()) 
+	{
+		if(entry.second == ctype)
+			_aliases.insert(entry.first);
+	}
+	return _aliases;
+}
+
+basic_component_type::~basic_component_type()
+{
+	// collect all aliases of this type
+	set<string> myaliases = aliases(this);
+	// erase aliases
+	for(auto n : myaliases)
+		ctype_map().erase(n);
+}
+
+basic_component_type* basic_component_type::get_component_type(const string& _name)
+{
+	return ctype_map().at(_name);
+}
+
+basic_component_type* basic_component_type::get_component_type(const type_info& ti)
+{
+	return get_component_type(boost::core::demangle(ti.name()));
+}
+
+
+component::component()
+{ }
+
+component::component(const string& _name)
+	: named(_name)
+{ }
+
+component::~component()
+{ }
+
 
 basic_factory::~basic_factory()
 {

@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstddef>
 #include <algorithm>
-#include <boost/core/demangle.hpp>
 
 #include "method.hh"
 #include "output.hh"
@@ -108,19 +107,28 @@ void basic_column::set(const string&)
 //
 //-------------------------------------
 
-static std::unordered_map<string, output_table*> __table_registry;
-static std::unordered_set<output_table*> __all_tables;
+static std::unordered_map<string, output_table*>& __table_registry()
+{
+	static std::unordered_map<string, output_table*> foo;
+	return foo;
+}
+
+static std::unordered_set<output_table*>& __all_tables()
+{
+	static std::unordered_set<output_table*> foo;
+	return foo;
+}
 
 output_table* output_table::get(const string& name)
 {
-	auto iter = __table_registry.find(name);
-	return (iter!=__table_registry.end()) ? iter->second : nullptr;
+	auto iter = __table_registry().find(name);
+	return (iter!=__table_registry().end()) ? iter->second : nullptr;
 }
 
 
-const std::unordered_set<output_table*> all()
+const output_table::registry& output_table::all()
 {
-	return __all_tables;
+	return __all_tables();
 }
 
 
@@ -129,10 +137,10 @@ output_table::output_table(const string& _name, table_flavor _f)
 {
 	if(_name.empty())
 		throw std::runtime_error("Table cannot have empty name");
-	if(__table_registry.count(_name)>0)
+	if(__table_registry().count(_name)>0)
 		throw std::runtime_error("A table of name `"+_name+"' is already registered");
-	__table_registry[_name] = this;
-	__all_tables.insert(this);	
+	__table_registry()[_name] = this;
+	__all_tables().insert(this);	
 }
 
 
@@ -143,8 +151,8 @@ output_table::~output_table()
 		if(c) c->_table = 0;
 	}
 	output_binding::unbind_all(files);
-	__table_registry.erase(this->name());
-	__all_tables.erase(this);
+	__table_registry().erase(this->name());
+	__all_tables().erase(this);
 }
 
 
@@ -381,7 +389,7 @@ formatter* formatter::create(output_c_file* f, output_table& t, text_format fmt)
 	case text_format::csvrel:
 		return new csvrel_formatter(f,t);
 	default:
-		assert(0);
+		throw std::runtime_error("Unhandled text format");
 	}
 }
 
@@ -415,6 +423,7 @@ void output_c_file::open(FILE* _file, bool _owner)
 
 void output_c_file::close()
 {
+	// handle the stream
 	if((!stream)) return;
 	if(owner) {
 		if(fclose(stream)!=0)
@@ -450,6 +459,9 @@ output_c_file::output_c_file(const string& _fpath, open_mode mode, text_format f
 output_c_file::~output_c_file()
 {
 	close();
+	// remove any open formatters
+	for(auto&& f : fmtr)
+		formatter::destroy(f.second);
 }
 
 
@@ -684,6 +696,7 @@ void output_hdf5::table_handler::append_row()
 	// Make the image of an object.
 	// This need not be aligned as far as I can tell!!!!!
 	char buffer[size];
+	memset(buffer,0,size); // this should silence valgrind
 	make_row(buffer);
 
 	/*
@@ -725,17 +738,16 @@ output_hdf5::table_handler::~table_handler()
  *
  */
 
-
 output_hdf5::~output_hdf5()
 {
-	H5Idec_ref(locid);
+	H5_CHECK(H5Idec_ref(locid));
 }
 
 
-output_hdf5::output_hdf5(int _locid, open_mode _mode)
+output_hdf5::output_hdf5(long int _locid, open_mode _mode)
 : locid(_locid), mode(_mode)
 {
-	H5Iinc_ref(locid);	
+	H5_CHECK(H5Iinc_ref(locid));
 }
 
 output_hdf5::output_hdf5(const H5::Group& _group, open_mode _mode)
@@ -779,8 +791,11 @@ void output_hdf5::output_prolog(output_table& table)
 		// check if an object by the given name exists in the loc
 		if(hdf5_exists(locid, table.name())) {
 			DataSet dset = loc.openDataSet(table.name());
-			// ok, it exists, just check compatibility
-			if(! (th->type == DataType(H5Dget_type(dset.getId()))))
+
+			// ok, the dataset exists, just check compatibility
+			hid_t dset_type = H5_CHECK(H5Dget_type(dset.getId()));
+
+			if(! (th->type == DataType(dset_type)))
 				throw std::runtime_error("On appending to HDF table,"\
 					" types are not compatible");
 
@@ -828,11 +843,6 @@ void output_hdf5::output_epilog(output_table& table)
 //
 //-------------------------------------
 
-
-basic_enum_repr::basic_enum_repr(const type_info& ti)
-{
-	set_name(boost::core::demangle(ti.name()));
-}
 
 
 enum_repr<text_format> dds::text_format_repr (

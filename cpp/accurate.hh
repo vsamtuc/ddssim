@@ -9,9 +9,10 @@
 
 #include "dds.hh"
 #include "method.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "results.hh"
 #include "agms.hh"
+#include "query.hh"
 
 namespace dds {
 
@@ -22,8 +23,9 @@ using std::cout;
 using std::endl;
 
 using namespace std::string_literals;
+using namespace hdv;
 
-class data_source_statistics : public reactive
+class data_source_statistics : public component
 {
 	set<stream_id> sids;
 	set<source_id> hids;
@@ -54,10 +56,43 @@ class data_source_statistics : public reactive
 public:
 	data_source_statistics(); 
 	~data_source_statistics();
+
+	static dds::component_type<data_source_statistics> comp_type; 
 };
 
 
 using std::map;
+
+
+/*************************************
+ *
+ *  Query Estimation
+ *
+ *************************************/
+
+
+class query_method : public component
+{
+protected:
+	basic_stream_query Q;
+	double curest = 0.0;
+
+	column_ref<double> series;
+public:
+	query_method(const string& _name, const basic_stream_query& _Q) 
+	: 	component(_name),
+		Q(_Q), series {_name+".qest", "%.0f", curest}
+	{
+		set_name(_name);
+		CTX.timeseries.add(series);
+	}
+
+	const basic_stream_query& query() const { return Q; }
+
+	inline double current_estimate() const { return curest; }
+};
+
+
 
 /*************************************
  *
@@ -65,30 +100,9 @@ using std::map;
  *
  *************************************/
 
-template <qtype QType>
-class exact_method : public reactive
-{
-public:
-	typedef typed_query<QType> query_type;
-protected:
-	query_type Q;
-	double curest = 0.0;
-
-	column_ref<double> series { "hist_"s+repr(Q), "%.0f", curest };
-public:
-	exact_method(query_type _Q) 
-	: Q(_Q) //, series("hist_"s+repr(Q), string("%.0f").c_str())
-	{
-		CTX.timeseries.add(series);
-	}
-
-	const query_type& query() const { return Q; }
-
-	inline double current_estimate() const { return curest; }
-};
 
 
-class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
+class selfjoin_exact_method : public query_method
 {
 	frequency_vector<key_type> histogram;
 
@@ -96,11 +110,12 @@ class selfjoin_exact_method : public exact_method<qtype::SELFJOIN>
 	void process_warmup(const buffered_dataset& wset);
 	void finish();
 public:
-	selfjoin_exact_method(stream_id sid);
+	selfjoin_exact_method(const string& n, stream_id sid);
+
 };
 
 
-class twoway_join_exact_method : public exact_method<qtype::JOIN>
+class twoway_join_exact_method : public query_method
 {
 	typedef frequency_vector<key_type> histogram;
 	histogram hist1;
@@ -113,7 +128,8 @@ class twoway_join_exact_method : public exact_method<qtype::JOIN>
 	void process_record(const dds_record& rec);
 	void finish();
 public:
-	twoway_join_exact_method(stream_id s1, stream_id s2);
+	twoway_join_exact_method(const string& n, stream_id s1, stream_id s2);
+
 };
 
 
@@ -142,49 +158,11 @@ extern factory<agms_sketch_updater, stream_id, agms::projection>
 
 
 
-/*
-	Base for AGMS query estimators
- */
-template <qtype QType>
-class agms_method : public reactive
-{
-public:
-	typedef typed_query<QType> query_type;
-	typedef typename agms::index_type index_type;
-	typedef typename agms::depth_type depth_type;
-
-	static string make_name(query_type q) 
-	{
-		using std::ostringstream;
-		ostringstream s;
-		s << "agms_" << repr(q);
-		return s.str();
-	}
-
-protected:
-	query_type Q;
-	double curest = 0.0;
-
-public:
-
-	column_ref<double> series { make_name(Q), "%.0f", curest };
-
-	agms_method(query_type _Q) 
-	: Q(_Q)
-	{
-		CTX.timeseries.add(series);
-	}
-
-	const query_type& query() const { return Q; }
-
-	inline double current_estimate() const { return curest; }
-};
-
 
 /*
 	Self-join query estimator. 
  */
-class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
+class selfjoin_agms_method : public query_method
 {
 	agms::isketch* isk;
 	Vec incstate;
@@ -193,15 +171,16 @@ class selfjoin_agms_method : public agms_method<qtype::SELFJOIN>
 	void initialize();
 	void process_record();
 public:
-	selfjoin_agms_method(stream_id sid, const agms::projection& proj);
-	selfjoin_agms_method(stream_id sid, agms::depth_type D, agms::index_type L);
+	selfjoin_agms_method(const string& n, stream_id sid, const agms::projection& proj);
+	selfjoin_agms_method(const string& n, stream_id sid, agms::depth_type D, size_t L);
+
 };
 
 
 /*
 	Join query estimator.
  */
-class twoway_join_agms_method : public agms_method<qtype::JOIN>
+class twoway_join_agms_method : public query_method
 {
 	agms::isketch *isk1, *isk2;
 	Vec incstate;
@@ -211,10 +190,14 @@ class twoway_join_agms_method : public agms_method<qtype::JOIN>
 	void initialize();
 	void process_record();
 public:
-	twoway_join_agms_method(stream_id s1, stream_id s2, const agms::projection& proj);
-	twoway_join_agms_method(stream_id s1, stream_id s2, agms::depth_type D, agms::index_type L);
+	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, const agms::projection& proj);
+	twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, agms::depth_type D, size_t L);
+
 };
 
+
+extern component_type<query_method> exact_query_comptype;
+extern component_type<query_method> agms_query_comptype;
 
 
 

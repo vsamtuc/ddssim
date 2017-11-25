@@ -82,13 +82,13 @@ inline int64_t hash31(int64_t a, int64_t b, int64_t x) {
 	return ((result>>31)^result) & 2147483647ll;
 }
 
-long long hash_family::hash(depth_type d, key_type x) const {
+size_t hash_family::hash(depth_type d, size_t x) const {
 	assert(d<D);
 	return hash31(F[0][d], F[1][d], x);
 }
 
 /// Return a 4-wise independent bit
-bool hash_family::fourwise(depth_type d, key_type x) const {
+bool hash_family::fourwise(depth_type d, size_t x) const {
 	return 
 		hash31(hash31(hash31(x,F[2][d],F[3][d]), x, F[4][d]),x,F[5][d]) 
 		& (1<<15);
@@ -96,7 +96,7 @@ bool hash_family::fourwise(depth_type d, key_type x) const {
 
 
 
-void projection::update_index(key_type key, Index& idx) const
+void projection::update_index(size_t key, Index& idx) const
 {
 	assert(idx.size()==depth());
 	size_t stride = 0;
@@ -106,67 +106,13 @@ void projection::update_index(key_type key, Index& idx) const
 	}
 }
 
-void projection::update_mask(key_type key, Mask& mask) const 
+void projection::update_mask(size_t key, Mask& mask) const 
 {
 	assert(mask.size()==depth());
 	for(size_t d=0; d<depth(); d++) {
 		mask[d] = hf->fourwise(d, key);
 	}		
 }
-
-
-
-
-void sketch::update(key_type key, double freq)
-{
-	hash_family* h = proj.hashf();
-	size_t off = 0;
-	for(size_t d=0; d<depth(); d++) {
-		size_t off2 = h->hash(d, key) % width();
-		if(h->fourwise(d, key))
-			(*this)[off+off2] += freq;
-		else
-			(*this)[off+off2] -= freq;
-		off += width();
-	}
-}
-
-
-Vec agms::dot_estvec(const sketch& s1, const sketch& s2)
-{
-	assert(s1.compatible(s2));
-	const depth_type D = s1.depth();
-	Vec ret(D);
-
-	for(size_t d=0;d<D;d++)
-		ret[d] = std::inner_product(s1.row_begin(d), s1.row_end(d),
-			s2.row_begin(d), 0.0);
-	return ret;
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds1, const sketch& s2)
-{
-	oldstate += (ds1.xnew - ds1.xold)*s2[ds1.index];
-	return oldstate;
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const sketch& s1, const delta_vector& ds2)
-{
-	return dot_estvec_inc(oldstate, ds2, s1);
-}
-
-
-Vec& agms::dot_estvec_inc(Vec& oldstate, const delta_vector& ds)
-{
-	oldstate += ds.xnew*ds.xnew - ds.xold*ds.xold;
-	return oldstate;
-}
-
-
-
-
 
 
 size_t std::hash<projection>::operator()( const projection& p) const
@@ -180,15 +126,6 @@ size_t std::hash<projection>::operator()( const projection& p) const
 	return seed;
 }
 
-
-isketch::isketch(const projection& _proj)
-	: 	sketch(_proj), 
-		delta(proj.depth()),
-		mask(proj.depth())
-	{ 	}
-
-
-
 template <typename T>
 void print_vec(const string& name, const T& a) 
 {
@@ -200,7 +137,42 @@ void print_vec(const string& name, const T& a)
 }
 
 
-void isketch::update(key_type key, double freq)
+
+inc_sketch_updater::inc_sketch_updater(sketch& _sk)
+	: 	sk(_sk), 
+		delta(_sk.proj.depth()),
+		mask(_sk.proj.depth())
+	{ 	}
+
+
+void inc_sketch_updater::update(size_t key, double freq)
+{
+	sk.proj.update_index(key, delta.index);
+	sk.proj.update_mask(key, mask);
+	
+	delta.xold = sk[delta.index];
+	for(size_t d=0; d<mask.size(); d++) {
+		if(mask[d])
+			delta.xnew[d] = delta.xold[d] + freq;
+		else
+			delta.xnew[d] = delta.xold[d] - freq;
+	}
+	
+	sk[delta.index] = delta.xnew;
+}
+
+
+
+isketch::isketch(const projection& _proj)
+	: 	sketch(_proj), 
+		delta(proj.depth()),
+		mask(proj.depth())
+	{ 	}
+
+
+
+
+void isketch::update(size_t key, double freq)
 {
 	proj.update_index(key, delta.index);
 	proj.update_mask(key, mask);
@@ -215,4 +187,3 @@ void isketch::update(key_type key, double freq)
 	
 	(*this)[delta.index] = delta.xnew;
 }
-

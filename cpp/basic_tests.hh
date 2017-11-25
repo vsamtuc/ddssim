@@ -18,9 +18,10 @@
 
 #include "dds.hh"
 #include "output.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "binc.hh"
 #include "callbacks.hh"
+#include "query.hh"
 
 #include <cxxtest/TestSuite.h>
 
@@ -29,6 +30,8 @@ using namespace std;
 using namespace dds;
 using namespace binc;
 using namespace Simple;
+using namespace hdv;
+
 
 
 class MiscTestSuite : public CxxTest::TestSuite
@@ -150,8 +153,8 @@ public:
 
 	void test_query()
 	{
-		TS_ASSERT( self_join(3).type == qtype::SELFJOIN );
-		TS_ASSERT_EQUALS( self_join(3).param , 3 );
+		TS_ASSERT( self_join(3).type() == qtype::SELFJOIN );
+		TS_ASSERT_EQUALS( self_join(3).operand(0) , 3 );
 
 		auto q = self_join(2);
 		TS_ASSERT( q == self_join(2) );
@@ -161,7 +164,7 @@ public:
 		TS_ASSERT( join(1,2)==join(1,2) );
 		TS_ASSERT( join(1,2)!=join(2,1) );
 
-		q.param = 1;
+		q.set_operands({1});
 		TS_ASSERT( q != self_join(2) );
 		TS_ASSERT( q == self_join(1) );
 	}

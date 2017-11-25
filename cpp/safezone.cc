@@ -1,121 +1,12 @@
 
+#include "binc.hh"
 #include "safezone.hh"
 
-
-using namespace dds;
-
-
-/////////////////////////////////////////////////////////
-//
-//  quorum_safezone
-//
-/////////////////////////////////////////////////////////
-
-quorum_safezone::quorum_safezone() 
-: safezone_base(false) { }
-
-quorum_safezone::quorum_safezone(const Vec& zE, size_t _k) 
-{
-	prepare(zE, _k);
-}
-
-void quorum_safezone::prepare(const Vec& zE, size_t _k) 
-{
-	n = zE.size();
-	k = _k;
-
-	// count legal inputs
-	size_t Legal[n];
-	size_t pos = 0;
-	for(size_t i=0; i<n; i++)
-		if(zE[i]>0) Legal[pos++] = i;
-
-	// create the index and the other matrices
-	Index Ltmp(Legal, pos);
-	Ltmp.swap(L);
-	zetaE.resize(L.size());
-	zetaE = zE[L];
-
-	assert(1<=k && k<=n);
-	if(L.size()<k)
-		throw std::length_error("The reference vector is non-admissible");
-}
+using namespace gm;
+using namespace hdv;
+using namespace binc;
 
 
-/*
-	Helper to compute sum(zEzX[I])/sqrt(sum(zEzE[I]^2))
- */
-inline static double zeta_I(size_t *I, size_t m, const Vec& zEzX, const Vec& zEzE)
-{
-	double num = 0.0;
-	double denom = 0.0;
-	for(size_t i=0; i<m; i++) {
-		num += zEzX[I[i]];
-		denom += zEzE[I[i]];
-	}
-	return num/sqrt(denom);
-}
-
-/*
-	Helper to iterate over all strictly increasing m-long
-	sequences over [0:l)
-  */
-inline static bool next_I(size_t *I, size_t m, size_t l) 
-{
-	for(size_t i=1; i<=m; i++) {
-		if(I[m-i] < l-i) {
-			I[m-i]++;
-			for(size_t j=1;j<i;j++) 
-				I[m-i+j] = I[m-i]+j;
-			return true;
-		}
-	}
-	return false;
-}
-
-
-double quorum_safezone::operator()(const Vec& zX) 
-{
-	// precompute  zeta_i(E)*zeta_i(X) for all i\in L
-	Vec zEzX = zetaE;
-	zEzX *= zX[L];
-
-	// precompute zeta_i(E)^2
-	Vec zE2 = zetaE*zetaE;
-
-	size_t l = L.size();
-	size_t m = L.size()-k+1;
-
-	//
-	// Each clause corresponds to an m-size subset I of [0:l).
-	// The goal is to find the subset I where
-	//   (\sum_i\in I  zXzE[i])  /  sqrt(\sum_i zE2) = zeta_I(I)
-	// In lieu of a smart heuristic, this is now done exhaustively.
-	//
-
-	size_t I[m]; // holds the indices to the current m-set
-	std::iota(I, I+m, 0);  // initialized to (0,...,0)
-
-	// iteration is done with the help of next_I, which increments I
-
-	double zinf = zeta_I(I, m, zEzX, zE2);
-	while(next_I(I, m, l)) {
-		double zI = zeta_I(I, m, zEzX, zE2);
-		zinf = std::min(zI, zinf);
-	}
-
-	return zinf;
-}
-
-
-
-double quorum_safezone_fast::operator()(const Vec& zX) 
-{
-	Vec zEzX = zetaE;
-	zEzX *= zX[L];
-	std::nth_element(begin(zEzX), begin(zEzX)+(L.size()-k), end(zEzX));
-	return std::accumulate(begin(zEzX), begin(zEzX)+(L.size()-k+1), 0.0);
-}
 
 
 /////////////////////////////////////////////////////////
@@ -127,23 +18,16 @@ double quorum_safezone_fast::operator()(const Vec& zX)
 /////////////////////////////////////////////////////////
 
 
-selfjoin_agms_safezone_upper_bound::selfjoin_agms_safezone_upper_bound(const sketch& E, double T)
-: 	sqrt_T(sqrt(T)), Median()
-{ 
-	Vec dest = sqrt(dot_estvec(E));
-	Median.prepare(sqrt_T - dest , (E.depth()+1)/2) ;
-}
 
-
-double selfjoin_agms_safezone_upper_bound::operator()(const sketch& X) 
+double selfjoin_agms_safezone_upper_bound::operator()(const Vec& X) 
 {
-	Vec z = sqrt_T - sqrt(dot_estvec(X));
+	Vec z = sqrt_T - sqrt(dot_estvec(proj(X)));
 	return Median(z);
 }
 
-double selfjoin_agms_safezone_upper_bound::with_inc(incremental_state& incstate, const sketch& X) 
+double selfjoin_agms_safezone_upper_bound::with_inc(incremental_state& incstate, const Vec& X) 
 {
-	incstate = dot_estvec(X);
+	incstate = dot_estvec(proj(X));
 	Vec z = sqrt_T - sqrt(incstate);
 	return Median(z);
 }
@@ -156,49 +40,18 @@ double selfjoin_agms_safezone_upper_bound::inc(incremental_state& incstate, cons
 }
 
 
-selfjoin_agms_safezone_lower_bound::selfjoin_agms_safezone_lower_bound(const sketch& E, double T)
-: 	Ehat(E), sqrt_T(sqrt(T))
-{ 
-	assert(T>=0.0);   // T must be positive
 
-	//
-	//  If T == 0.0, the function returns +inf
-	//
-
-	if(T>0.0) {
-
-		Vec dest = sqrt(dot_estvec(E));
-		Median.prepare( dest - sqrt_T, (E.depth()+1)/2);
-
-		//
-		// Normalize E: divide each row  E_i by ||E_i||
-		//
-		size_t L = E.width();
-		for(size_t d=0; d<E.depth(); d++) {
-			if(dest[d]>0.0)  {
-				// Note: this is an aliased assignment, but should
-				// be ok, because it is pointwise aliased!
-				Vec tmp = Ehat[slice(d*L,L,1)];
-				Ehat[slice(d*L,L,1)] = tmp/dest[d];
-			}
-			// else, if dest[d]==0, then Ehat[slice(d)] == 0! leave it
-		}
-
-	}
-
-}
-
-double selfjoin_agms_safezone_lower_bound::operator()(const sketch& X) 
+double selfjoin_agms_safezone_lower_bound::operator()(const Vec& X) 
 {
 	if(sqrt_T==0.0) return INFINITY;
-	Vec z = dot_estvec(X,Ehat) - sqrt_T ;
+	Vec z = dot_estvec(Ehat.proj(X),Ehat) - sqrt_T ;
 	return Median(z);
 }
 
-double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const sketch& X)
+double selfjoin_agms_safezone_lower_bound::with_inc(incremental_state& incstate, const Vec& X)
 {
 	if(sqrt_T==0.0) return INFINITY;
-	incstate = dot_estvec(X,Ehat);
+	incstate = dot_estvec(Ehat.proj(X),Ehat);
 	Vec z = incstate - sqrt_T;
 	return Median(z);
 }
@@ -212,24 +65,13 @@ double selfjoin_agms_safezone_lower_bound::inc(incremental_state& incstate, cons
 }
 
 
-selfjoin_agms_safezone::selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh)
-: 	lower_bound(E, Tlow),
-	upper_bound(E, Thigh)
-{
-	assert(Tlow < Thigh);
-}
-
-selfjoin_agms_safezone::selfjoin_agms_safezone(selfjoin_query& q) 
-:  selfjoin_agms_safezone(q.E, q.Tlow, q.Thigh)
-{ }
-
 
 // from-scratch computation
-double selfjoin_agms_safezone::operator()(const sketch& X) 
+double selfjoin_agms_safezone::operator()(const Vec& X) 
 {
 	return min(lower_bound(X), upper_bound(X));
 }
-double selfjoin_agms_safezone::operator()(const sketch& X, double& zeta_l, double& zeta_u) 
+double selfjoin_agms_safezone::operator()(const Vec& X, double& zeta_l, double& zeta_u) 
 {
 	zeta_l = lower_bound(X);
 	zeta_u = upper_bound(X);
@@ -237,12 +79,12 @@ double selfjoin_agms_safezone::operator()(const sketch& X, double& zeta_l, doubl
 }
 
 
-double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X)
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const Vec& X)
 {
 	return min(lower_bound.with_inc(incstate.lower, X), 
 		upper_bound.with_inc(incstate.upper, X));
 }
-double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const sketch& X,
+double selfjoin_agms_safezone::with_inc(incremental_state& incstate, const Vec& X,
 					double& zeta_l, double& zeta_u)
 {
 	return min( (zeta_l = lower_bound.with_inc(incstate.lower, X)), 
@@ -262,120 +104,162 @@ double selfjoin_agms_safezone::inc(incremental_state& incstate, const delta_vect
 
 
 
-//
-//  Query objects
-//
-
-
-selfjoin_query::selfjoin_query(double _beta, projection _proj)
-	: beta(_beta), epsilon(_proj.epsilon()), E(_proj)
-{
-	assert( norm_Linf(E)==0.0);
-	if( epsilon >= beta )
-		throw std::invalid_argument("total error is less than sketch error");
-	compute();
-	assert(fabs(zeta_E-sqrt( (_proj.depth()+1)/2))<1E-15);
-}
-
-
-void selfjoin_query::update_estimate(const sketch& newE)
-{
-	// compute the admissible region
-	E += newE;
-	compute();
-}
-
-void selfjoin_query::compute()
-{
-	Qest = dot_est(E);
-
-	if(Qest>0) {
-		Tlow = (1+epsilon)*Qest/(1.0+beta);
-		Thigh = (1-epsilon)*Qest/(1.0-beta);
-		safe_zone = std::move(selfjoin_agms_safezone(*this)); 
-	}
-	else {
-		Tlow = 0.0; Thigh=1.0;
-		safe_zone = selfjoin_agms_safezone(E,0.0,1.0);
-	}
-
-	zeta_E = safe_zone(E);
-}
-
-
 
 /////////////////////////////////////////////////////////
 //
-//  selfjoin_agms_safezone_upper_bound
-//  selfjoin_agms_safezone_lower_bound
-//  selfjoin_agms_safezone
+//  twoway_join_agms_safezone
 //
 /////////////////////////////////////////////////////////
 
 
-double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon)
-{
-	/*
-		Consider the hyperbola $y(x) = \sqrt{x^2+T}$ for $x\in [0,+\infty)$, and
-		let $ (\xi, \psi) $ be a point on it.
 
-		First, assume $\xi >0$. Then, the normal to the hyperbola at that point
-		is the line passing through points $(2\xi,0)$ and $(0,2\psi)$. To see this,
-		note that $\nabla y^2-x^2 = (-2x, 2y)$. In other words, the normal to the
-		hyperbola at $(\xi, \psi)$ has a parametric equation of 
-		\[  (\xi,\psi) + t (-2\xi, 2\psi).  \]
+twoway_join_agms_safezone::twoway_join_agms_safezone() 
+{ }
 
-		Now, any point $(p,q)$ whose nearest neighbor is $(\xi, \psi)$ must satisfy
-		\[  (p,q) =  (\xi,\psi) + t (-2\xi, 2\psi),  \]
-		and by eliminating $t$ we get 
-		\[   \frac{p}{\xi} + \frac{q}{\psi} = 2.  \]
-		Thus, it suffices to find the root of the function
-		\[  g(x) = 2 - p/x - q/y(x) \]
-		(which is unique).
+twoway_join_agms_safezone::bound::bound() { }
 
-		This function has $g(0) = -\infty$, $g(\xi) = 0$ and $g(\max(p,q))>0$. Also,
-		\[  g'(x) = \frac{p}{x^2} + \frac{qx}{2y^3}.  \]
-
-		In case $p=0$, it is easy to see that, if $q>2\sqrt{T}$, then the nearest point is
-		$(\sqrt{(q/2)^2 - T}, q/2)$, and for $q\leq 2\sqrt{T}$, the answer is $(0, \sqrt{T})$.
-	*/
-	using std::max;
-
-	if(T<0)
-		throw std::invalid_argument("call to hyperbola_nearest_neighbor with T<0");
-
-	if(p==0.0) {
-		if(q > 2.*sqrt(T))
-			return sqrt(sq(q/2)-T);
-		else
-			return 0.;
-	}
-	if(q==0.0)
-		return p/2.;
-
-#define Y(x) sqrt(sq(x)+T)
-#define g(x) (2. - p/(x) - q/Y(x))
-
-	// find upper and lower bounds for root
-	double x1 = copysign(max(fabs(p),q), p);
-	assert(g(x1)>0);
-	double x0 = 0;
-	double xm = (x0+x1)/2;
-
-	size_t loops = 80;
-	while( fabs((x1-x0)/xm) >= epsilon) {
-		if(--loops = 0) break;
-		double gx = g(xm);
-		if(gx>0)
-			x1 = xm;
-		else if(gx<0)
-			x0 = xm;
-		else
-			break;
-		xm = (x0+x1)/2;
-	}
-
-#undef Y
-#undef g
-	return xm;
+twoway_join_agms_safezone::bound::bound(const projection& _proj, double _T, bool eikonal) 
+: proj(_proj), T(_T), 
+  hat(_proj.size())
+{ 
+	zeta_2d.reserve(proj.depth());
+	Median.set_eikonal(eikonal);
 }
+
+void twoway_join_agms_safezone::bound::setup(const Vec& norm_xi, const Vec& norm_psi) {
+	Vec zeta_E(proj.depth()); // vector to prepare the median SZ
+	Vec tmp(proj.width());
+
+	for(size_t i=0; i<proj.depth(); i++) {
+		// create the bilinear 2d safe zones 
+		zeta_2d.emplace_back(norm_xi[i], norm_psi[i], 4.0*T);
+
+		// compute the zeta_E vector for the median
+		zeta_E[i] = zeta_2d[i](norm_xi[i], norm_psi[i])*sqrt(0.5);
+
+		// Normalize the hat vector
+		slice I(i*proj.width(), proj.width(), 1);
+		if(norm_xi[i]>0.0) {
+			tmp = norm_xi[i];
+			hat[I] /= tmp;
+		} 
+		else {
+			tmp = 0.0;
+			hat[I] = tmp;
+		}
+	}
+
+	Median.prepare(zeta_E, (proj.depth()+1)/2);
+}
+
+
+double twoway_join_agms_safezone::bound::zeta(incremental_state& inc, const Vec& x, const Vec& y)
+{
+	// set inc
+    inc.x2 = dot_estvec(proj(x), proj(hat));
+    inc.y2 = dot_estvec(proj(y));
+    //print(this, "from scratch: x2=",inc.x2,"y2=",inc.y2);
+    return zeta(inc.x2, inc.y2);
+}
+
+double twoway_join_agms_safezone::bound::zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy)
+{
+	// update inc
+	Vec& x2 = dot_estvec_inc(inc.x2, dx, proj(hat));
+	Vec& y2 = dot_estvec_inc(inc.y2, dy);
+    //print(this, "incremental: x2=",x2,"y2=",y2);
+	return zeta(x2, y2);
+}
+
+double twoway_join_agms_safezone::bound::zeta(const Vec& x2, const Vec& y2)
+{
+    Vec zeta_X(proj.depth());
+
+    for(size_t i=0; i<proj.depth(); i++)
+    	zeta_X[i] = zeta_2d[i]( x2[i], sqrt(y2[i]) )*sqrt(0.5);
+    return Median(zeta_X);			
+}
+
+twoway_join_agms_safezone::twoway_join_agms_safezone(const Vec& E, const projection& proj, 
+							double Tlow, double Thigh, bool eikonal)
+	: 	D(proj.size()), 
+		lower(proj, Tlow, eikonal), 
+		upper(proj, -Thigh, eikonal)
+{
+	assert(E.size() == 2*proj.size());
+	assert(Tlow < Thigh);
+
+	// Polarize the reference vector
+	slice s1(0, D, 1);
+	slice s2(D, D, 1);
+
+	lower.hat = E[s1] + E[s2];
+	upper.hat = E[s1] - E[s2];
+
+	// Initialize the upper and lower bound safe zone data
+	Vec norm_lower =  sqrt(dot_estvec(proj(lower.hat)));
+	Vec norm_upper = sqrt(dot_estvec(proj(upper.hat)));
+
+	lower.setup(norm_lower, norm_upper);
+	upper.setup(norm_upper, norm_lower);
+}
+
+
+double twoway_join_agms_safezone::with_inc(incremental_state& inc, const Vec& U)
+{
+	assert(U.size() == 2*D);
+
+	// Polarize
+	slice s1(0, D, 1);
+	slice s2(D, D, 1);
+
+    inc.x = U[s1] + U[s2];
+    inc.y = U[s1] - U[s2];
+
+    // Compute zeta of lower bound
+    double zeta_lower = lower.zeta(inc.lower, inc.x, inc.y);
+
+    // Compute zeta of upper bound
+    double zeta_upper = upper.zeta(inc.upper, inc.y, inc.x);
+
+    //binc::print("fromscratch zlower=",zeta_lower,"zupper",zeta_upper);
+    return min(zeta_lower, zeta_upper);
+}
+
+
+// from-scratch computation, just use with_inc, with a throw-away incremental state
+double twoway_join_agms_safezone::operator()(const Vec& X)
+{
+	incremental_state inc;
+	return with_inc(inc, X);
+}
+
+
+double twoway_join_agms_safezone::inc(incremental_state& incstate, const delta_vector& DX)
+{
+	// Polarize the delta
+	delta_vector DX1 = DX[DX.index < D];
+	delta_vector DX2 = DX[DX.index >= D];
+	DX2.index -= D;
+
+	delta_vector dx = DX1+DX2;
+	delta_vector dy = DX1-DX2;
+
+	dx.rebase(incstate.x);
+	dy.rebase(incstate.y);
+
+	// update the polarization incstate
+	incstate.x[dx.index] = dx.xnew;
+	incstate.y[dy.index] = dy.xnew;
+
+    // Compute zeta of lower bound
+    double zeta_lower = lower.zeta(incstate.lower, dx, dy);
+
+    // Compute zeta of upper bound
+    double zeta_upper = upper.zeta(incstate.upper, dy, dx);
+    //binc::print("incremental zlower=",zeta_lower,"zupper",zeta_upper);
+    return min(zeta_lower, zeta_upper);
+}
+
+
+

@@ -125,8 +125,10 @@ public:
 		tab.bind(fset[1]);
 		tab.prolog();
 		tab.emit_row();
+		tab.epilog();
 
 		char buf[2][8192];
+		memset(buf[0],0,8192); memset(buf[1],0,8192);
 		fseek(fset[0]->file(), 0, SEEK_SET);
 		fseek(fset[1]->file(), 0, SEEK_SET);
 		TS_ASSERT_EQUALS(fread(buf[0], 1, 8191, fset[0]->file()), 36);
@@ -253,6 +255,8 @@ public:
 		TS_ASSERT_EQUALS(handler->colpos[3], offsetof(__dummy_rec,zeta));
 		TS_ASSERT_EQUALS(handler->colpos[4], offsetof(__dummy_rec,nsize));
 		TS_ASSERT_EQUALS(handler->colpos[5], offsetof(__dummy_rec,mname));
+
+		delete handler;
 	}
 
 
@@ -336,7 +340,16 @@ public:
 			dummy1, dummy2, dummy3 
 		};
 
+
+		//static_assert( std::is_same<hid_t, long int>::value, "Error:hid_t is not long int");
+		static_assert( sizeof(hid_t) <= sizeof(long int), "Error:hid_t is wider than long int");
+		
 		auto file = H5File("dummy_file2.h5", H5F_ACC_TRUNC);
+
+		TS_ASSERT( H5_CHECK(H5Iis_valid(file.getId()))>0 );
+		TS_ASSERT_EQUALS( H5_CHECK(H5Iget_ref(file.getId())), 1);
+		
+		//output_hdf5 dset(file);
 		output_hdf5 dset(file);
 
 		for(output_table& t : tables) {

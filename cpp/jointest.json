@@ -3,8 +3,8 @@
 		{
 			"name": "fgm",
 		    "type": "FGM",
-		    "query": "SELFJOIN",
-		    "stream": 0,
+		    "query": "JOIN",
+		    "streams": [0,1],
 		    "projection": {
 				"depth": 7,
 				"width":1500,
@@ -13,23 +13,10 @@
 		    "beta": 0.1
 		},
 		{
-			"name": "fgm_noneik",
-		    "type": "FGM",
-		    "query": "SELFJOIN",
-		    "stream": 0,
-		    "projection": {
-				"depth": 7,
-				"width":1500,
-				"epsilon": 0.05
-		    },
-		    "beta": 0.1,
-	    	"eikonal":  false 
-		},
-		{
 			"name": "fgm_nocm",
 		    "type": "FGM",
-		    "query": "SELFJOIN",
-		    "stream": 0,
+		    "query": "JOIN",
+		    "streams": [0,1],
 		    "projection": {
 				"depth": 7,
 				"width":1500,
@@ -39,10 +26,10 @@
 		    "use_cost_model": false
 		},
 		{
-			"name": "gm",			
+			"name": "sgm",
 		    "type": "SGM",
-		    "query": "SELFJOIN",
-		    "stream": 0,
+		    "query": "JOIN",
+		    "streams": [0,1],
 		    "projection": {
 				"depth": 7,
 				"width":1500,
@@ -52,16 +39,16 @@
 		},
 		//{ "name": "stat", "type": "data_source_statistics" },
 		{
-			"name": "sj0",
+			"name": "j01",
 			"type": "exact_query",
-			"query": "SELFJOIN",
-			"stream": 0
+			"query": "JOIN",
+			"streams": [0,1]
 		},
 		{
-			"name": "amssj0",
+			"name": "amsj01",
 			"type": "agms_query",
-			"query": "SELFJOIN",
-			"streams": 0,
+			"query": "JOIN",
+			"streams": [0,1],
 		    "projection": {
 				"depth": 7,
 				"width":1500,
@@ -77,15 +64,15 @@
 		"file" : "/git/ddssim/cpp/wc_day46.h5",
 		//"dataset" : "wc_day46_1",
 		//"file" : "/src/datasets/wc_day46",
-		"hash_streams": 1
+		"hash_streams": 2
 		//,"set_max_length": 10000
 		,"set_max_length": 10000000
-		,"hash_sources": 4
-		,"time_window": 7200    // 4*3600
+		//,"hash_sources": 4
+		,"time_window": 28800    // 4*3600
 		//,"fixed_window": 10000000
 		//,"flush_window": false
 		//create with warmup. Omit to create without warmup
-		,"warmup_time": 7200
+		,"warmup_time": 28800
     },
 
 
@@ -109,6 +96,4 @@
     "sample" : {
 		"timeseries": 1000
     }
-
-    
 }

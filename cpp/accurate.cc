@@ -1,10 +1,27 @@
 
 #include <iomanip>
+#include "binc.hh"
 #include "accurate.hh"
+#include "cfgfile.hh"
 
 using namespace dds;
 
+
+namespace dds {
+
+template<>
+data_source_statistics* component_type<data_source_statistics>::create(const Json::Value&)
+{
+	return new data_source_statistics();
+}
+
+}
+
+dds::component_type<data_source_statistics> data_source_statistics::comp_type("data_source_statistics");
+
+
 data_source_statistics::data_source_statistics()
+	: component("datasrc_stat")
 {
 	on(START_RECORD, [&](){ process(CTX.stream_record()); });
 	on(RESULTS, [&](){ finish(); });
@@ -120,8 +137,10 @@ void data_source_statistics::report(std::ostream& s)
 //
 
 
-selfjoin_exact_method::selfjoin_exact_method(stream_id sid)
-: exact_method<qtype::SELFJOIN>(self_join(sid)) 
+
+
+selfjoin_exact_method::selfjoin_exact_method(const string& n, stream_id sid)
+: query_method(n, self_join(sid)) 
 { 
 	on(START_STREAM, [&]() { process_warmup(CTX.warmup); });
 	on(START_RECORD, [&](){ process_record(CTX.stream_record()); });
@@ -138,10 +157,10 @@ void selfjoin_exact_method::process_warmup(const buffered_dataset& wset)
 
 void selfjoin_exact_method::process_record(const dds_record& rec)
 {
-	if(rec.sid == Q.param) {
+	if(rec.sid == Q.operand(0)) {
 
 		long& x = histogram.get_counter(rec.key);
-		curest = (2*x + rec.upd)*rec.upd;
+		curest += (2*x + rec.upd)*rec.upd;
 		x += rec.upd;
 
 	}
@@ -149,7 +168,7 @@ void selfjoin_exact_method::process_record(const dds_record& rec)
 
 void selfjoin_exact_method::finish()
 { 
-	cout << "selfjoin(" << Q.param << ")=" << curest << endl;
+	cout << "selfjoin(" << Q.operand(0) << ")=" << curest << endl;
 }
 
 
@@ -158,8 +177,9 @@ void selfjoin_exact_method::finish()
 //////////////////////////////////////////////
 //
 
-twoway_join_exact_method::twoway_join_exact_method(stream_id s1, stream_id s2)
-: exact_method<qtype::JOIN>(join(s1,s2)) 
+
+twoway_join_exact_method::twoway_join_exact_method(const string& n, stream_id s1, stream_id s2)
+: query_method(n, join(s1,s2)) 
 { 
 	on(START_STREAM, [&]() { process_warmup(CTX.warmup); });
 	on(START_RECORD, [=](){ process_record(CTX.stream_record()); 
@@ -190,9 +210,9 @@ void twoway_join_exact_method::process_warmup(const buffered_dataset& wset)
 
 void twoway_join_exact_method::process_record(const dds_record& rec)
 {
-	if(rec.sid == Q.param.first) {
+	if(rec.sid == Q.operand(0)) {
 		dojoin(hist1, hist2, rec);
-	} else if(rec.sid == Q.param.second) {
+	} else if(rec.sid == Q.operand(1)) {
 		dojoin(hist2, hist1, rec);		
 	} 
 }
@@ -200,7 +220,7 @@ void twoway_join_exact_method::process_record(const dds_record& rec)
 void twoway_join_exact_method::finish()
 { 
 	cout << "2wayjoin(" 
-		<< Q.param.first << "," << Q.param.second << ")=" 
+		<< Q.operand(0) << "," << Q.operand(1) << ")=" 
 		<< curest << endl;
 }
 
@@ -237,14 +257,15 @@ factory<agms_sketch_updater, stream_id, agms::projection>
 	dds::agms_sketch_updater_factory ;
 
 
-selfjoin_agms_method::selfjoin_agms_method(stream_id sid,
-	depth_type D, index_type L) 
-: selfjoin_agms_method(sid, agms::projection(D,L))
+
+selfjoin_agms_method::selfjoin_agms_method(const string& n, stream_id sid,
+	agms::depth_type D, size_t L) 
+: selfjoin_agms_method(n, sid, agms::projection(D,L))
 {}
 
-selfjoin_agms_method::selfjoin_agms_method(stream_id sid, 
+selfjoin_agms_method::selfjoin_agms_method(const string& n, stream_id sid, 
 	const agms::projection& proj) 
-: agms_method<qtype::SELFJOIN>(self_join(sid))
+: query_method(n, self_join(sid, proj.epsilon()))
 { 
 	using namespace agms;
 
@@ -267,7 +288,7 @@ void selfjoin_agms_method::process_record()
 {
 	using namespace agms;
 
-	if(CTX.stream_record().sid==Q.param) {
+	if(CTX.stream_record().sid==Q.operand(0)) {
 		curest = dot_est_inc(incstate, isk->delta);
 	}
 }
@@ -278,14 +299,15 @@ void selfjoin_agms_method::process_record()
 //
 
 
-twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 
-	agms::depth_type D, agms::index_type L) 
-: twoway_join_agms_method(s1, s2, agms::projection(D,L))
+
+twoway_join_agms_method::twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, 
+	agms::depth_type D, size_t L) 
+: twoway_join_agms_method(n, s1, s2, agms::projection(D,L))
 { }
 
-twoway_join_agms_method::twoway_join_agms_method(stream_id s1, stream_id s2, 
+twoway_join_agms_method::twoway_join_agms_method(const string& n, stream_id s1, stream_id s2, 
 	const agms::projection& proj) 
-: agms_method<qtype::JOIN>(join(s1,s2))
+: query_method(n, join(s1,s2, proj.epsilon()))
 {
 	using namespace agms;
 	isk1 = & agms_sketch_updater_factory(s1, proj)->isk;
@@ -305,10 +327,56 @@ void twoway_join_agms_method::initialize()
 void twoway_join_agms_method::process_record()
 {
 	using namespace agms;
-	if(CTX.stream_record().sid==Q.param.first) {
+	if(CTX.stream_record().sid==Q.operand(0)) {
 		curest = dot_est_inc(incstate, isk1->delta, *isk2);
-	} else if(CTX.stream_record().sid==Q.param.second) {
+	} else if(CTX.stream_record().sid==Q.operand(1)) {
 		curest = dot_est_inc(incstate, *isk1, isk2->delta);
 	}
 }
+
+
+
+//////////////////////////////////////////////
+//
+// Component types
+//
+//////////////////////////////////////////////
+
+component_type<query_method> dds::exact_query_comptype("exact_query");
+component_type<query_method> dds::agms_query_comptype("agms_query");
+
+namespace dds {
+
+template<>
+query_method* component_type<query_method>::create(const Json::Value& js)
+{
+	using binc::sprint;
+
+	string _name = js["name"].asString();
+	basic_stream_query Q = get_query(js);
+	if(Q.type()!=qtype::JOIN && Q.type()!=qtype::SELFJOIN)
+		throw std::runtime_error(sprint("Cannot handle query type ",Q.type()));
+
+
+	if(name()=="exact_query") {
+		if(Q.type()==qtype::SELFJOIN)
+			return new selfjoin_exact_method(_name, Q.operand(0));
+		else
+			return new twoway_join_exact_method(_name, Q.operand(0), Q.operand(1));
+
+	} else if(name()=="agms_query") {
+		agms::projection proj = get_projection(js);
+		if(Q.type()==qtype::SELFJOIN)
+			return new selfjoin_agms_method(_name, Q.operand(0), proj);
+		else
+			return new twoway_join_agms_method(_name, Q.operand(0), Q.operand(1), proj);
+
+	} else {
+		assert(0);
+		return NULL;
+	}
+}
+
+
+} //end namespace dds
 

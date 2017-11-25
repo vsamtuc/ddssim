@@ -9,6 +9,7 @@
 #include <utility>
 
 #include <boost/optional.hpp>
+#include <jsoncpp/json/json.h>
 
 #include "dds.hh"
 #include "eca.hh"
@@ -410,6 +411,9 @@ struct progress_reporter : reactive, progress_bar
 
 
 
+class component;
+
+
 /**
 	A protocol is a simulation of a query answering method.
 
@@ -418,36 +422,36 @@ struct progress_reporter : reactive, progress_bar
 class basic_component_type : public named
 {
 protected:
-	static std::map<string, basic_component_type*> ctype_map;
-	basic_component_type(const string& _name) : named(_name) {
-		if(ctype_map.count(_name)>0)
-			throw std::logic_error("Component type called `"+_name+"' already exists");
-		ctype_map[_name] = this;
-	}
+	static std::map<string, basic_component_type*>& ctype_map();
+	basic_component_type(const string& _name);
+	basic_component_type(const type_info& ti);
+	virtual ~basic_component_type();
 public:
-	virtual reactive* make() = 0;
+	virtual component* create(const Json::Value&) = 0;
+
+	static basic_component_type* get_component_type(const string& _name);
+	static basic_component_type* get_component_type(const type_info& ti);
+	static const std::map<string, basic_component_type*>& component_types();
+	static std::set<string> aliases(basic_component_type* ctype);
 };
 
 template <typename C>
 class component_type : public basic_component_type
 {
-
+public:
+	component_type(const string& _name) : basic_component_type(_name) {}
+	component_type() : basic_component_type(typeid(C)) {}
+	virtual C* create(const Json::Value&) override ;
 };
 
 
-/**
-	A protocol is a simulation of a query answering method.
-
-	This is the base class.
-  */
-class query_protocol : public reactive
+class component : public virtual named, public reactive
 {
 public:
-	virtual const basic_query& query() const = 0;
-	virtual double current_estimate() const = 0;
+	component();
+	component(const string& _name);
+	virtual ~component();
 };
-
-
 
 
 } //end namespace dds

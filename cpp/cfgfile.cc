@@ -7,16 +7,15 @@
 #include <fstream>
 #include <typeinfo>
 
+#include <boost/core/demangle.hpp>
+
 #include "data_source.hh"
 #include "accurate.hh"
-#include "tods.hh"
-#include "agms.hh"
-#include "agm.hh"
-#include "gm.hh"
 #include "cfgfile.hh"
-#include "binc.hh"
+#include "method.hh"
 #include "output.hh"
 #include "results.hh"
+#include "binc.hh"
 
 
 using namespace dds;
@@ -27,7 +26,6 @@ using std::initializer_list;
 using Json::Value;
 using agms::projection;
 using agms::depth_type;
-using agms::index_type;
 
 using binc::print;
 using binc::elements_of;
@@ -134,13 +132,12 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 //----------------------------------------------
 
 
-
-static projection get_projection(Value& js)
+projection dds::get_projection(const Value& js)
 {
-	Value& jp = js["projection"];
+	const Value& jp = js["projection"];
 
-	depth_type d = jp["depth"].asInt();
-	index_type w = jp["width"].asInt();
+	depth_type d = jp["depth"].asUInt();
+	size_t w = jp["width"].asUInt();
 	assert(d>0 && w>0);
 	
 	projection proj(d,w);
@@ -150,36 +147,44 @@ static projection get_projection(Value& js)
 	return proj;
 }
 
-static double get_beta(Value& js)
+std::vector<stream_id> dds::get_streams(const Value& js)
 {
-	return js["beta"].asDouble();
-}
+	std::vector<stream_id> ret;
 
-static stream_id get_stream(Value& js)
-{
-	return js["stream"].asInt();
-}
+	if(js.isMember("stream")) {
+		ret.push_back( js["stream"].asInt() );
+	} else if(js.isMember("streams")) {
+		const Value& jp = js["streams"];
+		if(jp.isArray()) {
+			for(auto&& val : jp) {
+				ret.push_back(val.asInt());
+			}
+		}
+		else {
+			ret.push_back(jp.asInt());
+		}		
+	}
 
-
-static void handle_agm(Value& js, vector<reactive*>& components)
-{
-	string name = js["name"].asString();
-	stream_id sid = get_stream(js);
-	projection proj = get_projection(js);
-	double beta = get_beta(js);
-	components.push_back(new agm::network(name,sid, proj, beta ));
-}
-
-static void handle_gm(Value& js, vector<reactive*>& components)
-{
-	string name = js["name"].asString();
-	stream_id sid = get_stream(js);
-	projection proj = get_projection(js);
-	double beta = get_beta(js);
-	components.push_back(new gm::network(name, sid, proj, beta ));
+	return ret;
 }
 
 
+basic_stream_query dds::get_query(const Value& js)
+{
+	basic_stream_query Q;
+	if(! js.isMember("query"))
+		return Q;
+	qtype qt = qtype_repr[js["query"].asString()];
+	Q.set_type(qt);
+
+	double beta = js.get("beta", 0.0).asDouble();
+	Q.set_approximation(beta);
+
+	auto streams = get_streams(js);
+	Q.set_operands(streams);
+
+	return Q;
+}
 
 
 void dds::prepare_components(Value& js, vector<reactive*>& components)
@@ -196,12 +201,11 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 		string type = jc["type"].asString();
 
 		// map to a handler
-		if(type=="agm")
-			handle_agm(jc, components);
-		else if (type=="gm")
-			handle_gm(jc, components);
-		else
-			throw std::runtime_error("Error: component type '"+type+"' is unknown");
+		basic_component_type* ctype = basic_component_type::get_component_type(type);
+		auto c = ctype->create(jc);
+		cout << "Component " << c->name() << " of component type " << type << "(instance of " 
+			<< boost::core::demangle(typeid(*c).name()) << ") created"<<endl;
+		components.push_back(c);
 	}
 }
 
@@ -255,6 +259,7 @@ void dds::parse_url(const string& url, parsed_url& purl)
 	using std::regex;
 	using std::smatch;
 	using std::regex_match;
+	using std::sregex_token_iterator;
 	
 	regex re_url(RE_URL);
 	smatch match;

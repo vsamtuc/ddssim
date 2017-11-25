@@ -553,7 +553,7 @@ public:
 	used, these strings are generated from the C++ classes without
 	any user-code overhead.
   */
-class basic_network : public named
+class basic_network : public virtual named
 {
 protected:
 	host_set _hosts;		// all the simple hosts
@@ -792,7 +792,7 @@ struct star_network : public basic_network
 	: hids(_hids), hub(nullptr) 
 	{ 
 		// reserve the source_id addresses for the sites
-		if(~ hids.empty()) {
+		if(! hids.empty()) {
 			reserve_addresses(* hids.rbegin());
 		}
 	}

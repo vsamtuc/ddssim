@@ -1,12 +1,11 @@
 
 #include <cxxtest/TestSuite.h>
 
-#include "mathlib.hh"
+#include "hdv.hh"
 #include "binc.hh"
 
-using namespace dds;
 using namespace std;
-
+using namespace hdv;
 
 
 /**
@@ -140,6 +139,17 @@ public:
 		TS_ASSERT_DELTA( rolling_mean(eerr.tally), 0.017, 1e-3 );
 		TS_ASSERT_DELTA( rolling_variance(eerr.tally), 0.0, 1e-3 );
 	}	
+
+
+	void test_mask_true_count()
+	{
+		Index idx {1,4,6};
+		Mask m { true, true, false };
+
+		TS_ASSERT_EQUALS(std::count(begin(m), end(m), true), 2);
+	}
+
+
 
 };
 

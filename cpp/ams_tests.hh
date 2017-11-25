@@ -28,7 +28,7 @@ public:
     	hash_family HF(5);
 
 		for(int i=0;i<1000;i++) {
-			index_type h = HF.hash(i%5, 17*i+131);
+			size_t h = HF.hash(i%5, 17*i+131);
 			TS_ASSERT_LESS_THAN_EQUALS(0, h);
 		}
     }
@@ -38,7 +38,7 @@ public:
     	hash_family HF(5);
 		int count = 0;
 		for(int i=0;i<1000;i++) {
-			index_type h = HF.fourwise(i%5, 17*i+131);
+			size_t h = HF.fourwise(i%5, 17*i+131);
 			if(h & 1) count++;
 		}    	
 		TS_ASSERT_LESS_THAN_EQUALS(450, count);
@@ -105,11 +105,11 @@ public:
 	void testUpdate() {
 		sketch sk(5, 500);
 
-		for(key_type k = 10; k< 1000; k+=17) 
+		for(size_t k = 10; k< 1000; k+=17) 
 			sk.insert(k);
 		TS_ASSERT_DIFFERS(sk.norm2_squared(), 0.0);
 
-		for(key_type k = 10; k< 1000; k+=17) 
+		for(size_t k = 10; k< 1000; k+=17) 
 			sk.erase(k);
 		TS_ASSERT_EQUALS(sk.norm2_squared(), 0.0);
 		TS_ASSERT(sk.size()==2500);
@@ -180,8 +180,8 @@ public:
 		est_prod = dot_est_with_inc(incstate_prod, isk[0], isk[1]);
 
 		int s=0;
-		for(key_type i = 1; i<100000; i++) {
-			key_type key = i*i + 13*i +7;
+		for(size_t i = 1; i<100000; i++) {
+			size_t key = i*i + 13*i +7;
 
 			isk[s].update(key);
 

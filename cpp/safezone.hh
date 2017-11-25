@@ -1,99 +1,22 @@
 #ifndef __SAFEZONE_HH__
 #define __SAFEZONE_HH__
 
-
-#include "mathlib.hh"
 #include "agms.hh"
+#include "sz_quorum.hh"
+#include "sz_bilinear.hh"
 
 
 /**
 	This file contains computational code for defining admissible
-	regions, safe zone functions, distance functions, etc.
+	regions, safe zone functions, distance functions, for queries
+	on AGMS sketches
   */
 
-namespace dds { 
 
+namespace gm { 
+
+using namespace hdv;
 using namespace agms;
-
-
-/**
-	A base class for safe zone functions, marking them
-	as valid or not. Invalid safe zones are e.g. not-initialized
-  */
-struct safezone_base
-{
-	bool isvalid;
-	safezone_base() : isvalid(true){}
-	safezone_base(bool v) : isvalid(v) {}
-};
-
-
-
-/**
-	Safezone for boolean quorum queries.
-
-	A \f$(n,k)\f$-quorum boolean function is the boolean function 
-	which is true if and only if \f$k\f$ or more of its
-	inputs are true. In particular:
-	* For \f$k=1\f$ this function is the logical OR.
-	* For \f$k=n\f$ it is the logical AND.
-	* For \f$k=(n+1)/2\f$, it is the majority function.
-
-	This implementation computes an expensive version of the
-	safe zone function. In particular, it preserves eikonality
-	and non-redundancy of the inputs. 
-
-	Because of its complexity, evaluating this function is expensive:
-	each invocation takes time \f$O(k\binom{l}{k-1})\f$ which can
-	be quite high (\f$l \leq n \f$ is the number of true components
-	in the original estimate vector, or, equivalently, the number
-	of positive elements of vector \f$zE\f$ passed at construction). 
-
-	Because it is so expensive for large \f$n\f$, a fast implementation
-	is also available.
-
-	@see quorum_safezone_fast
-  */
-struct quorum_safezone : safezone_base
-{
-	size_t n;	/// the number of inputs
-	size_t k;	/// the lower bound on true inputs
-	Index L;  	/// the legal inputs index from n to zetaE
-	Vec zetaE;	/// the reference vector's zetas, where zE >= 0.
-
-	quorum_safezone();
-	quorum_safezone(const Vec& zE, size_t _k);
-
-
-	void prepare(const Vec& zE, size_t _k);
-
-	double operator()(const Vec& zX);
-
-};
-
-
-
-/**
-	Fast, non-eikonal safezone function for a boolean quorum query.
-
-	This safezone function defines the same safezone as the
-	one defined by the `quorum_safezone` class. Its advantage is that 
-	it is quite efficient: each call takes \f$O(l)\f$ time.
-	Its drawback is that it is not eikonal in general.
-
-	@see quorum_safezone
-  */
-struct quorum_safezone_fast : quorum_safezone
-{
-
-	using quorum_safezone::quorum_safezone;
-
-	double operator()(const Vec& zX);
-
-};
-
-
-
 
 
 /**
@@ -114,20 +37,33 @@ struct quorum_safezone_fast : quorum_safezone
 	values.
 
   */
-struct selfjoin_agms_safezone_upper_bound : safezone_base
+struct selfjoin_agms_safezone_upper_bound 
 {
 	double sqrt_T;		// threshold above
+	projection proj;
 	quorum_safezone Median;
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_upper_bound() : safezone_base(false) {}
+	selfjoin_agms_safezone_upper_bound() {}
 
-	selfjoin_agms_safezone_upper_bound(const sketch& E, double T);
+	template<typename Iter>
+	selfjoin_agms_safezone_upper_bound(const sketch_view<Iter>& E, double T, bool eikonal) 
+	: 	sqrt_T(sqrt(T)), proj(E.proj), Median()
+	{
+		Vec dest = sqrt(dot_estvec(E));
+		Median.prepare(sqrt_T - dest , (E.depth()+1)/2 );
+		Median.set_eikonal(eikonal);
+	}
 
-	double operator()(const sketch& X); 
+	selfjoin_agms_safezone_upper_bound(const sketch& E, double T, bool eikonal) 
+	: selfjoin_agms_safezone_upper_bound(E.view(), T, eikonal)
+	{ }
 
-	double with_inc(incremental_state& incstate, const sketch& X);
+
+	double operator()(const Vec& X); 
+
+	double with_inc(incremental_state& incstate, const Vec& X);
 
 	double inc(incremental_state& incstate, const delta_vector& DX);
 
@@ -153,8 +89,10 @@ struct selfjoin_agms_safezone_upper_bound : safezone_base
 	The overall safe zone is defined as the median quorum over these
 	values.
 
+	Note: if \f$ T\leq 0\f$, the function returns \f$+\infty \f$. 
+
   */
-struct selfjoin_agms_safezone_lower_bound : safezone_base
+struct selfjoin_agms_safezone_lower_bound
 {
 	sketch Ehat;		// normalized reference vector
 	double sqrt_T;			// threshold above
@@ -163,20 +101,49 @@ struct selfjoin_agms_safezone_lower_bound : safezone_base
 
 	typedef Vec incremental_state;
 
-	selfjoin_agms_safezone_lower_bound() : safezone_base(false) {}
+	selfjoin_agms_safezone_lower_bound() {}
 
-	selfjoin_agms_safezone_lower_bound(const sketch& E, double T);
+	template<typename Iter>
+	selfjoin_agms_safezone_lower_bound(const sketch_view<Iter>& E, double T, bool eikonal)
+		: 	Ehat(E), sqrt_T((T>0.0) ? sqrt(T) : 0.0)
+	{ 
+		//  If T <= 0.0, the function returns +inf
+		if(sqrt_T>0.0) {
 
-	double operator()(const sketch& X);
+			Vec dest = sqrt(dot_estvec(E));
+			Median.prepare( dest - sqrt_T, (E.depth()+1)/2);
+			Median.set_eikonal(eikonal);
 
-	double with_inc(incremental_state& incstate, const sketch& X);
+			//
+			// Normalize E: divide each row  E_i by ||E_i||
+			//
+			size_t L = E.width();
+			for(size_t d=0; d<E.depth(); d++) {
+				if(dest[d]>0.0)  {
+					// Note: this is an aliased assignment, but should
+					// be ok, because it is pointwise aliased!
+					Vec tmp = Ehat[slice(d*L,L,1)];
+					Ehat[slice(d*L,L,1)] = tmp/dest[d];
+				}
+				// else, if dest[d]==0, then Ehat[slice(d)] == 0! leave it
+			}
+		}
+		// else, the function returns INFINITY
+	}
+
+	selfjoin_agms_safezone_lower_bound(const sketch& E, double T, bool eikonal)
+	: selfjoin_agms_safezone_lower_bound(E.view(), T, eikonal)
+	{ }
+
+
+	double operator()(const Vec& X);
+
+	double with_inc(incremental_state& incstate, const Vec& X);
 
 	double inc(incremental_state& incstate, const delta_vector& DX);
 
 };
 
-
-struct selfjoin_query;
 
 
 /**
@@ -188,7 +155,7 @@ struct selfjoin_query;
 	@see selfjoin_agms_safezone_upper_bound
 	@see selfjoin_agms_safezone_lower_bound
  */
-struct selfjoin_agms_safezone : safezone_base
+struct selfjoin_agms_safezone 
 {
 	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
 	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
@@ -199,23 +166,36 @@ struct selfjoin_agms_safezone : safezone_base
 		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
 	};
 
-	selfjoin_agms_safezone() : safezone_base(false) {}
+	selfjoin_agms_safezone() {}
 
-	selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh);
+	template <typename Iter>
+	selfjoin_agms_safezone(const sketch_view<Iter>& E, double Tlow, double Thigh, bool eikonal)
+	: 	lower_bound(E, Tlow, eikonal),
+		upper_bound(E, Thigh, eikonal)
+	{
+		assert(Tlow < Thigh);
+	}
 
-	selfjoin_agms_safezone(selfjoin_query& q);
+	selfjoin_agms_safezone(const sketch& E, double Tlow, double Thigh, bool eikonal)
+	: selfjoin_agms_safezone(E.view(), Tlow, Thigh, eikonal)
+	{ }
+
+	selfjoin_agms_safezone(const Vec& E, const projection& proj, double Tlow, double Thigh, bool eikonal)
+	: selfjoin_agms_safezone(proj(E), Tlow, Thigh, eikonal)
+	{ }
+
+
 	selfjoin_agms_safezone& operator=(selfjoin_agms_safezone&&)=default;
-
 
 	// from-scratch computation, storing upper and lower bounds into
 	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
-	double operator()(const sketch& X);
-	double operator()(const sketch& X, double& zeta_l, double& zeta_u);
+	double operator()(const Vec& X);
+	double operator()(const Vec& X, double& zeta_l, double& zeta_u);
 
 	// from-scratch computation with inc state, storing upper and lower bounds into
 	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
-	double with_inc(incremental_state& incstate, const sketch& X);
-	double with_inc(incremental_state& incstate, const sketch& X, double& zeta_l, double& zeta_u);
+	double with_inc(incremental_state& incstate, const Vec& X);
+	double with_inc(incremental_state& incstate, const Vec& X, double& zeta_l, double& zeta_u);
 
 	// incremental computation, storing upper and lower bounds into
 	// zeta_l and zeta_u. It returns min(zeta_l, zeta_u)
@@ -227,334 +207,135 @@ struct selfjoin_agms_safezone : safezone_base
 
 
 /*
-	TODO: Maybe this does not belong here!
- */
-struct selfjoin_query
-{
-	double beta; 	// the overall precision
-	double epsilon; // the assumed precision of the sketch
-	sketch E;   	// The current estimate for the stream
-
-	double Qest; 	// current estimate
-	double Tlow;    // admissible region: Tlow <= Q(t) <= Thigh
-	double Thigh;   // 
-
-	selfjoin_agms_safezone safe_zone;
-	double zeta_E;
-
-	selfjoin_query(double _beta, projection _proj);
-
-	void update_estimate(const sketch& newE);
-
-private:
-	void compute();
-};
-
-
-/*
 	Two-way join queries (inner product)
  */
 
 
-/**
-	Return the nearest point to the hyperbola.
-
-	Given point \f$ (p,q) \f$, and \f$T \geq 0 \f$, 
-	this method returns a value \f$\xi\f$, such that the distance
-	to the curve \f$y(x) = \sqrt{x^2+T}\f$ is minimum.
-
-	The method used to find the root is classic bisection (aka binary search),
-	for finding the root of function
-	\f[  g(x) = 2 - p/x - q/y(x)  \f]
-
-	The accuracy \f$ epsilon >0 \f$ is relative: if \f$x_r\f$ is returned, then
-	the actuall value will lie in
-	an interval of size \f$ x_r (1\pm \epsilon/2)\f$.
-
-	Accuracy is set to \f$\epsilon = 10^{-13}\f$ by default. This is close to the accuracy
-	of IEEE 754 `double`.
-
-	This method converges in about 40 iterations on average.
-  */
-double hyberbola_nearest_neighbor(double p, double q, double T, double epsilon=1.E-13 );
-
 
 /**
-	A safe zone for the problem \f$x^2 - y^2 \geq T\f$ in 2 dimensions.
-	
-	The reference point for this safezone is given as \f$(\xi, \psi)\f$, and
-	must satisfy the condition \f$\xi^2 - \psi^2 \geq T\f$. 
+	A safe zone function for condition Tlow <= dot_est(X,Y) <= Thigh.
 
-	When \f$T=0\f$, the function expects \f$ \xi \neq 0\f$. That is, a safe zone
-	cannot have non-empty interior.
+	Let \f$ X = [X_1, ... , X_d]\f$ be am AGMS sketch of depth \f$d\f$.
+
+	Given sketches \f$X \f$ and \f$Y\f$, the join estimate is 
+	\f[ Q(X,Y) =  \mathop{\mathrm{median}}\{X_iY_i \,|\, i=1,\ldots , D\}. \f]
+	Given thresholds \f$ T_\text{low} \f$ and \f$ T_\text{high} \f$, 
+	the admissible region is 
+    \f[ A =\{ (X,Y) | T_\text{low} \leq Q(X,Y) \leq T_\text{hi} \}. \f]
+
+    The safe zone is defined per the algorithms of [Garofalakis and Samoladas, 
+    ICDT 2017].
   */
-struct square_difference_2d_safe_zone : safezone_base
+struct twoway_join_agms_safezone 
 {
-	double T;			// threshold
-	int xihat;			// cached for case T>0
-	double u, v;		// cached for case T<=0
-
-	square_difference_2d_safe_zone() {}
-
-	square_difference_2d_safe_zone(double xi, double psi, double _T)
-	: T(_T), xihat(sgn(xi))
-	{
-		if(sq(xi)-sq(psi) < T)
-			throw std::invalid_argument("the reference point is non-admissible");
-		if(T==0 and xi==0) 
-			throw std::invalid_argument("the safe zone has empty interior");
-
-		// cache the conic safe zone, if applicable
-		if(T<0) {
-			u = hyberbola_nearest_neighbor(xi, fabs(psi), -T);
-			v = sqrt(sq(u)-T);
-			// eikonalize
-			double norm_u_v = sqrt(sq(u)+sq(v));
-			assert(norm_u_v > 0);
-			u /= norm_u_v;
-			v /= norm_u_v;
-			T /= norm_u_v;
-		}
-	}
-
-	double operator()(double x, double y) const {
-		if(T>0) {
-			// compute the signed distance function of the set $\{ x >= \sqrt{y^2+T} \}$.
-			double x_xihat = x*xihat;
-
-			int sgn_delta = sgn( x_xihat - sqrt(sq(y)+T) );
-
-			double v = hyberbola_nearest_neighbor(y, x_xihat, T);
-			double u = sqrt(sq(v)+T);
-
-			return sgn_delta*sqrt(sq(x_xihat - u) + sq(y - v));
-		} 
-		else {
-			return u*x - v*fabs(y) - T;
-		} 
-	}
-};
-
-
-
-/**
-	A safe zone function for the inner product of two vectors.
-
-	The function computes the safezone for a constraint of the form
-	\f[  \pm X_1 X_2 \geq T  \f]
-	Thus, this kind of constraint can express both upper and lower bounds on the
-	product.
-
-  */
-struct inner_product_safe_zone
-{
-	bool minus;
-	double T;
-	Vec xihat;
-
-	square_difference_2d_safe_zone sqdiff;
-
-	/**
-		Initialize a safe zone for reference point \f$(E_1, E_2)\f$, and
-		for condition
-		\f[	(-1)^\text{minus} X_1 X_2 \geq T. \f]
-
-	  */
-	inner_product_safe_zone(const Vec& E1, const Vec& E2, bool _minus, double _T)
-	: minus(_minus), T(_T)
-	{
-		assert(E1.size()==E2.size());
-
-		Vec xi = E1+E2;
-		Vec psi = E1-E2;
-		if(minus) xi.swap(psi);
-
-		double norm_xi = norm_L2(xi);
-		double norm_psi = norm_L2(psi);
-
-		sqdiff = square_difference_2d_safe_zone(norm_xi, norm_psi, 4.*T);
-
-		if(norm_xi>0)
-			xihat = xi/norm_xi;
-		else
-			xihat = Vec(0.0, E1.size());
-	}
-
-	double operator()(const Vec& X1, const Vec& X2) const
-	{
-		Vec x = X1+X2;
-		Vec y = X1-X2;
-		if(minus) x.swap(y);
-
-		double x2 = dot(x, xihat);
-		double y2 = norm_L2(y);
-
-		return sqdiff(x2, y2) / sqrt(2);
-	}
-
-};
-
-
-
-
-struct twoway_join_query;
-
-struct twoway_join_agms_safezone_lower_bound
-{
-
-};
-
-struct twoway_join_agms_safezone_upper_bound
-{
-
-};
-
-
-
-struct twoway_join_agms_safezone : safezone_base
-{
-
-	selfjoin_agms_safezone_lower_bound lower_bound;	// Safezone for sk^2 >= Tlow
-	selfjoin_agms_safezone_upper_bound upper_bound;	// Safezone for sk^2 <= Thigh
-
-	struct incremental_state
-	{
-		selfjoin_agms_safezone_lower_bound::incremental_state lower;
-		selfjoin_agms_safezone_upper_bound::incremental_state upper;		
-	};
-
 	twoway_join_agms_safezone();
 
-	twoway_join_agms_safezone(const sketch& E, double Tlow, double Thigh);
+	/**
+		\brief Holds data for constraint of the form \f$ x^2 - y^2 \geq T \f$.
 
-	twoway_join_agms_safezone(twoway_join_query& q);
+		Essentially, this object computes the ELM safe zone function for constraint
+		\f[  \mathop{\mathrm{median}}\limits_{i=1,\ldots,d} \{ X_i^2 - Y_i^2 \}  \geq T  \f]
+		where the input is a concatenation of sketches \f$ X, Y\f$ of depth \f$d \f$.
+
+		However, since it is intended as an internal helper for \c twoway_join_agms_safezone,
+		the API does not follow the normal function object conventions.
+	 */
+	struct bound {
+		projection proj;		/// The projection
+		double T;				/// The threshold
+		Vec hat;				/// \f$ \hat{\xi}\f$
+		vector<bilinear_2d_safe_zone> zeta_2d; /// d-array of 2-dimensional bilinear safe zones
+		quorum_safezone Median;	/// median quorum
+
+		/**
+			Incremental state.
+
+			These are the incremental states for \c dot_estvec_inc.
+		  */
+		struct incremental_state {
+			Vec x2, y2;
+		};
+
+		/// Used to implement uninitialized objects
+		bound();
+
+		/// Initialize properly
+		bound(const projection& _proj, double _T, bool eikonal);
+
+		/// Called during initialization
+		void setup(const Vec& norm_xi, const Vec& norm_psi);
+
+		/// Compute from scratch with incstate initialization
+		double zeta(incremental_state& inc, const Vec& x, const Vec& y);
+
+		/// Compute incrementally
+		double zeta(incremental_state& inc, const delta_vector& dx, const delta_vector& dy);
+
+		/// Computes the safezone of the median of the 2-d safe zone functions
+		double zeta(const Vec& x2, const Vec& y2);
+	};
+
+	size_t D;			//< The sketch size
+	bound lower, upper;	//< The bounds objects
+
+	/**
+		Construct a safe zone function object.
+
+		@param E is the reference point, which is the concatenation of two sketches.
+		@param proj the sketch projection
+		@param Tlow the lower bound
+		@param Thigh the upper bound
+		@param eikonal select an eikonal or non-eikonal (faster) function
+	  */
+	twoway_join_agms_safezone(const Vec& E, const projection& proj, 
+								double Tlow, double Thigh, bool eikonal);
+
+	/// Move assignment
 	twoway_join_agms_safezone& operator=(twoway_join_agms_safezone&&)=default;
 
-	// from-scratch computation
-	double operator()(const sketch& X);
 
-	double with_inc(incremental_state& incstate, const sketch& X);
+	struct incremental_state
+	{ 
+		/// these are used for incremental polarization
+		Vec x,y;
+		/// These are used for the bounds 
+		struct bound::incremental_state lower, upper;
+	};
 
+
+	/**
+		\brief Return the safe zone function value, computed from-scratch.
+
+		@param U the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
+	double operator()(const Vec& U);
+
+	/**
+		\brief Return the safe zone function value, computed from-scratch initializing 
+		incremental state.
+
+		@param inc the incremental state to initialize
+		@param U the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
+	double with_inc(incremental_state& inc, const Vec& U);
+
+	/**
+		\brief Return the safe zone function value, computed from-scratch initializing 
+		incremental state.
+
+		@param inc the incremental state to initialize
+		@param DX the delta_vector of the concatenation of two sketches
+		@return the value \f$\zeta(U)\f$
+	  */
 	double inc(incremental_state& incstate, const delta_vector& DX);
 
-
-};
-
-
-struct twoway_join_query
-{
-	double beta;
-	double epsilon;
-	sketch E1, E2;
-
-
-	double Qest;
-	double Tlow;
-	double Thigh;
-
-	twoway_join_agms_safezone safe_zone;
-	double zeta_E;
-
-	twoway_join_query(double _beta, projection _proj);
-	void update_estimate1(const sketch&);
-	void update_estimate2(const sketch&);
-
 };
 
 
 
-
-/**
-	This class wraps safezone functions. It serves as part of the protocol.
-
-	Semantics: if `valid()` returns false, the system is in "promiscuous mode"
-	i.e., every update is forwarded to the coordinator immediately.
-
-	Else, there are two options: if a valid safezone function is given, then
-	it is used. Else, the naive function is used:
-	\f[  \zeta(X) = \zeta_{E} - \| U \|  \f]
-	where \f$ u \f$ is the current drift vector.
-  */
-struct safezone
-{
-	selfjoin_agms_safezone* szone; // the safezone function, if any
-	selfjoin_agms_safezone::incremental_state incstate; // cached here for convenience
-	double incstate_naive;
-
-	sketch* Eglobal;		// implementation detail, also used to compute the byte size
-	size_t updates;			// number of updates, determines the size of the global sketch
-	double zeta_E;			// This is acquired by calling the safezone 
-
-	// invalid
-	safezone() : szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(-1) {};
-
-	// valid safezone
-	safezone(selfjoin_agms_safezone* sz, sketch* E, size_t upd, double zE)
-	: szone(sz), Eglobal(E), updates(upd), zeta_E(zE)
-	{
-		assert(sz && sz->isvalid);
-		assert(zE>0);
-	}
-
-	// must be valid, i.e. zE>0
-	safezone(double zE) 
-	:  szone(nullptr), Eglobal(nullptr), updates(0), zeta_E(zE)
-	{
-		assert(zE>0);
-	}
-
-	// We take these to be non-movable!
-	safezone(safezone&&)=delete;
-	safezone& operator=(safezone&&)=delete;
-
-	// Copyable
-	safezone& operator=(const safezone&) = default;
-
-	inline bool naive() const { return szone==nullptr && zeta_E>0; }
-	inline bool full() const { return szone!=nullptr; }
-	inline bool valid() const { return full() || naive(); }
-
-	double prepare_inc(const isketch& U, double& zeta_l, double& zeta_u)
-	{
-		if(full()) {
-			sketch X = (*Eglobal)+U;
-			return szone->with_inc(incstate, X, zeta_l, zeta_u);
-		} else if(naive()) {
-			return zeta_l = zeta_u = zeta_E - norm_L2_with_inc(incstate_naive, U);
-		} else {
-			assert(!valid());
-			return NAN;
-		}
-	}
-
-	double operator()(const isketch& U, double& zeta_l, double& zeta_u)
-	{
-		if(full()) {
-			delta_vector DX = U.delta;
-			DX += *Eglobal;
-			return szone->inc(incstate, DX, zeta_l, zeta_u);
-		}
-		else if(naive()) {
-			return zeta_l = zeta_u = zeta_E - norm_L2_inc(incstate_naive, U.delta);
-		} else {
-			assert(! valid());
-			return NAN;			
-		}
-	}
-
-	size_t byte_size() const {
-		if(!valid()) 
-			return 1;
-		else if(szone==nullptr)
-			return sizeof(zeta_E);
-		else
-			return compressed_sketch{*Eglobal, updates}.byte_size();
-	}
-};
-
-
-
-} // end namespace dds
+} // end namespace gm
 
 
 #endif

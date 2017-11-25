@@ -79,11 +79,12 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 
 	column<string> name   	  	  {this, "name", 64, "%s" };
 	column<string> protocol   	  {this, "protocol", 64, "%s" };
+	column<string> query   	  	  {this, "query", 80, "%s" };
+
 	column<double> max_error 	  {this, "max_error", "%.8g" };
 	column<size_t> statevec_size  {this, "statevec_size", "%zu" };
 	
 	column<size_t> sites     	  {this, "sites", "%zu" };
-	column<size_t> sid   	  	  {this, "sid", "%zu" };
 	
 	column<size_t> rounds 			{this, "rounds", "%zu" };
 	column<size_t> subrounds		{this, "subrounds", "%zu" };
@@ -103,10 +104,11 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 		comm_results::fill(nw);
 		name = nw->name();
 		protocol = nw->rpc().name();
-		max_error = nw->beta;
-		statevec_size = nw->proj.size();
+		query = repr(nw->Q->query());
+
+		max_error = nw->Q->theta();
+		statevec_size = nw->Q->state_vector_size();
 		sites = nw->sites.size();
-		sid = nw->sid;
 
 		auto hub = nw->hub;
 		rounds = hub->num_rounds;

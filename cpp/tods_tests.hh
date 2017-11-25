@@ -6,7 +6,7 @@
 #include "binc.hh"
 
 using namespace dds;
-using namespace dds::tods;
+using namespace tods;
 using namespace agms;
 using namespace binc;
 

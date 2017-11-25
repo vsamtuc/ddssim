@@ -255,6 +255,11 @@ public:
 			}
 		}
 
+		
+		for(size_t i=0;i<Ncli;i++) { 
+			delete cli[i];
+		}
+		delete srv;
 	}
 
 
@@ -312,6 +317,9 @@ public:
 
 		TS_ASSERT_EQUALS(chan.endp_req().msgs(), 9);
 		TS_ASSERT_EQUALS(chan.endp_rsp().msgs(), 5);
+
+		delete cli;
+		delete srv;
 	}
 
 
@@ -356,6 +364,9 @@ public:
 		TS_ASSERT_EQUALS(cf.unicast().msgs(), 6);
 		TS_ASSERT_EQUALS(cf.multicast().msgs(), 4);
 		TS_ASSERT_EQUALS(cf.multicast().recv_msgs(), 12);
+
+		for(auto&& p : P)
+			delete p;
 	}
 
 

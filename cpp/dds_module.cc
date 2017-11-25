@@ -1,19 +1,19 @@
 
 #include <sstream>
+#include <boost/python.hpp>
+#include <jsoncpp/json/json.h>
 
 #include "dds.hh"
 #include "data_source.hh"
 #include "method.hh"
-#include "accurate.hh"
-#include "tods.hh"
-#include "agm.hh"
-#include "results.hh"
-#include "binc.hh"
+#include "hdv.hh"
 #include "cfgfile.hh"
+#include "dsarch.hh"
+#include "accurate.hh"
+#include "agms.hh"
+#include "safezone.hh"
 
-#include <boost/python.hpp>
-#include <jsoncpp/json/json.h>
-
+#include "binc.hh"
 using binc::print;
 
 namespace { // Avoid cluttering the global namespace.
@@ -255,46 +255,45 @@ BOOST_PYTHON_MODULE(_dds)
 
     /**********************************************
      *
-     *  mathlib.hh
+     *  hdv.hh
      *
      **********************************************/
 
-    class_< dds::Vec >
+    class_< hdv::Vec >
     	("Vec", init<size_t>())
-    	.def(init<const Vec&>())
+    	.def(init<const hdv::Vec&>())
     	.def(init<double, size_t>())
-    	.def("__len__", & dds::Vec::size)
-    	.def("resize", &dds::Vec::resize)
+    	.def("__len__", & hdv::Vec::size)
+    	.def("resize", &hdv::Vec::resize)
     	.add_property("arr", &make_array)
-    	.def("__getitem__", +[](dds::Vec& self, size_t idx){
+    	.def("__getitem__", +[](hdv::Vec& self, size_t idx){
 			if(idx>=self.size()) 
 				throw std::out_of_range("index too large");		
 			return self[idx];
 		})
-    	.def("__setitem__", +[](dds::Vec& self, size_t idx, double val) {
+    	.def("__setitem__", +[](hdv::Vec& self, size_t idx, double val) {
     		if(idx>=self.size()) 
     			throw std::out_of_range("index too large");
     		self[idx] = val;
     	})
-    	.add_property("sum", &dds::Vec::sum)
-    	.add_property("min", &dds::Vec::min)
-    	.add_property("max", &dds::Vec::max)
+    	.add_property("sum", &hdv::Vec::sum)
+    	.add_property("min", &hdv::Vec::min)
+    	.add_property("max", &hdv::Vec::max)
     	//.def(self_ns::repr(self_ns::self))
-    	.def("__repr__", +[](dds::Vec& self)->std::string {
+    	.def("__repr__", +[](hdv::Vec& self)->std::string {
     		std::ostringstream s;
     		s << self;
     		return s.str();
     	})
     	/* These don't work, because of expression templates !
-    	.def( self + other<dds::Vec>())
-    	.def( self - other<dds::Vec>())
-    	.def( self * other<dds::Vec>())
-    	.def( self / other<dds::Vec>())
+    	.def( self + other<hdv::Vec>())
+    	.def( self - other<hdv::Vec>())
+    	.def( self * other<hdv::Vec>())
+    	.def( self / other<hdv::Vec>())
     	.def( self * other<double>() )
     	.def( other<double>() * self )
     	*/
     	;
-
 
 
 
@@ -363,18 +362,26 @@ BOOST_PYTHON_MODULE(_dds)
     	)
     	;
 
+
     // Also good for std::set<source_id> !!!!
     class_< std::set<dds::stream_id> >
     		("id_set", init<>())
-    	.def( init< const::set<dds::stream_id>& >() )
-    	.def("__len__", & std::set<dds::stream_id>::size )
+    	.def( init< const std::set<dds::stream_id>& >() )
+		// The next lines are stupid, but without the cast, the
+		// compiler would barf.
+		// This broke when I switched to ubuntu 17.10. I would very much like
+		// to know what happened, it is probably related to inheritance
+		// and the STL container implementation somehow...
+    	.def("__len__", (size_t (std::set<dds::stream_id>::*)()) & std::set<dds::stream_id>::size )
+		// this broke when I switched to ubuntu 17.10
     	.def("__iter__", py::iterator<std::set<dds::stream_id>>())
-    	.add_property("empty", &std::set<dds::stream_id>::empty)
-    	.def("clear", &std::set<dds::stream_id>::clear )
+    	.def("empty", (bool (std::set<dds::stream_id>::*)()) &std::set<dds::stream_id>::empty)
+    	.def("clear", (void (std::set<dds::stream_id>::*)()) &std::set<dds::stream_id>::clear )
     	.def("__bool__", &set_ops<dds::stream_id>::not_empty )
     	.def("__contains__", &set_ops<dds::stream_id>::contains )
     	.def("add", &set_ops<dds::stream_id>::add )
     	;
+
 
     class_<dds::ds_metadata>("ds_metadata")
     	.add_property("size", &dds::ds_metadata::size)
@@ -422,9 +429,15 @@ BOOST_PYTHON_MODULE(_dds)
     py::register_ptr_to_python< dds::datasrc > ();
 
     class_<dds::time_window_source, bases<dds::data_source>, boost::noncopyable>(
-    	"time_window_source", init<dds::datasrc, dds::timestamp>())
+    	"time_window_source", init<dds::datasrc, dds::timestamp, bool>())
     	.add_property("delay", & dds::time_window_source::delay)
     	;
+
+    class_<dds::fixed_window_source, bases<dds::data_source>, boost::noncopyable>(
+    	"time_window_source", init<dds::datasrc, size_t, bool>())
+    	.add_property("window_size", & dds::fixed_window_source::window_size)
+    	;
+
 
     def("wcup_ds", dds::wcup_ds);
     def("crawdad_ds", dds::wcup_ds);
@@ -440,9 +453,13 @@ BOOST_PYTHON_MODULE(_dds)
 
 	class_< dds::buffered_dataset >("buffered_dataset")
 		.def("__iter__", py::iterator< dds::buffered_dataset >())
-    	.def("__len__", & dds::buffered_dataset::size )
-    	.def("size", & dds::buffered_dataset::size )
-    	.def("load", &dds::buffered_dataset::load)
+		// The next two lines are stupid, but without the cast, the
+		// compiler would barf.
+		// This broke when I switched to ubuntu 17.10. I would very much like
+		// to know what happened
+    	.def("__len__", (size_t (dds::buffered_dataset::*)()) & dds::buffered_dataset::size )
+    	.def("size", (size_t (dds::buffered_dataset::*)()) & dds::buffered_dataset::size )
+    	.def("load", & dds::buffered_dataset::load )
     	.def("analyze", &dds::buffered_dataset::analyze)
 		;
 
@@ -461,7 +478,6 @@ BOOST_PYTHON_MODULE(_dds)
 		("materialized_data_source", init<dds::datasrc>())
 		;
 
-	
 
 	def("hdf5_ds", (dds::datasrc (*)(const std::string&, const std::string&)) 
 		&dds::hdf5_ds);
@@ -638,10 +654,15 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.value("append", dds::open_mode::append)
 		;
 
+	enum_<dds::text_format>("text_format")
+		.value("csvtab", dds::text_format::csvtab)
+		.value("csvrel", dds::text_format::csvrel)
+		;
+
 	class_<dds::output_c_file, bases<dds::output_file>, boost::noncopyable>
-		("output_c_file", init<const std::string&, dds::open_mode>())
-		.def(init<FILE*, bool>())
-		.def(init<>())
+		("output_c_file", init<const std::string&, dds::open_mode, dds::text_format>())
+		.def(init<FILE*, bool, dds::text_format>())
+		.def(init<dds::text_format>())
 		.def("open", 
 			(void (dds::output_c_file::*)(const std::string&, dds::open_mode))
 				&dds::output_c_file::open)
@@ -702,15 +723,6 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.add_property("addr", &dds::host::addr)
 		.def("set_addr", (void (dds::host::*)()) &dds::host::set_addr)
 		.def("set_addr", (bool (dds::host::*)(dds::host_addr)) &dds::host::set_addr)
-		;
-
-	class_<dds::host_group, bases<dds::host>, boost::noncopyable>
-		("host_group", init<dds::basic_network*>())
-		.def("join", &dds::host_group::join, 
-			with_custodian_and_ward<1,2>())
-		.def("members", +[](dds::host_group& g){
-			return collection_to_list<dds::host>(g.members());
-		})
 		;
 
 	class_< dds::rpc_obj >
@@ -871,9 +883,15 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def("open", 
 			// a big typecast !
 			(dds::output_file* 
-			(dds::context::*)(const std::string&, dds::open_mode))  
+			(dds::context::*)(const std::string&, dds::open_mode, dds::text_format))  
 						&dds::context::open, return_internal_reference<>())
+		.def("open_hdf5", 
+			// a big typecast !
+			(dds::output_file* 
+			(dds::context::*)(const std::string&, dds::open_mode))  
+						&dds::context::open_hdf5, return_internal_reference<>())
 		.def("close_result_files", &dds::context::close_result_files)
+		.def("clear", &dds::context::clear)
 		;
 
 
@@ -1014,10 +1032,10 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		.def("prob_failure", &agms::projection::prob_failure)
 		;
 
-	object numpy = import("numpy");
+	//object numpy = import("numpy");
 	//numeric::array::set_module_and_type("numpy","ndarray");
 
-	class_< agms::sketch, bases<dds::Vec> >("agms_sketch",
+	class_< agms::sketch, bases<hdv::Vec> >("agms_sketch",
 			init<agms::projection>())
 		.def(init<agms::depth_type, agms::index_type>())
 		.def("hashf", &agms::sketch::hashf, return_internal_reference<>())
@@ -1037,32 +1055,6 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 		;
 
 
-    /**********************************************
-     *
-     *  results.hh
-     *
-     **********************************************/
-
-	// class_< dds::comm_results_t, bases<dds::result_table>, boost::noncopyable>
-	// 	("comm_results_t")
-	// 	;
-
-	// class_< dds::local_stream_stats_t, bases<dds::result_table>, boost::noncopyable>
-	// 	("local_stream_stats_t")
-	// 	;
-#define DECL_RESULT_TABLE(tname)\
-    scope().attr( #tname ) = py::ptr((dds::result_table*) & dds:: tname );
-
-    DECL_RESULT_TABLE(local_stream_stats)
-    DECL_RESULT_TABLE(network_comm_results)
-    DECL_RESULT_TABLE(network_host_traffic)
-    DECL_RESULT_TABLE(network_interfaces)
-
-#undef DECL_RESULT_TABLE
-	// scope().attr("local_stream_stats") 
-	// 	= py::ptr((dds::result_table*) &dds::local_stream_stats);
-	// scope().attr("network_comm_results") 
-	// 	= py::ptr((dds::result_table*) &dds::network_comm_results);
 
 
     /**********************************************
@@ -1073,26 +1065,26 @@ DECL_COMPUTED_TYPE(unsigned long long, ullong)
 
 
 
-	class_< dds::selfjoin_agms_safezone, boost::noncopyable >
+	class_< gm::selfjoin_agms_safezone, boost::noncopyable >
 		("selfjoin_agms_safezone", 
 			init<const agms::sketch&, double, double>())
 		.def("__call__", 
 			// cast to select the overload
-			(double (dds::selfjoin_agms_safezone::*)(const agms::sketch&) )
-			& dds::selfjoin_agms_safezone::operator())
+			(double (gm::selfjoin_agms_safezone::*)(const agms::sketch&) )
+			& gm::selfjoin_agms_safezone::operator())
 		;
 
-	class_< dds::selfjoin_query, boost::noncopyable >
+	class_< gm::selfjoin_query, boost::noncopyable >
 		("selfjoin_query", init<double, agms::projection>())
-		.def("update_estimate", & dds::selfjoin_query::update_estimate)
-		.def_readonly("beta", &dds::selfjoin_query::beta)
-		.def_readonly("epsilon", &dds::selfjoin_query::epsilon)
-		.def_readonly("Qest", &dds::selfjoin_query::Qest)
-		.def_readonly("Tlow", &dds::selfjoin_query::Tlow)
-		.def_readonly("Thigh", &dds::selfjoin_query::Thigh)
-		.def_readonly("zeta_E", &dds::selfjoin_query::zeta_E)
-		.def_readonly("E", &dds::selfjoin_query::E)
-		.def_readonly("safe_zone", &dds::selfjoin_query::safe_zone)
+		.def("update_estimate", & gm::selfjoin_query::update_estimate)
+		.def_readonly("beta", &gm::selfjoin_query::beta)
+		.def_readonly("epsilon", &gm::selfjoin_query::epsilon)
+		.def_readonly("Qest", &gm::selfjoin_query::Qest)
+		.def_readonly("Tlow", &gm::selfjoin_query::Tlow)
+		.def_readonly("Thigh", &gm::selfjoin_query::Thigh)
+		.def_readonly("zeta_E", &gm::selfjoin_query::zeta_E)
+		.def_readonly("E", &gm::selfjoin_query::E)
+		.def_readonly("safe_zone", &gm::selfjoin_query::safe_zone)
 		;
 
 

@@ -6,10 +6,12 @@
 #include <utility>
 #include <string>
 #include <set>
+#include <map>
 #include <iterator>
 #include <limits>
 #include <array>
 #include <cassert>
+#include <typeinfo>
 
 namespace dds {
 
@@ -139,18 +141,18 @@ ostream& operator<<(ostream& s, dds_record const & rec);
   */
 class named
 {
-	mutable std::string n;
+	std::string n;
 public:
 	/// Make a name from a pointer
 	static std::string anon(named const * ptr);
 
-	named() : n() { }
-	named(const std::string& _n) : n(_n) {}
-	virtual ~named() {}
+	named();
+	named(const std::string& _n);
+
 	inline void set_name(const std::string& _name) { n=_name; }
-	inline const std::string& name() const { 
+	inline std::string name() const { 
 		if(n.empty()) 
-			n = anon(this);
+			return anon(this);
 		return n; 
 	}
 };
@@ -259,112 +261,6 @@ public:
 
 
 
-/*-----------------------------------
-
-	Descriptors for global queries
-
-  -----------------------------------*/
-
-enum class qtype 
-{
-	VOID,
-	SELFJOIN,
-	JOIN
-};
-
-struct basic_query
-{
-	qtype type;
-	constexpr basic_query() : type(qtype::VOID) {}
-	constexpr basic_query(qtype t) : type(t) {}
-};
-
-	namespace __traits {
-
-		template <qtype Type> struct query_traits;
-		template <> struct query_traits<qtype::VOID> 
-		{
-			static const qtype query_type = qtype::VOID;
-			typedef void param_type;
-		};
-		template <> struct query_traits<qtype::SELFJOIN> 
-		{
-			static const qtype query_type = qtype::SELFJOIN;
-			typedef stream_id param_type;
-		};
-		template <> struct query_traits<qtype::JOIN> 
-		{
-			static const qtype query_type = qtype::JOIN;
-			typedef std::pair<stream_id, stream_id> param_type;
-		};
-
-	}
-
-template <qtype Type>
-struct typed_query : basic_query
-{
-	typedef __traits::query_traits<Type> traits;
-	typedef typename traits::param_type param_type;
-
-	param_type param;
-
-	constexpr typed_query() 
-	: basic_query(Type), param() {}
-	constexpr typed_query(const param_type& p) 
-	: basic_query(Type), param(p) {}
-};
-
-template <>
-struct typed_query<qtype::VOID> : basic_query
-{
-	typedef __traits::query_traits<qtype::VOID> traits;
-	typedef typename traits::param_type param_type;
-
-	constexpr typed_query() 
-	: basic_query(qtype::VOID) {}
-};
-
-
-template <qtype Type>
-inline typed_query<Type>& query_cast(basic_query& q) 
-{
-	assert(q.type == Type);
-	return static_cast< typed_query<Type>& >(q);
-}
-template <qtype Type>
-inline const typed_query<Type>& query_cast(const basic_query& q) 
-{
-	assert(q.type == Type);
-	return static_cast< const typed_query<Type>& >(q);
-}
-
-// query relational operators
-bool operator==(const basic_query& q1, const basic_query& q2);
-
-inline bool operator!=(const basic_query& q1, const basic_query& q2)
-{
-	return ! (q1==q2);
-}
-
-// Short names for queries
-using self_join = typed_query<qtype::SELFJOIN>;
-using twoway_join = typed_query<qtype::JOIN>;
-
-inline auto join(stream_id s1, stream_id s2) {
-	return twoway_join(std::make_pair(s1,s2));
-}
-
-
-std::ostream& operator<<(std::ostream& s, const basic_query& q);
-std::ostream& operator<<(std::ostream& s, qtype qt);
-
-inline std::string repr(const basic_query& q)
-{
-	std::ostringstream S;
-	S << q;
-	return S.str();
-}
-
 
 
 /*-----------------------------------
@@ -405,6 +301,66 @@ BYTE_SIZE_SIZEOF(float)
 BYTE_SIZE_SIZEOF(double)
 
 BYTE_SIZE_SIZEOF(dds_record)
+
+
+//------------------------------------------
+//
+// Type utilities
+//
+//------------------------------------------
+
+
+
+/**
+	Type-erased class for enumeration constant stringification
+  */
+class basic_enum_repr : public named
+{
+protected:
+	std::map<int, std::string> extl;
+	std::map<std::string, int> intl;
+public:
+	explicit basic_enum_repr(const std::string& ename) : named(ename) {}
+	explicit basic_enum_repr(const std::type_info& ti);
+	inline void add(int val, const std::string& tag) {
+		extl[val] = tag;
+		intl[tag] = val;
+	}
+	int map(const std::string& tag) const { return intl.at(tag); }
+	std::string map(int val) const { return extl.at(val); }
+	bool is_member(int val) const { return extl.count(val); }
+	bool is_member(const std::string& tag) const { return intl.count(tag); };
+};
+
+/**
+	Typed class for enumeration constant stringification
+  */
+template <typename Enum>
+class enum_repr : public basic_enum_repr
+{
+public:
+	typedef std::pair<Enum, const char*> value_type;
+	explicit enum_repr( std::initializer_list< value_type > ilist ) 
+	: basic_enum_repr(typeid(Enum)) 
+	{
+		for(auto&& e : ilist) {
+			Enum val = std::get<0>(e);
+			const std::string& tag = std::get<1>(e);
+			add(static_cast<int>(val), tag);
+		}
+	}
+
+	inline Enum operator[](const std::string& tag) const {
+		return static_cast<Enum>(map(tag));
+	}
+	inline std::string operator[](Enum val) const {
+		return map((int) val);
+	}
+
+};
+
+
+
 
 } // end namespace dds
 

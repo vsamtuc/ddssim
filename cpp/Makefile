@@ -6,27 +6,38 @@
 # Compiler flags
 #################################
 
-ifndef DEBUG
-# Default: compile for debug
-DEBUG=1
+ifndef MODE
+MODE=DEBUG
 endif
 
-INCLUDE= -I/usr/include/python3.5m -I/usr/include/hdf5/serial
-LIB= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
-	-lhdf5_serial -ldl -laec -lsz -lz -lm -ljsoncpp #-lboost_filesystem -lboost_system
-CXXFLAGS= -Wall -fPIC -std=gnu++17 $(INCLUDE)
+PYTHON_INCLUDE:= $(shell /usr/bin/python3-config --includes)
+PYTHON_LIB:= $(shell /usr/bin/python3-config --ldflags)
 
-DEBUGFLAGS=  -g3 #-Og
-OPTFLAGS= -g3 -Ofast #-DNDEBUG
+HDF5_INCLUDE:= -I/usr/include/hdf5/serial
+HDF5_LIB:= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl \
+	-lhdf5_serial -ldl -laec -lsz -lz
 
-ifeq ($(DEBUG),1)
-CXXFLAGS+=  $(DEBUGFLAGS)
+INCLUDE= $(PYTHON_INCLUDE) $(HDF5_INCLUDE)
+LIB=  $(HDF5_LIB) -lm -ljsoncpp  #-lboost_filesystem -lboost_system
+CXXFLAGS= -Wall -std=gnu++17 $(INCLUDE) # -fPIC
+
+DEBUG_FLAGS=  -g3
+OPT_FLAGS= -g3 -Ofast #-DNDEBUG
+PRODUCTION_FLAGS = -Ofast -DNDEBUG
+
+ifeq ($(MODE),DEBUG)
+CXXFLAGS+=  $(DEBUG_FLAGS)
+else ifeq ($(MODE),OPT)
+CXXFLAGS+= $(OPT_FLAGS)
+else ifeq ($(MODE),PRODUCTION)
+CXXFLAGS+= $(PRODUCTION_FLAGS)
 else
-CXXFLAGS+=  $(OPTFLAGS)
+$(error Unknown mode $(MODE))
 endif
 
 ifdef GPROF
-CXXFLAGS += -pg
+CXXFLAGS += -pg -no-pie
+LDFLAGS += -pg  -no-pie
 endif
 
 
@@ -34,17 +45,18 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= mathlib.cc output.cc eca.cc agms.cc data_source.cc method.cc \
-	accurate.cc dds.cc dsarch.cc results.cc\
-	tods.cc  safezone.cc agm.cc gm.cc\
-	cfgfile.cc
+DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
+	cfgfile.cc dsarch.cc \
+	accurate.cc query.cc results.cc\
+	sz_quorum.cc sz_bilinear.cc\
+	tods.cc  safezone.cc gm_proto.cc gm_szone.cc gm_query.cc fgm.cc sgm.cc 
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
-	mathlib_tests.hh exec_tests.hh output_tests.hh \
-	tods_tests.hh szone_tests.hh gm_tests.hh method_tests.hh \
-	cfg_tests.hh
+	hdv_tests.hh exec_tests.hh output_tests.hh \
+	tods_tests.hh szone_tests.hh method_tests.hh \
+	cfg_tests.hh gm_tests.hh 
 
-TEST_SOURCES= unit_tests.cc data_tests.cc
+TEST_SOURCES= unit_tests.cc data_tests.cc timing_tests.cc
 
 CXX_SOURCES= $(DDS_SOURCES) dssim.cc dds_module.cc
 
@@ -69,13 +81,14 @@ libdds.a: $(DDS_OBJ)
 	ranlib $@
 
 dssim: dssim.o libdds.a
-	$(CXX) -o $@ $< -L. -ldds $(LIB)
+	$(CXX) $(LDFLAGS) -o $@ $< -L. -ldds $(LIB)
 
 dds_module.o: dds_module.cc
 	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
 
 _dds.so: dds_module.o libdds.a
-	$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
+	#$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
+	$(CXX) -shared -o $@ $^ -lboost_python-py35 $(LIB) $(PYTHON_LIB)
 
 #unit_tests.cc: $(UNIT_TESTS) 
 #	cxxtestgen --error-printer -o $@ $^
@@ -97,6 +110,14 @@ data_tests.cc: data_tests.hh
 
 data_tests: data_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
+
+timing_tests.cc: timing_tests.hh
+	cxxtestgen --error-printer -o $@ $<	
+
+timing_tests: timing_tests.o libdds.a
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_timer
+
+
 
 %_tests.cc : %_tests.hh
 	cxxtestgen --part --error-printer -o $@ $<

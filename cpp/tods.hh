@@ -3,15 +3,15 @@
 
 #include <functional>
 
-#include "dds.hh"
-#include "mathlib.hh"
 #include "agms.hh"
 #include "dsarch.hh"
 #include "method.hh"
 
 
-namespace dds { namespace tods {
+namespace tods {
 
+using namespace dds;
+using namespace hdv;
 using namespace agms;
 
 class network;
@@ -118,7 +118,7 @@ struct node : local_site
 	The main method object
   */
 struct network 
-	: star_network<network, coordinator, node>, reactive
+	: star_network<network, coordinator, node>, component
 {
 	set<stream_id> streams;
 	projection proj;
@@ -126,12 +126,12 @@ struct network
 	size_t k;
 
 	network(const string& _name, const projection& proj, double theta, const set<stream_id>& streams);
-	network(const string& _name, depth_type D, index_type L, double theta, const set<stream_id>& streams)
+	network(const string& _name, depth_type D, size_t L, double theta, const set<stream_id>& streams)
 	: network(_name, projection(D,L), theta, streams)
 	{ }	
 
 	network(const string& _name, const projection& proj, double theta);
-	network(const string& _name, depth_type D, index_type L, double theta)
+	network(const string& _name, depth_type D, size_t L, double theta)
 	: network(_name, projection(D,L), theta)
 	{ }
 
@@ -145,10 +145,10 @@ struct network
 	~network();
 };
 
+extern component_type<network> tods_comptype;
 
 
-
-} } // end namespace dds
+}  // end namespace tods
 
 
 #endif

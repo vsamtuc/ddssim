@@ -3,28 +3,24 @@
 
 #include <cassert>
 #include <algorithm>
+#include <type_traits>
 
-#include "dds.hh"
-#include "mathlib.hh"
+#include "hdv.hh"
 
 namespace agms {
 
 using namespace std;
 
 
-/// The index type
-typedef size_t index_type;
-
 /// The depth type
 typedef unsigned int depth_type;
 
-using key_type = dds::key_type;
 
 using std::valarray;
-using dds::delta_vector;
-using dds::Vec;
-using dds::Index;
-using dds::Mask;
+using hdv::delta_vector;
+using hdv::Vec;
+using hdv::Index;
+using hdv::Mask;
 
 
 /**
@@ -37,8 +33,8 @@ using dds::Mask;
 	to the number of projections.
 
 	Using the hash family, one can use functions \c hash31 and
-	\c fourwise to map a key \f$ x \f$ of type \c key_type to 
-	an index \f$ z \f$ of type \c index_type.
+	\c fourwise to map a key \f$ x \f$ of type \c size_t to 
+	an index \f$ z \f$ of type \c size_t.
   */
 class hash_family
 {
@@ -49,10 +45,10 @@ public:
 	~hash_family();
 
 	/// Return the hash for a key
-	long long hash(depth_type d, key_type x) const;
+	size_t hash(depth_type d, size_t x) const;
 
 	/// Return a 4-wise independent 
-	bool fourwise(depth_type d, key_type x) const;
+	bool fourwise(depth_type d, size_t x) const;
 
 	/// Depth of the hash family
 	inline depth_type depth() const { return D; }
@@ -68,6 +64,10 @@ public:
 };
 
 
+template <typename IterType>
+struct sketch_view;
+
+
 /**
 	An AGMS projection defines a projection 
 	of a high-dimensional vector space on a
@@ -80,29 +80,37 @@ public:
 class projection
 {
 	hash_family* hf;
-	index_type L;
+	size_t L;
 	double eps;
 public:
 
 	inline hash_family* hashf() const { return hf; }
 	inline depth_type depth() const { return hf->depth(); }
-	inline index_type width() const { return L; }
+	inline size_t width() const { return L; }
 	inline size_t size() const { return depth()*width(); }
 
 	inline projection() : hf(0), L(0) {}
 
-	inline projection(hash_family* _hf, index_type _L)
+	inline projection(hash_family* _hf, size_t _L)
 	: hf(_hf), L(_L), eps(ams_epsilon())
 	{ }
 
-	inline projection(depth_type _D, index_type _L)
+	inline projection(depth_type _D, size_t _L)
 	: projection(hash_family::get_cached(_D),_L)
 	{ }
 
 
-	void update_index(key_type key, Index& idx) const;
+	inline size_t hash(depth_type d, size_t key) const {
+		return hf->hash(d,key) % L;
+	}
 
-	void update_mask(key_type key, Mask& mask) const; 
+	inline bool fourwise(depth_type d, size_t key) const {
+		return hf->fourwise(d,key);
+	}
+
+	void update_index(size_t key, Index& idx) const;
+
+	void update_mask(size_t key, Mask& mask) const; 
 
 
 	inline bool operator==(const projection& p) const {
@@ -120,7 +128,170 @@ public:
 	inline double ams_epsilon() const { return 4./sqrt(L); }
 	inline double prob_failure() const { return pow(1./sqrt(2.), depth()); }
 
+	/**
+		Return a sketch view of a range. 
+
+		The iterators must satisfy the RandomAccessIterator concept of STL.
+	  */
+	template<typename Iter>
+	sketch_view<Iter> operator()(Iter from, Iter to) const;
+
+	/**
+		Return a sketch view on a container. 
+
+		The data range is obtained by calling \c std::begin and \c std::end.
+	  */
+	template<typename Container>
+	auto operator()(Container&) const;
+
 };
+
+
+
+/**
+	AGMS sketch view
+
+	This template applies AGMS sketch operations on a generic 
+	collection of counters, as defined by a range of random-access
+	iterators.
+  */
+template <typename IterType>
+struct sketch_view
+{
+	typedef IterType iterator;
+	typedef typename std::decay <decltype(* iterator())>::type counter_type;
+
+	/// the projection of the sketch
+	agms::projection proj;
+
+	/// The range of the sketch
+	IterType __begin, __end;
+
+	sketch_view() {}
+
+	sketch_view(const projection& _proj) : proj(_proj) { }
+	sketch_view(const projection& _proj, const iterator& b, const iterator& e)
+		: proj(_proj), __begin(b), __end(e) 
+	{ 
+		assert(valid_range(__begin, __end));
+	}
+
+	inline void set_range(const iterator& b, const iterator& e) {
+		assert(valid_range(b, e));
+		__begin = b;
+		__end = e;
+	}
+
+	inline bool valid_range(const iterator& b, const iterator& e) const {
+		return std::distance(b,e) == (ptrdiff_t) proj.size();
+	}
+
+	/// The hash family
+	inline hash_family* hashf() const { return proj.hashf(); }
+
+	/// The dimension \f$L\f$ of the sketch.
+	inline size_t width() const { return proj.width(); }
+
+	/// The depth \f$D \f$ of the sketch.
+	inline depth_type depth() const { return proj.depth(); }
+
+	/// The size of the projection which is also the size of the range
+	inline size_t size() const { return proj.size(); }
+
+	/// Return true if this sketch is compatible to sk
+	template <typename Iter>
+	inline bool compatible(const sketch_view<Iter>& sk) const {
+		return proj == sk.proj;
+	}
+
+	inline iterator begin() const { return __begin; }
+
+	inline iterator end() const { return __end; }
+
+	inline iterator row_begin(size_t row) const {
+		return __begin+(row*width());
+	}
+
+	inline iterator row_end(size_t row) const {
+		return __begin+((row+1)*width());
+	}
+
+	inline counter_type operator[](size_t i) const { return __begin[i]; }
+	inline counter_type& operator[](size_t i) { return __begin[i]; }
+
+	/// Update the counters for key and freq
+	void update(size_t key, counter_type freq = 1) const
+	{
+		hash_family* const h = proj.hashf();
+		size_t off = 0;
+		for(size_t d=0; d<depth(); d++) {
+			size_t off2 = h->hash(d, key) % width();
+			if(h->fourwise(d, key))
+				__begin[off+off2] += freq;
+			else
+				__begin[off+off2] -= freq;
+			off += width();
+		}		
+	}
+
+	/// Update the counters for key and freq and set delta vector
+	void update(delta_vector& delta, size_t key, counter_type freq = 1) const
+	{
+		proj.update_index(key, delta.index);
+		for(size_t d=0; d<depth(); d++) {
+			delta.xold[d] = __begin[delta.index[d]];
+			__begin[delta.index[d]] += proj.fourwise(d, key) ? freq : -freq;
+			delta.xnew[d] = __begin[delta.index[d]];
+		}
+	}
+
+	/// Update the counters from index and mask, as returned by projection
+	void apply_update(const Index& idx, const Mask& m, counter_type freq=1)  const
+	{
+		assert(idx.size() == m.size());
+		for(size_t i=0;i<idx.size();i++) {
+			__begin[idx[i]] += m[i]? freq : -freq;
+		}
+	}
+
+	/// update the counters from delta vector
+	void apply_update(const delta_vector& delta) const
+	{
+		for(size_t i=0; i<delta.index.size(); i++) {
+			__begin[delta.index[i]] += delta.xnew[i]-delta.xold[i]; 
+		}
+	}
+
+};
+
+
+
+/**
+	Sketch view over a vector
+  */
+typedef sketch_view<decltype(begin((Vec&) (* (Vec*)0) ))> Vec_sketch_view;
+typedef sketch_view<decltype(begin((const Vec&) Vec()))> const_Vec_sketch_view;
+
+
+/**
+	Return a sketch view on a range. 
+  */
+template<typename Iter>
+inline sketch_view<Iter> projection::operator()(Iter from, Iter to) const
+{
+	return sketch_view<Iter>(*this, from, to);
+}
+
+/**
+	Return a sketch view on a container
+  */
+template<typename Container>
+auto projection::operator()(Container& c) const
+{
+	typedef decltype(std::begin(c)) iter;
+	return sketch_view<iter>(*this, std::begin(c), std::end(c));
+}
+
 
 
 /**
@@ -149,18 +320,26 @@ public:
 
 	/// Initialize by a given projection
 	inline sketch(const projection& _proj)
-	: Vec(0.0,_proj.size()), proj(_proj) 
+	: Vec(0.0,_proj.size()), proj(_proj)
 	{ }
 
 	/// Initialize to a zero sketch
-	inline sketch(hash_family* _hf, index_type _L)
+	inline sketch(hash_family* _hf, size_t _L)
 	: sketch(projection(_hf,_L))
 	{ }
 
 	/// Initialize to a zero sketch
-	inline sketch(depth_type _D, index_type _L) 
+	inline sketch(depth_type _D, size_t _L) 
 	: sketch(projection(_D,_L))
 	{ }
+
+	template <typename Iter>
+	inline sketch(const sketch_view<Iter>& skv)
+	: Vec(skv.size()), proj(skv.proj) 
+	{
+		std::copy(skv.begin(), skv.end(), begin(*this));
+	}
+
 
 	sketch(const sketch&) = default;
 	sketch(sketch&&) = default;
@@ -189,24 +368,44 @@ public:
 		this->Vec::operator=(other); return *this;
 	}
 
+	template <typename Iter>
+	inline sketch& operator=(const sketch_view<Iter>& skv) {
+		if(proj == skv.proj) 
+			std::copy(skv.begin(), skv.end(), std::begin(*this));
+		else
+			*this = sketch(skv);
+		return *this;
+	}
 
 	/// The hash family
 	inline hash_family* hashf() const { return proj.hashf(); }
 
 	/// The dimension \f$L\f$ of the sketch.
-	inline index_type width() const { return proj.width(); }
+	inline size_t width() const { return proj.width(); }
 
 	/// The depth \f$D \f$ of the sketch.
 	inline depth_type depth() const { return proj.depth(); }
 
+	inline auto view() { 
+		return Vec_sketch_view(proj, begin(*this), end(*this)); 
+	}
+	inline auto view() const { 
+		return const_Vec_sketch_view(proj, begin(*this), end(*this)); 
+	}
+
+	inline operator Vec_sketch_view() { return view(); }
+
 	/// Update the sketch.
-	void update(key_type key, double freq = 1.0);
+	inline void update(size_t key, double freq = 1.0) { view().update(key, freq); }
+
+	inline void update(delta_vector& delta, size_t key, double freq = 1.0)
+	{ view().update(delta, key, freq); }
 
 	/// Insert a key into the sketch
-	inline void insert(key_type key) { update(key, 1.0); }
+	inline void insert(size_t key) { update(key, 1.0); }
 
 	/// Erase a key from the sketch
-	inline void erase(key_type key) { update(key, -1.0); }
+	inline void erase(size_t key) { update(key, -1.0); }
 
 	/// Return true if this sketch is compatible to sk
 	inline bool compatible(const sketch& sk) const {
@@ -222,7 +421,7 @@ public:
 	}
 
 	inline double norm2_squared() const {
-		return dds::dot(*this, *this);
+		return hdv::dot(*this, *this);
 	}
 
 	inline size_t byte_size() const {
@@ -237,7 +436,18 @@ public:
 	parallel rows of two sketches.
   */
 
-Vec dot_estvec(const sketch& s1, const sketch& s2);
+template <typename Iter>
+Vec dot_estvec(const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
+{
+	assert(s1.compatible(s2));
+	const depth_type D = s1.depth();
+	Vec ret(D);
+
+	for(size_t d=0;d<D;d++)
+		ret[d] = std::inner_product(s1.row_begin(d), s1.row_end(d),
+			s2.row_begin(d), 0.0);
+	return ret;
+}
 
 
 /**
@@ -249,7 +459,14 @@ Vec dot_estvec(const sketch& s1, const sketch& s2);
 
 	@see dot_estvec
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch& s2);
+template <typename Iter>
+inline Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch_view<Iter>& s2)
+{
+	for(size_t i=0; i<ds1.index.size(); i++)
+		oldvalue[i] += (ds1.xnew[i] - ds1.xold[i])*s2[ds1.index[i]];
+	return oldvalue;
+}
+
 
 /**
 	Incremental version of `dot_estvec`. 
@@ -260,13 +477,19 @@ Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds1, const sketch& s2);
 
 	@see dot_estvec
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const sketch& s1, const delta_vector& s2);
+template <typename Iter>
+inline Vec& dot_estvec_inc(Vec& oldvalue, const sketch_view<Iter>& s1, const delta_vector& ds2)
+{
+	return dot_estvec_inc(oldvalue, ds2, s1);
+}
 
 
 /**
 	A shorthand for dot_estvec(s,s)
   */
-inline Vec dot_estvec(const sketch& s) { 
+template <typename Iter>
+inline Vec dot_estvec(const sketch_view<Iter>& s) 
+{ 
 	return dot_estvec(s,s); 
 }
 
@@ -276,25 +499,31 @@ inline Vec dot_estvec(const sketch& s) {
 
 	The incremental state is just the previous value.
   */
-Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds);
+inline Vec& dot_estvec_inc(Vec& oldvalue, const delta_vector& ds)
+{
+	oldvalue += ds.xnew*ds.xnew - ds.xold*ds.xold;
+	return oldvalue;
+}
 
 
 /**
 	Return the (robust) estimate of the inner product
 	of two agms sketches
   */
-inline double dot_est(const sketch& s1, const sketch& s2)
+template <typename Iter>
+inline double dot_est(const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
 {
-	return dds::median(dot_estvec(s1,s2));
+	return hdv::median(dot_estvec(s1,s2));
 }
 
 /**
 	Return the (robust) estimate of the self product
 	of an agms sketch
   */
-inline double dot_est(const sketch& sk)
+template <typename Iter>
+inline double dot_est(const sketch_view<Iter>& sk)
 {
-	return dds::median(dot_estvec(sk));
+	return hdv::median(dot_estvec(sk));
 }
 
 
@@ -302,22 +531,25 @@ inline double dot_est(const sketch& sk)
 	Return the (robust) estimate of the inner product
 	of two agms sketches and the incremental state (which is overwritten)
   */
-inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2)
+template <typename Iter>
+inline double dot_est_with_inc(Vec& incstate, const sketch_view<Iter>& s1, const sketch_view<Iter>& s2)
 {
 	incstate.resize(s1.depth());
 	incstate = dot_estvec(s1,s2);
-	return dds::median(incstate);
+	return hdv::median(incstate);
 }
 
 
-inline double dot_est_inc(Vec& incstate, const delta_vector& ds1, const sketch& s2)
+template <typename Iter>
+inline double dot_est_inc(Vec& incstate, const delta_vector& ds1, const sketch_view<Iter>& s2)
 {
-	return dds::median(dot_estvec_inc(incstate, ds1,s2));
+	return hdv::median(dot_estvec_inc(incstate, ds1,s2));
 }
 
-inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& ds2)
+template <typename Iter>
+inline double dot_est_inc(Vec& incstate, const sketch_view<Iter>& s1, const delta_vector& ds2)
 {
-	return dds::median(dot_estvec_inc(incstate, s1, ds2));
+	return hdv::median(dot_estvec_inc(incstate, s1, ds2));
 }
 
 
@@ -326,31 +558,51 @@ inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& d
 	Return the (robust) incremental estimate of the inner product
 	of two agms sketches
   */
-inline double dot_est_with_inc(Vec& incstate, const sketch& sk)
+template <typename Iter>
+inline double dot_est_with_inc(Vec& incstate, const sketch_view<Iter>& sk)
 {
 	incstate.resize(sk.depth());
 	incstate = dot_estvec(sk);
-	return dds::median(incstate);
+	return hdv::median(incstate);
 }
 
 
 inline double dot_est_inc(Vec& incstate, const delta_vector& dsk)
 {
-	return dds::median(dot_estvec_inc(incstate, dsk));
+	return hdv::median(dot_estvec_inc(incstate, dsk));
 }
 
 
-/**
-	Incremental version of norm2_squared
+//
+// Inner product
+//
 
-	Just use dot_inc
+inline Vec dot_estvec(const sketch& s1, const sketch& s2) { return dot_estvec(s1.view(), s2.view()); }
+inline Vec& dot_estvec_inc(Vec& inc, const delta_vector& ds1, const sketch& s2) { 
+	return dot_estvec_inc(inc,ds1,s2.view()); }
+inline Vec& dot_estvec_inc(Vec& inc, const sketch& s2, const delta_vector& ds1) { 
+	return dot_estvec_inc(inc,ds1,s2.view()); }
 
-inline double norm2_squared_inc(double& oldvalue, const delta_vector& dsk)
-{
-	oldvalue += dds::dot(dsk.xnew) - dds::dot(dsk.xold);
-	return oldvalue;
-}
-  */
+
+inline double dot_est(const sketch& s1, const sketch& s2) { return dot_est(s1.view(), s2.view()); }
+inline double dot_est_with_inc(Vec& incstate, const sketch& s1, const sketch& s2) {
+ 	return dot_est_with_inc(incstate, s1.view(), s2.view()); }
+inline double dot_est_inc(Vec& incstate, const delta_vector& s1, const sketch& s2) {
+ 	return dot_est_inc(incstate, s1, s2.view()); }
+inline double dot_est_inc(Vec& incstate, const sketch& s1, const delta_vector& s2) {
+ 	return dot_est_inc(incstate, s1.view(), s2); }
+
+
+//
+// Self-product
+//
+
+inline Vec dot_estvec(const sketch& s) { return dot_estvec(s.view()); }
+
+inline double dot_est(const sketch& s) { return dot_est(s.view()); }
+inline double dot_est_with_inc(Vec& incstate, const sketch& s) {
+ 	return dot_est_with_inc(incstate, s.view()); }
+
 
 
 // Vector space operations
@@ -392,6 +644,28 @@ inline sketch operator/(const sketch& s, double a)
 }
 
 
+/**
+	A reference to a sketch to perform incremental updates.
+
+	A container for a sketch reference and a delta_vector. 
+	The update method also updates the delta.
+  */
+struct inc_sketch_updater
+{
+	sketch& sk;
+	delta_vector delta;
+private:
+	// temporary, used to avoid parameter passing
+	Mask mask;
+public:
+
+	inc_sketch_updater(sketch& _sk);
+
+	void update(size_t key, double freq=1.0);
+	inline void insert(size_t key) { update(key,1.0); }
+	inline void erase(size_t key) { update(key,-1.0); }
+};
+
 
 /**
 	An incrementally updatable sketch.
@@ -403,39 +677,15 @@ struct isketch : sketch
 {
 	delta_vector delta;
 private:
-	// temporary, used to avoid parameter passing
+	// temporary, used to avoid allocation
 	Mask mask;
 public:
 
 	isketch(const projection& proj);
 
-	void update(key_type key, double freq=1.0);
-	inline void insert(key_type key) { update(key,1.0); }
-	inline void erase(key_type key) { update(key,-1.0); }
-};
-
-
-
-/**
-	Wrapper for a sketch and number of updates.
-
-	This class wraps a reference to a sketch together with 
-	a count of the updates it contains. The byte size of this 
-	object is computed to be the minimum of the size of the
-	sketch and the size of all the updates.
-
-	TODO: currently the size of the updates is overestimated.
-  */
-struct compressed_sketch
-{
-	const agms::sketch& sk;
-	size_t updates;
-
-	size_t byte_size() const {
-		size_t E_size = dds::byte_size(sk);
-		size_t Raw_size = sizeof(dds::dds_record)*updates;
-		return std::min(E_size, Raw_size);
-	}
+	void update(size_t key, double freq=1.0);
+	inline void insert(size_t key) { update(key,1.0); }
+	inline void erase(size_t key) { update(key,-1.0); }
 };
 
 
