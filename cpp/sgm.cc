@@ -402,8 +402,8 @@ coordinator::~coordinator()
 ********************************************/
 
 
-sgm::network::network(const string& _name, continuous_query* _Q, const protocol_config& _cfg)
-: 	star_network_t(CTX.metadata().source_ids()), Q(_Q), cfg(_cfg)
+sgm::network::network(const string& _name, continuous_query* _Q)
+: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
 {
 	set_name(_name);
 	this->set_protocol_name("GM");

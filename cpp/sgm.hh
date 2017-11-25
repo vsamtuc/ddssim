@@ -37,8 +37,9 @@ struct network
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
 	continuous_query* Q;
-	protocol_config cfg;
-	network(const string& _name, continuous_query* Q, const protocol_config& c);
+	const protocol_config& cfg() const { return Q->config; }
+
+	network(const string& _name, continuous_query* Q);
 	~network();
 
 	void process_record();

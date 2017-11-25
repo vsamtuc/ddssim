@@ -34,9 +34,10 @@ struct network
 	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
 
 	continuous_query* Q;
-	protocol_config cfg;
+	
+	const protocol_config& cfg() const { return Q->config; }
 
-	network(const string& name, continuous_query* _Q, const protocol_config& _cfg);
+	network(const string& name, continuous_query* _Q);
 	~network();
 
 	void process_record();
@@ -151,7 +152,7 @@ struct coordinator : process
 	~coordinator();
 
 	inline network_t* net() const { return static_cast<network_t*>(host::net()); }
-	inline const protocol_config& cfg() const { return net()->cfg; }
+	inline const protocol_config& cfg() const { return Q->config; }
 
 	void setup_connections() override;
 

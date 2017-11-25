@@ -22,18 +22,16 @@ using namespace hdv;
 	and non-redundancy of the inputs. 
 
 	Because of its complexity, evaluating this function is expensive:
-	each invocation takes time \f$O(k\binom{l}{k-1})\f$ which can
+	each invocation takes time \f$O(\binom{l}{l-k+1})\f$ which can
 	be quite high (\f$l \leq n \f$ is the number of true components
 	in the original estimate vector, or, equivalently, the number
 	of positive elements of vector \f$zE\f$ passed at construction). 
 
-	Because it is so expensive for large \f$n\f$, a fast implementation
+	Because it is so expensive for large \f$n\f$, a fast safe zone
 	is also available. Its advantage is that it is quite efficient: 
 	each call takes \f$O(l)\f$ time.
-	Its drawback is that it is not eikonal in general.
+	Its drawback is that it is not eikonal.
 
-
-	@see quorum_safezone_fast
   */
 struct quorum_safezone
 {
@@ -42,6 +40,7 @@ struct quorum_safezone
 	Index L;  	/// the legal inputs index from n to zetaE
 	Vec zetaE;	/// the reference vector's zetas, where zE >= 0.
 	bool eikonal = true; /// The eikonality flag
+
 
 	quorum_safezone();
 	quorum_safezone(const Vec& zE, size_t _k, bool _eik);
@@ -58,6 +57,11 @@ struct quorum_safezone
 		return (eikonal) ? zeta_eikonal(zX) : zeta_non_eikonal(zX);
 	}
 
+
+private:
+	Vec z_cached; // Caching coefficients for faster execution
+	static constexpr size_t cached_bound = 19; // bound under which to cache
+	void prepare_z_cache();
 };
 
 

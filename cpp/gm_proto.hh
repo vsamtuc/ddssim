@@ -120,8 +120,19 @@ public:
   */
 struct query_config
 {		
-	bool eikonal;	// select an eikonal safezone function
+	bool eikonal=true;	// select an eikonal safezone function
 };
+
+
+/**
+	Query and protocol configuration
+  */
+struct protocol_config
+{
+	bool use_cost_model = true;		// for fgm: use the cost model if possible
+	bool eikonal = true;			// select eikonal safe zone
+};
+
 
 
 /**
@@ -133,7 +144,7 @@ struct query_config
 struct continuous_query
 {
 	// These are attributes requested by the user
-	query_config config;
+	protocol_config config;
 
 
 	virtual ~continuous_query() { }
@@ -192,12 +203,6 @@ struct continuous_query
 
 };
 
-/**
-	This function retrieves a \c query_config object from json.
-
-	This is called internally by \create_continuous_query.
- */
-query_config get_query_config(const Json::Value& js);
 
 /**
 	Returns a \c continuous_query object specified by the given component json.
@@ -206,24 +211,23 @@ continuous_query* create_continuous_query(const Json::Value& js);
 
 
 /**
-	Query-independent configuration
-  */
-struct protocol_config
-{
-	bool use_cost_model = true;
-};
+	Returns a \c protocol_config object specified by the given component json.
 
+	This is called internally by \c create_continuous_query
+ */
 protocol_config get_protocol_config(const Json::Value& js);
 
 
+/**
+	Factory method for GM components.
+  */
 template <class GMProto>
 component* p_component_type<GMProto>::create(const Json::Value& js) 
 {
 	string name = js["name"].asString();
 	continuous_query* cq = create_continuous_query(js);
-	protocol_config cfg = get_protocol_config(js);
 
-	return new GMProto(name, cq, cfg);
+	return new GMProto(name, cq);
 }
 
 

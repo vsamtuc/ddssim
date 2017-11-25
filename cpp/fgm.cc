@@ -357,6 +357,8 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 	set_name(nw->name()+":coord");
 	safe_zone = query->safezone();
 	radial_safe_zone = query->radial_safezone();
+	if(radial_safe_zone==nullptr)
+		print("Component:",name(), "no radial safe zone, eikonal=",cfg().eikonal);
 }
 
 coordinator::~coordinator()
@@ -606,8 +608,8 @@ void cost_model::print_model()
 *********************************************/
 
 
-fgm::network::network(const string& _name, continuous_query* _Q, const protocol_config& _cfg)
-	: 	star_network_t(CTX.metadata().source_ids()), Q(_Q), cfg(_cfg)
+fgm::network::network(const string& _name, continuous_query* _Q)
+	: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
 {
 	set_name(_name);
 	this->set_protocol_name("AGMC");

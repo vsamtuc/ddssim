@@ -63,25 +63,17 @@ safezone& safezone::operator=(const safezone& other)
 //////////////////////////////////////
 
 
-static void configure_query(continuous_query* Q, const Json::Value& js)
-{
-
-}
 
 
 continuous_query* gm::create_continuous_query(const Json::Value& js)
 {
+	// these are compulsory items
 	qtype qt = qtype_repr[js["query"].asString()];
     vector<stream_id> sids = get_streams(js);
     projection proj = get_projection(js);
     double beta = js["beta"].asDouble();
 
-    query_config cfg;
-
-    if(js.isMember("safezone")) {
-		Json::Value sz = js["safezone"];
-		cfg.eikonal = sz.get("eikonal", cfg.eikonal).asBool();
-    }
+    protocol_config cfg = get_protocol_config(js);
 
     switch(qt)
     {
@@ -118,6 +110,7 @@ protocol_config gm::get_protocol_config(const Json::Value& js)
 	protocol_config cfg;
 
 	cfg.use_cost_model = js.get("use_cost_model", cfg.use_cost_model).asBool();
+	cfg.eikonal = js.get("eikonal", cfg.eikonal).asBool();
 
 	return cfg;
 }

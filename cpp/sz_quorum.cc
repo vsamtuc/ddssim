@@ -1,5 +1,6 @@
-#include "sz_quorum.hh"
 
+#include "sz_quorum.hh"
+#include <vector>
 
 /////////////////////////////////////////////////////////
 //
@@ -8,6 +9,7 @@
 /////////////////////////////////////////////////////////
 
 using namespace gm;
+using std::vector;
 
 quorum_safezone::quorum_safezone() 
 { }
@@ -17,6 +19,7 @@ quorum_safezone::quorum_safezone(const Vec& zE, size_t _k, bool _eik)
 	prepare(zE, _k);
 	set_eikonal(_eik);
 }
+
 
 void quorum_safezone::prepare(const Vec& zE, size_t _k) 
 {
@@ -42,37 +45,86 @@ void quorum_safezone::prepare(const Vec& zE, size_t _k)
 }
 
 
-/*
-	Helper to compute sum(zEzX[I])/sqrt(sum(zEzE[I]^2))
- */
-inline static double zeta_I(size_t *I, size_t m, const Vec& zEzX, const Vec& zEzE)
+// Helper recursion for caching clause denominators
+static void fill_denom(size_t m, size_t l, size_t b, const Vec& zE2, double SzE2, double*& D)
 {
-	double num = 0.0;
-	double denom = 0.0;
-	for(size_t i=0; i<m; i++) {
-		num += zEzX[I[i]];
-		denom += zEzE[I[i]];
+	if(m==0) 
+		*D++ = sqrt(SzE2);
+	else {
+		const size_t c = l-m+1;
+		for(size_t i=b; i< c; i++) 
+			fill_denom(m-1, l, i+1, zE2, SzE2 + zE2[i], D);
 	}
-	return num/sqrt(denom);
 }
 
-/*
-	Helper to iterate over all strictly increasing m-long
-	sequences over [0:l)
-  */
-inline static bool next_I(size_t *I, size_t m, size_t l) 
+void quorum_safezone::prepare_z_cache()
 {
-	for(size_t i=1; i<=m; i++) {
-		if(I[m-i] < l-i) {
-			I[m-i]++;
-			for(size_t j=1;j<i;j++) 
-				I[m-i+j] = I[m-i]+j;
-			return true;
-		}
+	// Cache the denominators if l <= 19 (the array size is 
+	// up to (19 choose 10)==92378 elements in size!)
+	if(L.size()<=cached_bound) {
+		// Compute all $\sqrt{\sum_{i\in I} \zeta(E_i)^2}$ for $I\in \binom{L}{|L|-k+1}$.
+	
+		Vec zE2 = zetaE * zetaE;  // Compute all squares
+
+		// compute C = (l choose m)
+		size_t l = zE2.size();
+		size_t m = l-k+1;
+		size_t C = 1;
+		for(size_t i=1; i<= l-m; i++)
+			C = (C*(m+i))/i;
+
+		// prepare the array
+		z_cached.resize(C);
+		double* D = begin(z_cached);  // NOTE: We are assuming that begin(Vec) is double* !!!
+
+		// Recursion
+		fill_denom(m, l, 0, zE2, 0.0, D);
 	}
-	return false;
+	else {
+		// For larger l, just cache $\zeta(E_i)^2$ (saving us some multiplications)
+		z_cached = zetaE*zetaE;
+	}	
 }
 
+
+// This recursion is used to compute zinf, when the cached array is just $\zeta(E_i)^2$.
+// The recursion performs 2C additions, C divisions, C square roots and C comparisons,
+// where C = (l choose m)
+static double find_min(size_t m, size_t l, size_t b, const Vec& zEzX, const Vec& zE2, double SzEzX, double SzE2)
+{
+	if(m==0) return SzEzX/sqrt(SzE2);
+
+	double zinf = find_min(m-1, l, b+1, zEzX, zE2, SzEzX + zEzX[b], SzE2 + zE2[b]);
+
+	const size_t c = l-m+1;
+	for(size_t i=b+1; i< c; i++) {
+		double zi = find_min(m-1, l, i+1, zEzX, zE2, SzEzX + zEzX[i], SzE2 + zE2[i]);
+		zinf = std::min(zinf, zi);
+	}
+
+	return zinf;
+}
+
+// This recursion is used to compute zinf, when the cached array is all clause denominators.
+// The recursion performs C additions, C divisions C comparisons,
+// where C = (l choose m). 
+// In particular, no sqrt() are performed!
+static double find_min_cached(size_t m, size_t l, size_t b, const Vec& zEzX, double SzEzX, double*& D)
+{
+	if(m==0) { 
+		return SzEzX/(*D++);
+	}
+
+	double zinf = find_min_cached(m-1, l, b+1, zEzX, SzEzX + zEzX[b], D);
+
+	const size_t c = l-m+1;
+	for(size_t i=b+1; i< c; i++) {
+		double zi = find_min_cached(m-1, l, i+1, zEzX, SzEzX + zEzX[i], D);
+		zinf = std::min(zinf, zi);
+	}
+
+	return zinf;
+}
 
 double quorum_safezone::zeta_eikonal(const Vec& zX) 
 {
@@ -80,28 +132,26 @@ double quorum_safezone::zeta_eikonal(const Vec& zX)
 	Vec zEzX = zetaE;
 	zEzX *= zX[L];
 
-	// precompute zeta_i(E)^2
-	Vec zE2 = zetaE*zetaE;
+	if(z_cached.size()==0)
+		prepare_z_cache();
 
-	size_t l = L.size();
-	size_t m = L.size()-k+1;
+	const size_t l = L.size();
+	const size_t m = l-k+1;
 
 	//
-	// Each clause corresponds to an m-size subset I of [0:l).
-	// The goal is to find the subset I where
-	//   (\sum_i\in I  zXzE[i])  /  sqrt(\sum_i zE2) = zeta_I(I)
-	// In lieu of a smart heuristic, this is now done exhaustively.
+	// Select the appropriate algorithm for the precomputed values
+	// in z_cached.
 	//
+	double zinf;
 
-	size_t I[m]; // holds the indices to the current m-set
-	std::iota(I, I+m, 0);  // initialized to (0,...,0)
-
-	// iteration is done with the help of next_I, which increments I
-
-	double zinf = zeta_I(I, m, zEzX, zE2);
-	while(next_I(I, m, l)) {
-		double zI = zeta_I(I, m, zEzX, zE2);
-		zinf = std::min(zI, zinf);
+	if(L.size()<=cached_bound) {
+		// precomputed denominators
+		double* D = begin(z_cached);  // Assuming begin(z_cached) is a double* !!!
+		zinf = find_min_cached(m, l, 0, zEzX, 0.0, D);
+		assert(D==end(z_cached));
+	} else {
+		// precomputed zeta_i(E)^2
+		zinf = find_min(m, l, 0, zEzX, z_cached, 0.0, 0.0);
 	}
 
 	return zinf;

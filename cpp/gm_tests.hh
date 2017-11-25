@@ -32,9 +32,9 @@ public:
 
 		auto Q = new agms_continuous_query<selfjoin_query_state>(
 			vector<stream_id> { 0 }, 
-			projection(5, 400), 0.5, qtype::SELFJOIN, query_config()
+			projection(5, 400), 0.5, qtype::SELFJOIN, protocol_config()
 			);
-		fgm::network net("foo", Q, protocol_config());
+		fgm::network net("foo", Q);
 
 		TS_ASSERT_EQUALS( net.sites.size(), 10);
 		TS_ASSERT_EQUALS( net.hub->k, 10);

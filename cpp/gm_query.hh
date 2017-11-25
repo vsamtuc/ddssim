@@ -135,7 +135,7 @@ struct agms_continuous_query : continuous_query
 
 	agms_continuous_query(const std::vector<stream_id>& _sid, 
 						const projection& _proj, double _beta,
-						qtype _qtype, const query_config& _cfg)
+						qtype _qtype, const protocol_config& _cfg)
 		: proj(_proj), beta(_beta), query_type(_qtype)
 	{
 		config = _cfg;
