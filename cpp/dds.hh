@@ -322,14 +322,11 @@ protected:
 public:
 	explicit basic_enum_repr(const std::string& ename) : named(ename) {}
 	explicit basic_enum_repr(const std::type_info& ti);
-	inline void add(int val, const std::string& tag) {
-		extl[val] = tag;
-		intl[tag] = val;
-	}
-	int map(const std::string& tag) const { return intl.at(tag); }
-	std::string map(int val) const { return extl.at(val); }
-	bool is_member(int val) const { return extl.count(val); }
-	bool is_member(const std::string& tag) const { return intl.count(tag); };
+	void add(int val, const std::string& tag);
+	int map(const std::string& tag) const;
+	std::string map(int val) const;
+	bool is_member(int val) const;
+	bool is_member(const std::string& tag) const;
 };
 
 /**

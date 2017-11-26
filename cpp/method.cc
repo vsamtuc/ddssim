@@ -53,7 +53,11 @@ basic_component_type::~basic_component_type()
 
 basic_component_type* basic_component_type::get_component_type(const string& _name)
 {
-	return ctype_map().at(_name);
+	try {
+		return ctype_map().at(_name);
+	} catch(std::out_of_range& e) {
+		throw std::out_of_range("unknown component type: "+_name);
+	}
 }
 
 basic_component_type* basic_component_type::get_component_type(const type_info& ti)
@@ -66,8 +70,9 @@ component::component()
 { }
 
 component::component(const string& _name)
-	: named(_name)
-{ }
+{ 
+	set_name(_name);
+}
 
 component::~component()
 { }
