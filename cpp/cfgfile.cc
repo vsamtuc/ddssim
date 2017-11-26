@@ -202,10 +202,15 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 
 		// map to a handler
 		basic_component_type* ctype = basic_component_type::get_component_type(type);
-		auto c = ctype->create(jc);
-		cout << "Component " << c->name() << " of component type " << type << "(instance of " 
-			<< boost::core::demangle(typeid(*c).name()) << ") created"<<endl;
-		components.push_back(c);
+		try {
+			auto c = ctype->create(jc);
+			cout << "Component " << c->name() << " of component type " << type << "(instance of " 
+				<< boost::core::demangle(typeid(*c).name()) << ") created"<<endl;
+			components.push_back(c);			
+		} catch(std::exception& e) {
+			std::cerr << "Failed to create component " << index << std::endl;
+			throw;
+		}
 	}
 }
 
