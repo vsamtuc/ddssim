@@ -263,6 +263,7 @@ class dataset : reactive
 
 
 	boost::optional<size_t> _max_length;
+	boost::optional<timestamp> _max_timestamp;
 	boost::optional<stream_id> _streams;
 	boost::optional<source_id> _sources;
 	boost::optional<timestamp> _time_window;
@@ -286,6 +287,7 @@ public:
 
 	void set_name(const string&);	
 	void set_max_length(size_t n);
+	void set_max_timestamp(timestamp t);
 	void hash_streams(stream_id h);
 	void hash_sources(source_id s);
 	void set_time_window(timestamp Tw, bool flush);

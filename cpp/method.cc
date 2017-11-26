@@ -139,6 +139,7 @@ void dataset::clear()
 	base_src.reset();
 	_name = none;
 	_max_length = none;
+	_max_timestamp = none;
 	_streams = none;
 	_sources = none;
 	_time_window = none;
@@ -157,6 +158,7 @@ void dataset::load(datasrc _src)
 
 void dataset::set_name(const string& n) { _name = n; }
 void dataset::set_max_length(size_t n) { _max_length = n; }
+void dataset::set_max_timestamp(timestamp t) { _max_timestamp = t; }
 void dataset::hash_streams(stream_id h) { _streams = h; }
 void dataset::hash_sources(source_id s) { _sources = s; }
 
@@ -196,6 +198,11 @@ datasrc dataset::apply_filters()
 	// apply filters
 	if(_max_length != none) {
 		auto ds = filtered_ds(src, max_length(_max_length.value()));
+		assert(src.use_count()>1);
+		src = ds;
+	}
+	if(_max_timestamp != none) {
+		auto ds = filtered_ds(src, max_timestamp(_max_timestamp.value()));
 		assert(src.use_count()>1);
 		src = ds;
 	}

@@ -40,25 +40,6 @@ using binc::elements_of;
 
 
 
-
-static datasrc proc_datasrc(Value& jdset)
-{
-	string HOME(getenv("HOME"));
-	string fname = HOME+jdset["file"].asString();
-
-	string driver = jdset.get("driver", "wcup").asString();
-	datasrc ds;
-	if(driver=="wcup")
-		ds = wcup_ds(fname);
-	else if(driver=="hdf5") {
-		string dsetname = jdset.get("dataset","ddstream").asString();
-		ds = hdf5_ds(fname, dsetname);
-	} else
-		throw std::runtime_error("Error: unknown data source driver:" + driver);
-	return ds;
-}
-
-
 void dds::prepare_dataset(Value& cfg, dataset& D)
 {
 	Json::Value jdset = cfg["dataset"];
@@ -67,8 +48,8 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 		return;
 
 	set<string> kwords {
-		"driver", "file", "dataset", 
-		"set_max_length", "hash_sources", "hash_streams", 
+		"data_source", // this is a url
+		"max_length", "max_timestamp", "hash_sources", "hash_streams", 
 		"time_window", "fixed_window", "flush_window",
 		"warmup_time", "warmup_size"
 	};
@@ -77,14 +58,25 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 			throw std::runtime_error("Unknown keyword `"+member+"' in dataset section of config");
 	}	
 
-	datasrc ds = proc_datasrc(jdset);
+	if(! jdset.isMember("data_source"))
+		throw std::runtime_error("The dataset does not specify some data_source");
+
+	parsed_url purl;
+	parse_url(jdset["data_source"].asString(), purl);
+
+	datasrc ds = open_data_source(purl.type, purl.path, purl.vars);
 	
 	D.load(ds);
 
 	{
-		Json::Value js = jdset["set_max_length"];
+		Json::Value js = jdset["max_length"];
 		if(!js.isNull())
 			D.set_max_length(js.asUInt());
+	}
+	{
+		Json::Value js = jdset["max_timestamp"];
+		if(!js.isNull())
+			D.set_max_timestamp(js.asInt());
 	}
 	{
 		Json::Value js = jdset["hash_sources"];

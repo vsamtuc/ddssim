@@ -1,5 +1,38 @@
 from genpbs import *
 
+#
+# PBS environments I use
+#
+
+pbs_template = """\
+#PBS -N {exp_name}{jobid:05d}
+#PBS -l {job_resources}
+#PBS -q {queue}
+#PBS -o {jobdir}
+#PBS -e {jobdir}
+#PBS -d {jobdir}
+#PBS -j oe
+###PBS -m a -M vsam@softnet.tuc.gr
+#PBS -k oe
+
+{executable} {jobdir}/{exp_name}{jobid:05d}.json
+"""
+
+TUC = PbsExpFactory({
+	"job_resources": "nodes=1:ppn=2"
+	"queue": "tuc",
+	"jobdir": fmt("{PWD}"),
+	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
+}, pbs_template)
+
+FAKI = PbsExpFactory({
+	"job_resources": "nodes=1"
+	"queue": "batch",
+	"jobdir": fmt("{PWD}"),
+	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
+}, pbs_template)
+
+
 
 if __name__=='__main__':
 	# set up a big job
@@ -30,10 +63,10 @@ if __name__=='__main__':
 	window = param("time_window", [3600*i for i in range(1,5)])
 	window.project(lambda obj: {"warmup_time": obj["time_window"]})
 
-	dataset = objlist({"driver": "hdf5",
-			"file": "/git/ddssim/cpp/wc_day46.h5",
+	dataset = objlist({
+			"data_source": fmt("hdf5:{HOME}/git/ddssim/cpp/wc_day46.h5"),
 			"hash_streams": 1,
-			"set_max_length": 10000000
+			"max_length": 10000000
 		}) * k * window
 	dataset = dataset.nest("dataset")
 

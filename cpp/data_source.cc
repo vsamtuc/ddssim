@@ -413,12 +413,17 @@ datasrc dds::wcup_ds(const string& fpath)
 
 
 
-std::mt19937 uniform_generator::rng(1961969);
+std::mt19937 uniform_generator::seed_rng(1961969);
 
+
+uniform_generator::uniform_generator(unsigned int _seed, stream_id maxsid, source_id maxhid, key_type maxkey)
+:	rng(_seed), seed(_seed),
+	stream_distribution(1,maxsid), source_distribution(1, maxhid),
+	key_distribution(1, maxkey), now(0)
+{ }
 
 uniform_generator::uniform_generator(stream_id maxsid, source_id maxhid, key_type maxkey)
-:	stream_distribution(1,maxsid), source_distribution(1, maxhid),
-	key_distribution(1, maxkey), now(0)
+: uniform_generator(seed_rng(), maxsid, maxhid, maxkey)
 { }
 
 void uniform_generator::set(dds_record& rec) 
@@ -430,7 +435,14 @@ void uniform_generator::set(dds_record& rec)
 	rec.ts = ++now;
 }
 
-
+void uniform_generator::reinitialize()
+{
+	rng.seed(seed);
+	stream_distribution = uni<stream_id>(stream_distribution.min(), stream_distribution.max());
+	source_distribution = uni<source_id>(source_distribution.min(), source_distribution.max());
+	key_distribution = uni<key_type>(key_distribution.min(), key_distribution.max());
+	now = 0;
+}
 
 
 
@@ -452,6 +464,14 @@ uniform_data_source::uniform_data_source(
 
 	dsm.set_valid();
 
+	advance();
+}
+
+
+void uniform_data_source::rewind()
+{
+	gen.reinitialize();
+	isvalid = true;
 	advance();
 }
 
@@ -756,7 +776,7 @@ datasrc dds::hdf5_ds(const string& fname, const string& dsetname)
 
 datasrc dds::hdf5_ds(const string& fname)
 {
-	return hdf5_ds(fname, string("ddstream"));	
+	return hdf5_ds(fname, string("ddstream"));
 }
 
 
@@ -769,6 +789,50 @@ datasrc dds::hdf5_ds(int locid, const string& dsetname)
 datasrc dds::hdf5_ds(int dsetid)
 {
 	return dds::datasrc( new hdf5_data_source(DataSet(dsetid)) );
+}
+
+
+
+/*-----------------------------------------
+
+	Data source creator
+
+ -------------------------------------------*/
+
+
+template <typename IntType>
+IntType convert_option(const string& key, const std::map<std::string, std::string>& options)
+{
+	try {		
+		return boost::lexical_cast<IntType>(options.at(key));
+	} catch(boost::bad_lexical_cast& e) {
+		throw std::invalid_argument("expected a numeric value for "+key);
+	} catch(std::out_of_range& e) {
+		throw std::runtime_error("required option `"+key+"' is missing");
+	}
+}
+
+
+
+datasrc dds::open_data_source(const std::string& type, const std::string& name, 
+	const std::map<std::string, std::string>& options)
+{
+	if(type=="wcup")
+		return wcup_ds(name);
+	else if(type=="crawdad")
+		return crawdad_ds(name);
+	else if(type=="hdf5") {
+		string dsetname = options.count("dataset")? options.at("dataset") : "ddstream";
+		return hdf5_ds(name, dsetname);
+	} else if(type=="gen") {
+		if(name!="uniform") throw std::invalid_argument("unknown generated data source type: `"+name+"'");
+		return uniform_datasrc(
+				convert_option<stream_id>("maxsid", options),
+				convert_option<source_id>("maxhid", options),
+				convert_option<key_type>("maxkey", options),
+				convert_option<timestamp>("maxts", options));
+	} else	
+		throw std::invalid_argument("unknown data source type: `" + type+"'");
 }
 
 

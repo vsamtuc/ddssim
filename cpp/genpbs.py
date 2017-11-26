@@ -91,37 +91,6 @@ def fmt(tmpl):
 	"""
 	return lambda fmt: fmt.format(tmpl)
 
-#
-# PBS environments I use
-#
-
-pbs_template = """\
-#PBS -N {exp_name}{jobid:05d}
-#PBS -l nodes=1
-#PBS -q {queue}
-#PBS -o localhost:git/ddssim/cpp/foo.out
-#PBS -e git/ddssim/cpp
-#PBS -d {jobdir}
-#PBS -j oe
-###PBS -m a -M vsam@softnet.tuc.gr
-#PBS -k oe
-
-{executable} {jobdir}/{exp_name}{jobid:05d}.json
-"""
-
-TUC = PbsExpFactory({
-	"queue": "tuc",
-	"jobdir": fmt("{PWD}"),
-	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
-}, pbs_template)
-
-FAKI = PbsExpFactory({
-	"queue": "batch",
-	"jobdir": fmt("{PWD}"),
-	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
-}, pbs_template)
-
-
 
 #
 # Classes and functions to construct json object lists
