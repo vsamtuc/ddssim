@@ -7,21 +7,26 @@ from string import Formatter
 # Classes to construct experiments
 #
 
-class PbsExpFactory(Formatter):
+class ExperimentFactory(Formatter):
 	"""
 	Encapsulate the idiosyncracies of PBS installations and automate
 	the generation of experiment code
 	"""
-	def __init__(self, pbs_cfg, pbs_tmpl):
-		# the configuration of the jobset
-		self.pbs_cfg = pbs_cfg
-
-		# the pbs template to generate pbs files
-		self.pbs_tmpl = pbs_tmpl
-
-		# jobcfg contains elements 
-		self.job_cfg = { "exp_name": None, "jobid": None, "obj": None }
-		self.jobset_cfg = {}
+	def __init__(self, name, objl, **kwargs):
+		"""
+		Construct an experiment factory.
+		`name` is the experiment name
+		`objlist` is an iterable returning json-encodable objects
+		
+		The encoding is done by an encoder capable of expanding callables.
+		If a item callable is to be expanded into json, the value returned by
+		self.json_encode(self, item).
+		"""
+		assert isinstance(name,str)
+		self.joblist = objl
+		self.job_cfg = { "jobid": None, "obj": None }
+		self.jobset_cfg = dict(**kwargs)
+		self.jobset_cfg = { "exp_name": name }
 		self.CFG = ChainMap(self.job_cfg, self.jobset_cfg, self.pbs_cfg, os.environ)
 
 	def json_encode(self, obj):
@@ -45,7 +50,14 @@ class PbsExpFactory(Formatter):
 		"""
 		return self.CFG[key]
 
-	def generate(self, exp_name, objl, **kwargs):
+	def json_dump(self, obj, jsfile=None):
+		if jsfile is not None:
+			return json.dump(obj, jsfile, indent="\t", default=self.json_encode)
+		else:
+			return json.dumps(obj, indent="\t", default=self.json_encode)
+
+
+	def generate(self, batch):
 		"""
 		Generate a set of files for pbs execution.
 		For each job there is a .pbs file and a .json file.
@@ -57,30 +69,34 @@ class PbsExpFactory(Formatter):
 
 		# populate the jobset_cfg
 		self.jobset_cfg.update(kwargs)
+		self.jobset_cfg['exp_name'] = exp_name
+		self.jobset_cfg.setdefault("jobdir",".")
 
 		jobid = 0
 		for obj in objl:
 			jobid += 1
-			self.job_cfg['exp_name'] = exp_name
 			self.job_cfg['jobid'] = jobid
 			self.job_cfg['obj'] = obj
 
 			# write the pbs file
 			pbs_filename = self.format("{exp_name}{jobid:05d}.pbs")
-			with open(pbs_filename,'w') as pbsfile:  
+			with open(pbs_filename,'w') as pbsfile:
 	  			pbsfile.write(self.format(self.pbs_tmpl))
 
 	  		# write the json file
 			json_filename = self.format("{exp_name}{jobid:05d}.json")
 			with open(json_filename, 'w') as jsfile:
-				json.dump(obj, jsfile, indent="\t", default=self.json_encode)
+				self.json_dump(obj, jsfile)
 
 
-		self.job_cfg['exp_name'] = None
+		self.jobset_cfg['exp_name'] = None
 		self.job_cfg['jobid'] = None
 		self.job_cfg['obj'] = None
 
-		self.jobset_cfg.clear()
+
+
+
+
 
 # 
 # Callables to inject config info into the objects during json encoding
