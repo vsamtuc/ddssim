@@ -401,3 +401,29 @@ void dds::execute(Value& cfg)
 }
 
 
+
+void dds::generate_schema(output_table* table)
+{
+	using std::ofstream;
+	using std::ios_base;
+
+	/// create the output file name (json)
+	string filename = table->name()+".schema";
+
+	Json::Value root, columns;
+
+	root["name"] = table->name();
+	for(size_t i=0; i<table->size(); i++) {
+		Value column;
+		column["name"] = (*table)[i]->name();
+		column["type"] = boost::core::demangle((*table)[i]->type().name());
+
+		root["columns"][Json::ArrayIndex(i)] = column;
+	}
+
+	ofstream scfile(filename, ios_base::out|ios_base::trunc);
+	scfile << root << endl;
+
+	scfile.close();
+	// close by returning
+}

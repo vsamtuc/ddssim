@@ -84,6 +84,9 @@ namespace dds
 
 	void execute(Json::Value&);
 
+
+	void generate_schema(output_table* table);
+
  
 } // end namespace dds
 

@@ -36,21 +36,45 @@ void usage()
 	cout << "Output tables" <<endl;
 	for(auto&& t : output_table::all())
 		cout << "   " << t->name() << endl;
-
 }
+
+void generate_schemas()
+{
+	cout << "Generating schemas:" << endl;
+	for(auto&& t : output_table::all()) {
+		cout << "   " << t->name() << endl;
+		generate_schema(t);
+	}
+}
+
 
 int main(int argc, char** argv)
 {
 	Json::Value cfg;
-	if(argc>1) {
-		fstream cfgfile(argv[1]);
-		cfgfile >> cfg;		
-	} else {
+
+	if(argc!=2) 
+	{
 		cout << "Expected config file argument:  <mycfg>.json" << endl;
 		usage();
-		return -1;
+		return 1;
 	}
 
-	execute(cfg);
-	return 0;
+	if(argc==2) 
+	{
+		if(string(argv[1])=="--output-schemas") {
+			generate_schemas();
+
+		} else {
+
+			fstream cfgfile(argv[1]);
+			cfgfile >> cfg;		
+			execute(cfg);
+
+		}
+
+		return 0;
+	} 
+
+	return 1;
+
 }
