@@ -4,7 +4,7 @@ from collections import ChainMap
 from string import Formatter
 
 #
-# Classes to construct experiments
+# Class to construct experiments
 #
 
 class ExperimentFactory(Formatter):
@@ -12,22 +12,50 @@ class ExperimentFactory(Formatter):
 	Encapsulate the idiosyncracies of PBS installations and automate
 	the generation of experiment code
 	"""
-	def __init__(self, name, objl, **kwargs):
+	def __init__(self, name, joblist, **kwargs):
 		"""
 		Construct an experiment factory.
 		`name` is the experiment name
-		`objlist` is an iterable returning json-encodable objects
+		`joblist` is an iterable returning json-encodable objects
 		
-		The encoding is done by an encoder capable of expanding callables.
-		If a item callable is to be expanded into json, the value returned by
-		self.json_encode(self, item).
+		JSON encoding is done by an encoder capable of understanding callables.
+		If a callable item is to be encoded into JSON, the value returned by
+		self.json_encode(self, item). For example:
+
+		from datetime import datetime
+
+		{
+			"creation_time": lambda fct: str(datetime.now())
+			"no_of_components": lambda fct: len(fct['components'])
+		}
+
+		will result in an object whose creation time field will be generated
+		as a string at JSON encoding time. Notice the wrapping into a lambda,
+		which accepts (without using) this object.
+
+		The items that can be used in the encoding include (from higher to lower
+		priority):
+		- the per-job keys:
+		  - 'jobid'  an integer starting at 1, containing the current job serial no
+		  - 'obj'    the object defining the current job
+
+		- the per-jobset keys:
+		  - all kwargs passed to method 'generate()'
+		  - 'exp_name' (experiment name) a string
+		  - 'job_list' the list of job objects to generate
+
+		- the environment (os.environ)
 		"""
 		assert isinstance(name,str)
-		self.joblist = objl
+		self.exp_name = name
+		self.joblist = list(joblist)
 		self.job_cfg = { "jobid": None, "obj": None }
 		self.jobset_cfg = dict(**kwargs)
-		self.jobset_cfg = { "exp_name": name }
-		self.CFG = ChainMap(self.job_cfg, self.jobset_cfg, self.pbs_cfg, os.environ)
+		self.jobset_cfg["exp_name"] = name
+		self.jobset_cfg["job_list"] = self.joblist
+
+		self.jobset_cfg.setdefault("jobdir",".")
+		self.CFG = ChainMap(self.job_cfg, self.jobset_cfg, os.environ)
 
 	def json_encode(self, obj):
 		# if this is a callable object, call it with self as argument
@@ -36,17 +64,21 @@ class ExperimentFactory(Formatter):
 		return obj
 
 	def get_value(self, key, args, kwargs):
-		# Called when self is used as a Formatter
+		"""
+		Overloads the method inherited from Formatter, to look into self.CFG.
+		This allows to use all job-related data in templates.
+		"""
 		if isinstance(args, int):
-			return args[key]
+			val = args[key]
 		elif key in kwargs:
-				return kwargs[key]
+				val = kwargs[key]
 		else:
-			return self.json_encode(self.CFG[key])
+			val = self.CFG[key]
+		return self.json_encode(val)
 
 	def __getitem__(self, key):
 		"""
-		Convenience function
+		Convenience function to access self.CFG
 		"""
 		return self.CFG[key]
 
@@ -57,55 +89,126 @@ class ExperimentFactory(Formatter):
 			return json.dumps(obj, indent="\t", default=self.json_encode)
 
 
-	def generate(self, batch):
+	def generate(self, batch, **kwargs):
 		"""
-		Generate a set of files for pbs execution.
-		For each job there is a .pbs file and a .json file.
-		Jobs are numbered from 1 up to the number of elements in objl.
+		Generate a set of files for batch execution.
+		For each job there is a batch submission (e.g. .pbs, .slurm, ...) 
+		file and a .json file. Jobs are numbered from 1 up to the number 
+		of elements in objl.
 
 		exp_name is the experiment name
 		objl     is the list of job objects
 		"""
 
 		# populate the jobset_cfg
+		saved_jobset_cfg = self.jobset_cfg.copy()
 		self.jobset_cfg.update(kwargs)
-		self.jobset_cfg['exp_name'] = exp_name
-		self.jobset_cfg.setdefault("jobdir",".")
 
+		# generate the jobs
 		jobid = 0
-		for obj in objl:
+		for obj in self.joblist:
+			# Update self.CFG (via self.job_cfg) so that json encoding can work correctly
 			jobid += 1
 			self.job_cfg['jobid'] = jobid
 			self.job_cfg['obj'] = obj
 
-			# write the pbs file
-			pbs_filename = self.format("{exp_name}{jobid:05d}.pbs")
-			with open(pbs_filename,'w') as pbsfile:
-	  			pbsfile.write(self.format(self.pbs_tmpl))
+			# Crete the metadata object
+			job_mdata = {
+				"job_name":None				
+			}
 
 	  		# write the json file
-			json_filename = self.format("{exp_name}{jobid:05d}.json")
+			json_filename = self.format("{jobdir}/{exp_name}{jobid:05d}.json")
 			with open(json_filename, 'w') as jsfile:
 				self.json_dump(obj, jsfile)
 
+			# add the job
+			batch.add_job(self, obj)
 
-		self.jobset_cfg['exp_name'] = None
+		# restore job_cfg
 		self.job_cfg['jobid'] = None
 		self.job_cfg['obj'] = None
 
-
-
-
-
+		# restore jobset_cfg
+		self.jobset_cfg.clear()
+		self.jobset_cfg.update(saved_jobset_cfg)
 
 # 
 # Callables to inject config info into the objects during json encoding
 #
+
 def fmt(tmpl):
 	"""
-	Return a callable that takes as input the config object and returns a string
+	Return a callable that takes as input the config object and returns a string.
+	The string may contain encoded fields from this object.
+
+	For example:
+	{
+		"homedir" : fmt("{HOME}")
+	}
 	"""
 	return lambda fmt: fmt.format(tmpl)
+
+def current_datetime(fmt):
+	"""
+	usage { "curdate": current_datetime }
+	"""
+	import datetime
+	return str(datetime.now())
+
+def auto_uuid(fmt):
+	"""
+	usage { "id": auto_uuid }
+
+	Note: this may give surprising results if used unwisely!
+	"""
+	import uuid
+	return str(uuid.uuid1())
+
+
+
+
+#
+# Generator template for batch system job submission files
+#
+
+class BatchQueue:
+	"""
+	Represents a typical batch queue as a template for job submission files,
+	together with arguments appearing in the template. The template may also
+	refer to arguments taken from the CFG of an experiment factory
+	"""
+	def __init__(self, suffix, tmpl, **kwargs):
+		"""
+		A template and arguments appearing in the template.
+
+		The template may use arguments like jobid and exp_name that
+		are defined by an experiment factory. Also, the template may
+		be a callable
+		"""
+		self.suffix = suffix
+		self.tmpl = tmpl
+		self.kwargs = dict(**kwargs)
+
+	def add_job(self, exp_fct, obj):
+		"""
+		Add a new job submission file using the template
+		{jobdir}/{exp_name}{jobid:05d}.pbs
+		"""
+		pbs_filename = exp_fct.format("{jobdir}/{exp_name}{jobid:05d}.{suffix}", suffix=self.suffix, **self.kwargs)
+		with open(pbs_filename,'w') as pbsfile:
+  			pbsfile.write(exp_fct.format(self.tmpl, **self.kwargs))
+
+
+class PbsQueue(BatchQueue):
+	def __init__(self, tmpl, **kwargs):
+		super().__init__("pbs", tmpl, **kwargs)
+
+class SlurmQueue(BatchQueue):
+	def __init__(self, tmpl, **kwargs):
+		super().__init__("sbat", tmpl, **kwargs)
+
+
 
 
 #
@@ -457,6 +560,20 @@ if __name__=='__main__':
 			L  = param("x", [1,2,3]) | param("y", [4,5,6])
 			L.project(lambda obj: {"x": obj["x"]+3})
 			self.assertEqual(L, param("x",[4,5,6])|param("y", [4,5,6]) )
+
+		def test_encoding(self):			
+			def my_subobject(fct):    # a function to use in an object
+				return {"a": "success"}
+
+			# We shall only use the json_encode method of this object
+			fct = ExperimentFactory("test_encoding", objlist())
+			import json
+			# encode object with embedded function
+			jsn = json.dumps({ "foo": my_subobject }, default=fct.json_encode)
+			# encode 'ground' object normally
+			jsn2 = json.dumps({ "foo": {"a": "success"}})
+			# they must be equal
+			self.assertEqual(jsn,jsn2)
 
 	unittest.main()
 

@@ -1,4 +1,4 @@
-from genpbs import *
+from expgenerate import *
 
 #
 # PBS environments I use
@@ -18,20 +18,16 @@ pbs_template = """\
 {executable} {jobdir}/{exp_name}{jobid:05d}.json
 """
 
-TUC = PbsExpFactory({
-	"job_resources": "nodes=1:ppn=2"
-	"queue": "tuc",
-	"jobdir": fmt("{PWD}"),
-	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
-}, pbs_template)
+slurm_template = """#! /bin/bash
 
-FAKI = PbsExpFactory({
-	"job_resources": "nodes=1"
-	"queue": "batch",
-	"jobdir": fmt("{PWD}"),
-	"executable": fmt("{HOME}/git/ddssim/cpp/dssim")
-}, pbs_template)
+srun {executable} {jobdir}/{exp_name}{jobid:05d}.json
+"""
 
+TUC = PbsQueue(pbs_template, 
+	queue="tuc", job_resources="nodes=1:ppn=2", executable=fmt("{HOME}/git/ddssim/cpp/dssim"))
+
+FAKI = SlurmQueue(slurm_template,
+	queue="batch", job_resources="nodes=1", executable=fmt("{HOME}/git/ddssim/cpp/dssim"))
 
 
 if __name__=='__main__':
@@ -95,4 +91,4 @@ if __name__=='__main__':
 	jobset = components * dataset * files
 	print("Generating",len(jobset),"jobs")
 
-	FAKI.generate("test_pbs", jobset, jobdir='/home/vsam/git/ddssim/cpp')
+	ExperimentFactory("test_pbs", jobset, jobdir='/home/vsam/exp1').generate(FAKI)
