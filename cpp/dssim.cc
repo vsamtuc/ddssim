@@ -54,7 +54,7 @@ int main(int argc, char** argv)
 
 	if(argc!=2) 
 	{
-		cout << "Expected config file argument:  <mycfg>.json" << endl;
+		cerr << "Expected config file argument:  <mycfg>.json" << endl;
 		usage();
 		return 1;
 	}
@@ -66,10 +66,14 @@ int main(int argc, char** argv)
 
 		} else {
 
-			fstream cfgfile(argv[1]);
+			ifstream cfgfile(argv[1]);
+			if(!cfgfile.good()) {
+				cerr << "Cannot open json file: " << argv[1] << endl;
+				return 1;
+			}
+
 			cfgfile >> cfg;		
 			execute(cfg);
-
 		}
 
 		return 0;

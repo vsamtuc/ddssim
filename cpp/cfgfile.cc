@@ -417,6 +417,7 @@ void dds::generate_schema(output_table* table)
 		Value column;
 		column["name"] = (*table)[i]->name();
 		column["type"] = boost::core::demangle((*table)[i]->type().name());
+		column["arithmetic"] = (*table)[i]->is_arithmetic();
 
 		root["columns"][Json::ArrayIndex(i)] = column;
 	}
