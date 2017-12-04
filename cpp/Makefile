@@ -54,7 +54,8 @@ DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	hdv_tests.hh exec_tests.hh output_tests.hh \
 	tods_tests.hh szone_tests.hh method_tests.hh \
-	cfg_tests.hh gm_tests.hh 
+	cfg_tests.hh gm_tests.hh \
+	eca_new_tests.hh
 
 TEST_SOURCES= unit_tests.cc data_tests.cc timing_tests.cc
 

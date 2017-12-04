@@ -1,5 +1,5 @@
-#ifndef __OUTPUT_TESTS_HH__
-#define __OUTPUT_TESTS_HH__
+#ifndef __METHOD_TESTS_HH__
+#define __METHOD_TESTS_HH__
 
 #include <functional>
 #include <typeinfo>
