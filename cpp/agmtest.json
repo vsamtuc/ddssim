@@ -72,20 +72,20 @@
     ],
 
     "dataset" : {
-		"driver": "hdf5",
-		//"file" : "/src/datasets/wc_day46.h5",
-		"file" : "/git/ddssim/cpp/wc_day46.h5",
-		//"dataset" : "wc_day46_1",
-		//"file" : "/src/datasets/wc_day46",
-		"hash_streams": 1
-		//,"set_max_length": 10000
-		,"set_max_length": 10000000
-		,"hash_sources": 4
+		//"data_source" : "hdf5:/home/vsam/src/datasets/wc_day46.h5?dataset=wc_day46_1"
+		"data_source" : "hdf5:/home/vsam/git/ddssim/cpp/wc_day46.h5"
+		//"data_source" : "wcup:/home/vsam/src/datasets/wc_day46"
+		//"data_source" : "gen:uniform?maxsid=1,maxhid=4,maxkey=1000000,maxts=10000000"
+
+		,"hash_streams": 1
+		//,"max_length": 1000000
+		//,"max_length": 10000000
+		//,"hash_sources": 4
 		,"time_window": 7200    // 4*3600
 		//,"fixed_window": 10000000
 		//,"flush_window": false
 		//create with warmup. Omit to create without warmup
-		,"warmup_time": 7200
+		,"warmup_time": 1800
     },
 
 

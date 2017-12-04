@@ -103,6 +103,32 @@ public:
 			[](auto rec){return rec.upd==1;}));
 	}
 
+
+	void test_uniform_rewind()
+	{
+		const stream_id maxstream = 10;
+		const source_id maxsource = 20;
+		const key_type maxkey = 1000000;
+		const timestamp maxtime = 10000;
+
+		datasrc ds { new uniform_data_source(maxstream, maxsource, maxkey, maxtime) };
+
+		buffered_dataset dset1, dset2;
+		dset1.load(ds);
+		ds->rewind();
+		dset2.load(ds);
+
+		TS_ASSERT_EQUALS( dset1, dset2 );
+		TS_ASSERT_EQUALS( dset1[0].ts, 1);
+		TS_ASSERT_EQUALS( dset2[0].ts, 1);
+
+		TS_ASSERT_EQUALS( dset1.size(), maxtime);
+
+		TS_ASSERT_EQUALS( dset1[maxtime-1].ts, maxtime);
+		TS_ASSERT_EQUALS( dset2[maxtime-1].ts, maxtime);
+
+	}
+
 };
 
 

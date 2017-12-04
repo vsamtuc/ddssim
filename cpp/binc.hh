@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <boost/lexical_cast.hpp>
 
 /*
 	In the global namespace
@@ -117,7 +118,6 @@ std::string sprint(Args...args)
     };
     return stream.str();
 }
-
 
 
 

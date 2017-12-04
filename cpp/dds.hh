@@ -127,6 +127,15 @@ struct dds_record
 };
 
 
+inline bool operator==(const dds_record& rec1, const dds_record& rec2)
+{
+	return rec1.sid==rec2.sid 
+		&& rec1.hid==rec2.hid 
+		&& rec1.key==rec2.key 
+		&& rec1.upd==rec2.upd 
+		&& rec1.ts==rec2.ts;
+}
+
 
 inline bool before(const dds_record& r1, const dds_record& r2)
 {

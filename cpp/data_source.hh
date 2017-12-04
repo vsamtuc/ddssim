@@ -5,6 +5,7 @@
 #include <deque>
 #include <list>
 #include <vector>
+#include <map>
 #include <type_traits>
 #include <random>
 #include <algorithm>
@@ -159,10 +160,8 @@ public:
 	//
 	//------------------------------------
 
-
 	virtual void warmup_time(timestamp wtime, buffered_dataset* buf);
 	virtual void warmup_size(size_t wsize, buffered_dataset* buf);
-
 
 	/// The metadata for this source
 	inline const ds_metadata& metadata() const { return dsm; }
@@ -171,8 +170,6 @@ public:
 	inline void set_warmup_size(size_t sw) { dsm.set_warmup_size(sw); }
 	inline void set_metadata(const ds_metadata& other) { dsm = other; }
 	inline bool analyzed() const {  return dsm.valid(); }
-
-
 
 	/// Virtual destructor
 	virtual ~data_source() { }
@@ -192,6 +189,24 @@ public:
 
 };
 
+
+/**
+	Create a data source object passing properties.
+
+	This function can be used to create data source objects in a generic way.
+	The arguments rougly correspond to a URI of the form
+
+	\c type:name?opt1=val1,...,optn=valn
+
+	@param type designate a particular type of data source, e.g. a data format
+	@param name designate an instance of this type of data source, e.g. a file name
+	@param options a string->string map of options e.g., ways to interpret the file's data
+
+	@throws std::invalid_argument if the type is unknown
+  */
+datasrc open_data_source(const std::string& type,
+		const std::string& name,
+		const std::map<std::string, std::string>& options = std::map<std::string,std::string>());
 
 
 //------------------------------------
@@ -446,13 +461,52 @@ inline datasrc fixed_window(datasrc ds, size_t W, bool flush)
 //------------------------------------
 
 
+/**
+	Data source factory function for the Crawdad file format.
+
+	This call is equivalent to 
+	\c open_data_source("crawdad", fpath)
+  */
+datasrc crawdad_ds(const std::string& fpath);
 
 /**
-	Data source factory functions for file formats
-  */
+	Data source factory function for the WorldCup file format.
 
-datasrc crawdad_ds(const std::string& fpath);
+	This call is equivalent to 
+	\c open_data_source("wcup", fpath)
+  */
 datasrc wcup_ds(const std::string& fpath);
+
+
+/**
+   Load the dataset found in an HDF5 file with the given name.
+
+   This call is equivalent to 
+   \c open_data_source("hdf5", fname, {"dataset", dsetname})
+  */
+datasrc hdf5_ds(const std::string& fname, const std::string& dsetname);
+
+
+/**
+   Load the dataset found in an HDF5 file with the given name.
+
+   This call is equivalent to 
+   \c open_data_source("hdf5", fname, {"dataset", "ddstream"})
+  */
+datasrc hdf5_ds(const std::string& fname /* dsetname=="ddstream" */);
+
+/**
+   Load the dataset found at the location locid of an HDF5 file,
+   with the given name.
+ */
+datasrc hdf5_ds(int locid, const std::string& dsetname);
+
+/**
+   Load the dataset with the given dataset id.
+ */
+datasrc hdf5_ds(int dsetid);
+
+
 
 
 //------------------------------------
@@ -469,7 +523,9 @@ datasrc wcup_ds(const std::string& fpath);
 struct uniform_generator
 {
 private:
-	static std::mt19937 rng;
+	static std::mt19937 seed_rng;
+	std::mt19937 rng;
+	unsigned int seed;
 public:
 
 	template <typename T>
@@ -478,9 +534,10 @@ public:
 	uni<stream_id> stream_distribution;
 	uni<source_id> source_distribution;
 	uni<key_type> key_distribution;
-	timestamp maxtime;
+	//timestamp maxtime;
 	timestamp now;
 
+	uniform_generator(unsigned seed, stream_id maxsid, source_id maxhid, key_type maxkey);
 	uniform_generator(stream_id maxsid, source_id maxhid, key_type maxkey);
 
 	void set(dds_record& rec);
@@ -490,12 +547,14 @@ public:
 		set(ret);
 		return ret;
 	}
+
+	void reinitialize();
 };
 
 /**
 	A data source from a uniform generator
   */
-struct uniform_data_source : data_source
+struct uniform_data_source : rewindable_data_source
 {
 	uniform_generator gen;
 	timestamp maxtime;
@@ -504,6 +563,7 @@ struct uniform_data_source : data_source
 		 key_type maxkey, timestamp maxt);
 
 	void advance() override ;
+	void rewind() override;
 
 };
 
@@ -554,7 +614,6 @@ make_uniform_dataset(stream_id maxsid, source_id maxhid,
 
 
 
-
 /**
 	Buffered data source.
 
@@ -588,6 +647,7 @@ public:
 	void advance() override;
 };
 
+
 /**
 	A buffered data source which includes the dataset internally. 
   */
@@ -605,24 +665,6 @@ inline datasrc materialize(datasrc src)
 	return datasrc(new materialized_data_source(src));
 }
 
-
-/**
-   Load the dataset found in an HDF5 file 
-   with the given name.
-  */
-datasrc hdf5_ds(const std::string& fname, const std::string& dsetname);
-datasrc hdf5_ds(const std::string& fname /* dsetname=="ddstream" */);
-
-/**
-   Load the dataset found at the location locid of an HDF5 file,
-   with the given name.
- */
-datasrc hdf5_ds(int locid, const std::string& dsetname);
-
-/**
-   Load the dataset with the given dataset id.
- */
-datasrc hdf5_ds(int dsetid);
 
 
 
