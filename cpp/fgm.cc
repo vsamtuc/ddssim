@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <boost/range/adaptors.hpp>
+#include <boost/range/numeric.hpp>
 
 #include "binc.hh"
 #include "fgm.hh"
@@ -64,13 +65,15 @@ oneway node::reset_bitweight(float Z)
 
 compressed_state node::get_drift() 
 {
-	return compressed_state { U, update_count };
+	size_t upd = update_count;
+	update_count = 0;
+	return compressed_state { U, upd };
 }
 
 double node::set_drift(compressed_state newU) 
 {
 	U = newU.vec;
-	update_count = newU.updates;
+	// we should not touch this: update_count = newU.updates;
 	double old_zeta = zeta;
 	zeta = szone(U);
 	return zeta-old_zeta;
@@ -107,6 +110,92 @@ void node::setup_connections()
 {
 	num_sites = coord.proc()->k;
 }
+
+
+Vec node::get_projection(size_t m)
+{
+	Vec PU(0.0, m);
+
+	//  U.size() = k*m+r
+	const size_t r = U.size() % m;  
+	const size_t K = U.size() / m;
+	//print("K=",K,"r=",r);
+
+	size_t p=0;
+	for(size_t i=0;i<m;i++) {
+		const size_t ni = K + ((i<r)?1:0);
+		//print("ni[",i,"]=",ni);
+
+		for(size_t j=p; j<p+ni; j++)
+			PU[i] += U[j];
+		PU[i] /= ni;
+
+		p += ni;
+	}
+	//print("p=",p, "U.size()=", U.size(), "m=",m);
+	assert(p==U.size());
+
+	return PU;
+}
+
+double node::set_projection(Vec mu)
+{
+	const size_t m = mu.size();
+	Vec PU = get_projection(m);
+
+	//  U.size() = k*m+r
+	const size_t r = U.size() % m;  
+	const size_t K = U.size() / m;
+
+	size_t p=0;
+	for(size_t i=0;i<m;i++) {
+		const size_t ni = K + ((i<r)?1:0);
+		const double delta = mu[i] - PU[i];
+
+		for(size_t j=p; j<p+ni; j++)
+			U[j] += delta;
+
+		p += ni;
+	}
+	assert(p==U.size());
+
+	double old_zeta = zeta;
+	zeta = szone(U);
+	return zeta-old_zeta;	
+}
+
+
+Vec node::get_random_projection(size_t m, size_t a, size_t b)
+{
+	Vec PU(0.0, m);
+	Vec C(0.0, m);
+
+	for(size_t i=0; i<U.size(); i++) {
+		size_t h = (a*i+b) % m;
+		PU[h] += U[i];
+		C[h] += 1.0;
+	}
+
+	PU /= C;
+
+	return PU;
+}
+
+double node::set_random_projection(Vec mu, size_t a, size_t b)
+{
+	const size_t m = mu.size();
+	Vec dPU = mu - get_random_projection(m, a, b);
+
+	for(size_t i=0; i<U.size(); i++) {
+		size_t h = (a*i+b) % m;
+		U[i] += dPU[h];
+	}
+
+	double old_zeta = zeta;
+	zeta = szone(U);
+	return zeta-old_zeta;
+}
+
 
 
 /*********************************************
@@ -193,7 +282,7 @@ void coordinator::finish_subround()
 
 	bit_level++;
 
-	if(total_zeta < query->zeta_E * 0.05 ) 
+	if(total_zeta < k * query->zeta_E * 0.01 ) 
 		finish_subrounds(total_zeta);
 	else 
 		start_subround(total_zeta);
@@ -205,9 +294,30 @@ void coordinator::finish_subrounds(double total_zeta)
 	/* 
 		In this function, we may add code to try to rebalance.
 	 */
-	finish_round();
+	if(k>1) 
+	{
+		switch(cfg().rebalance_algorithm)
+		{
+			case rebalancing::random:
+				rebalance_random(total_zeta);
+				break;
+			case rebalancing::projection:
+				rebalance_projection(total_zeta);
+				break;
+			case rebalancing::random_projection:
+				rebalance_random_projection(total_zeta);
+				break;
+			case rebalancing::none:
+				finish_round();
+				break;
+			case rebalancing::random_limits:
+				finish_round();
+				break;
+		}
+	}	
+	else 
+		finish_round();
 }
-
 
 
 // initialize a new round
@@ -215,13 +325,18 @@ void coordinator::finish_round()
 {
 	// collect all data
 	Vec newE(0.0, Q->state_vector_size());
+	size_t newE_updates = 0;
 	for(auto n : node_ptr) {
-		compressed_state cs = proxy[n].get_drift();
-		newE += cs.vec;
-		total_updates += cs.updates;
+		fetch_updates(n, newE, newE_updates);
 	}
 	newE /= (double)k;
 
+	finish_with_newE(newE);
+}
+
+
+void coordinator::finish_with_newE(const Vec& newE)
+{
 	if(radial_safe_zone!=nullptr && cfg().use_cost_model) {
 		cmodel.update_model();
 		cmodel.compute_model();		
@@ -233,7 +348,7 @@ void coordinator::finish_round()
 
 	// new round
 	query->update_estimate(newE);
-	start_round();
+	start_round();	
 }
 
 
@@ -362,12 +477,219 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 	radial_safe_zone = query->radial_safezone();
 }
 
+
+void coordinator::fetch_updates(node_t* n, Vec& S, size_t& upd)
+{
+	compressed_state cs = proxy[n].get_drift();
+	S += cs.vec;
+	upd += cs.updates;	
+	total_updates += cs.updates;
+}
+
+
 coordinator::~coordinator()
 {
 	if(radial_safe_zone) delete radial_safe_zone;
 	delete safe_zone;
 	delete query;
 }
+
+
+/** 
+ This algorithm starts a finishing round, but checks to
+ see if it is worth making a rebalance step.
+
+  The worthiness of a rebalancing is determined as follows:
+  given a set $B$ of rebalanced sites, $U_B$ the average
+  drift vector over them, compute the $\zeta$-gain as
+  \(   g = |B|\zeta(U_B) - \sum_{i\in B} \zeta(U_i). \)
+
+  Then, if $|B|\leq k/2$ and $g \geq 1.2 B \zeta(E)$,
+  the rebalancing happens. Else, the round finishes.  
+
+*/
+void coordinator::rebalance_random(double total_zeta)
+{
+	// get all sites with proper safe zone
+	Vec newE(0.0, Q->state_vector_size());
+	size_t newE_updates = 0;
+	size_t B = 0;
+
+	double zeta_b = 0.0;   // tally the zetas of nodes in B
+
+	vector<node_t*> permnodes = node_ptr;
+	random_shuffle(permnodes.begin(), permnodes.end());
+
+	vector<node_t*> Bset;  // set of nodes in B
+
+	for(auto n : permnodes) {
+		auto nid = node_index[n];
+
+		if(has_cheap_safezone[nid])
+			continue;
+
+		fetch_updates(n, newE, newE_updates);
+		B++;
+		Bset.push_back(n);
+		zeta_b += n->zeta;
+
+		if(B>1) {
+			// compute zeta gain
+			double zeta_bnew = safe_zone->compute_zeta(newE/ (double)B);
+
+			// compute the gain
+			double zgain = B*zeta_bnew - zeta_b;
+
+			if(zgain >= 1.2* B * query->zeta_E && B<=k/2) {
+				// do the rebalancing
+				Vec Ubal = newE/ (double)B;
+
+				for(auto node: Bset)
+					node->set_drift(compressed_state {Ubal, newE_updates});
+
+				return ;				
+			}
+		}
+	}
+
+	// nothing, complete the computation of newE and finish round
+	for(auto n : permnodes) {
+		auto nid = node_index[n];
+
+		if(has_cheap_safezone[nid]) {
+			fetch_updates(n, newE, newE_updates);
+		}
+	}
+	newE /= k;
+
+	finish_with_newE(newE);
+}
+
+
+/**
+	Rebalancing via projection.
+
+	This algorithm rebalances as follows:
+
+	Define m = cfg().rbl_proj_dim
+	Define $m \times D$ matrix $P$ so that row $i (0\leq i < m)$ 
+	consists of all zeros, except in positions (columns) $j$ with
+	$\lfloor j/m \rfloor == i$ (making sure that each column has 
+	exactly one 1).
+
+	Then, each site computes the $m$-vector $q_i = P U_i$. Let
+	$\mu = (1/k)\sum q_i$ be the average. 
+	Then, each site's drift vector $U_i$ is updated by
+	$ U_i' = U_i + P^{+}(\mu - q_i) $, where $P^{+}$ is the
+	pseudo-inverse matrix (aka, the Moore-Penrose inverse).
+
+	Subsequently, each site reports its new zeta value.
+	If the total is greater that $0.05 k \zeta(E)$, a new
+	subround is started. Else, the round finishes.
+*/
+void coordinator::rebalance_projection(double total_zeta)
+{
+	// collect the mean 
+	const size_t m = cfg().rbl_proj_dim;
+
+	Vec mu(0.0,m);
+	size_t kk=0;
+
+	for(auto n : node_ptr) {
+		auto nid = node_index[n];
+		if(has_cheap_safezone[nid])
+			continue;
+
+		mu += proxy[n].get_projection(m);
+		kk++;
+	}
+
+	if(kk<2) {
+		finish_round();
+		return;
+	}
+
+	// normalize
+	mu /= (double)kk;
+
+	// set projections and collect zetas
+	for(auto n : node_ptr) {
+		auto nid = node_index[n];
+		if(has_cheap_safezone[nid])
+			continue;
+
+		total_zeta += proxy[n].set_projection(mu);
+	}
+
+	using boost::adaptors::transformed;
+
+	if(total_zeta < k * query->zeta_E * 0.05)
+		finish_round();
+	else {
+		start_subround(total_zeta);
+	}
+}
+
+/**
+	Rebalancing via random projection.
+
+	This algorithm is very similar to rebalance_projection(). The
+	main difference is in the construction of matrix $P$.
+
+	To construct this matrix, choose two random positive integers $a,b$. 
+	Then, $P$ is zero everywhere, except in $P_{h(i), i}$, where
+	$i=1,\ldots,D$ and $h(i) = (a\times i + b)\mod m$.
+*/
+void coordinator::rebalance_random_projection(double total_zeta)
+{
+	static std::mt19937 gen;
+
+	// collect the mean 
+	const size_t m = cfg().rbl_proj_dim;
+
+	Vec mu(0.0,m);
+	size_t kk=0;
+
+	std::uniform_int_distribution<size_t> distr;
+	size_t a = distr(gen);
+	size_t b = distr(gen);
+
+	for(auto n : node_ptr) {
+		auto nid = node_index[n];
+		if(has_cheap_safezone[nid])
+			continue;
+
+		mu += proxy[n].get_random_projection(m, a, b);
+		kk++;
+	}
+
+	if(kk<2) {
+		finish_round();
+		return;
+	}
+
+	// normalize
+	mu /= (double)kk;
+
+	// set projections and collect zetas
+	for(auto n : node_ptr) {
+		auto nid = node_index[n];
+		if(has_cheap_safezone[nid])
+			continue;
+
+		total_zeta += proxy[n].set_random_projection(mu, a, b);
+	}
+
+	using boost::adaptors::transformed;
+
+	if(total_zeta < k * query->zeta_E * 0.05)
+		finish_round();
+	else {
+		start_subround(total_zeta);
+	}
+}
+
+
 
 
 /*********************************************
@@ -508,10 +830,10 @@ void cost_model::compute_model()
 
 	// Report on the accuracy of the previous estimate
 	//if(max_gain<0) return;
-	print("Previous estimate: tau=", tau_opt," actual=", round_updates);
-	print("----");
-	print("Current tau bounds min=", 1./total_beta, "max=",1./total_alpha, 
-		"    total_alpha=",total_alpha,"total_beta=",total_beta, "kk=",kk);
+	// print("Previous estimate: tau=", tau_opt," actual=", round_updates);
+	// print("----");
+	// print("Current tau bounds min=", 1./total_beta, "max=",1./total_alpha, 
+	// 	"    total_alpha=",total_alpha,"total_beta=",total_beta, "kk=",kk);
 
 	// tau(d) = 1/(beta_total - dot(theta, alpha))
 	Vec theta = beta-alpha;
@@ -537,9 +859,8 @@ void cost_model::compute_model()
 	for(auto i : I) invtau += beta[i];
 	assert(invtau > 0.0);
 
-	print("invtau=",invtau,"total_beta=",total_beta);
+	//print("invtau=",invtau,"total_beta=",total_beta);
 	//assert(invtau == total_beta);
-
 
 	//
 	// Computing \f$\sum_{i=1}^k \min\{\gamma_i \tau, D\}\f$.
@@ -598,7 +919,7 @@ void cost_model::compute_model()
 		}
 	}
 
-	print("invtau=",invtau,"total_alpha=",total_alpha);
+	//print("invtau=",invtau,"total_alpha=",total_alpha);
 
 	assert(max_gain >= 0.0);
 	assert(tau_opt >= 0.99/total_beta);  // give a 1% margin for roundoff errors
@@ -607,12 +928,10 @@ void cost_model::compute_model()
 	for(size_t i=0; i<argmax_gain; i++)
 		d[I[i]] = true;
 
-	print("Query plan for next round: ", elements_of(d));
+	//print("Query plan for next round: ", elements_of(d));
 
 	// finito
 }
-
-
 
 
 void cost_model::print_model()
@@ -621,9 +940,6 @@ void cost_model::print_model()
 	print("        Model  beta=", elements_of(beta));
 	print("        Model gamma=", elements_of(gamma));
 }
-
-
-
 
 /*********************************************
 

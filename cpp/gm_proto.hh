@@ -120,7 +120,9 @@ enum class rebalancing
 {
 	none,
 	random,
-	random_limits
+	random_limits,
+	projection,
+	random_projection
 };
 
 extern enum_repr<rebalancing> rebalancing_repr;
@@ -135,6 +137,7 @@ struct protocol_config
 	bool eikonal = true;			// select eikonal safe zone
 	rebalancing rebalance_algorithm
 			 = rebalancing::none;	// select rebalancing algorithm
+	size_t rbl_proj_dim;			// the rebalancing projection dimension
 };
 
 
@@ -242,6 +245,8 @@ protected:
 
 struct gm_comm_results_t : result_table, dataset_results, comm_results
 {
+
+	column_ref<string> run_id	  {this, "run_id", 64, "%s", CTX.run_id };
 
 	column<string> name   	  	  {this, "name", 64, "%s" };
 	column<string> protocol   	  {this, "protocol", 64, "%s" };

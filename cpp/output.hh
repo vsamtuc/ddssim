@@ -447,6 +447,88 @@ public:
 
 
 
+/**
+  	A column which refers to an external variable.
+
+  	Such a column can be bound to program variables
+  	so that their value may be reported via a table
+  	(most likely, a time-series).
+
+  	Thus, this type of column may be thought of as a
+  	_trace_ on a program variable.
+  */
+template <>
+struct column_ref<string> : basic_column
+{
+protected:
+	const size_t maxlen;
+	string& ref;
+public:
+
+	/**
+		\brief Construct a string-reference column
+
+		@param _n the column name
+		@param _maxlen the maximum length for this column
+		@param fmt the column format
+		@param _r reference to the variable holding the column value
+	  */
+	column_ref(const string& _n, size_t _maxlen, const string& fmt, string& _r) 
+	: basic_column(nullptr, _n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])),
+		maxlen(_maxlen), ref(_r) 
+	{ }
+
+
+	/**
+		\brief Construct a string-reference column
+
+		@param _n the column name
+		@param _maxlen the maximum length for this column
+		@param fmt the column format
+		@param _r reference to the variable holding the column value
+	  */
+	column_ref(output_table* _tab, const string& _n, size_t _maxlen, const string& fmt, string& _r) 
+	: basic_column(_tab, _n, fmt, 
+		typeid(string), sizeof(char[_maxlen+1]), alignof(char[_maxlen+1])),
+		maxlen(_maxlen), ref(_r) 
+	{ }
+
+
+	/**
+		\brief Return the current value of the 
+	  */
+	inline const string& value() const { return ref; }
+
+	/**
+		\brief Print the current value to a text file
+	  */
+	void emit(FILE* s) override {
+		fprintf(s, format(), value().c_str());
+	}
+
+	/**
+		\brief Copy the current value to a location
+	  */
+	void copy(void* ptr) {
+		strncpy((char*)ptr, ref.c_str(), maxlen+1);
+        ((char*)ptr)[maxlen] = '\0';
+	}
+
+	/**
+		\brief Check if the column type is arithmetic
+	  */
+	bool is_arithmetic() const override { 
+		return std::is_arithmetic<string>::value; 
+	}
+};
+
+
+
+
+
+
+
 class output_file;
 class output_table;
 struct output_binding;

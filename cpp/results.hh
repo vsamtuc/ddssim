@@ -48,6 +48,7 @@ struct comm_results
   */
 struct network_comm_results_t : result_table, comm_results
 {
+	column_ref<string> run_id	{this, "run_id", 64, "%s", CTX.run_id };
 	column<string> netname   	{this, "netname", 64, "%s" };
 	column<string> protocol     {this, "protocol", 64, "%s" };
 	column<size_t> size         {this, "size", "%zu"};
@@ -66,6 +67,7 @@ extern network_comm_results_t network_comm_results;
 struct network_host_traffic_t : result_table
 {
 	// each row corresponds to a channel
+	column_ref<string> run_id	{this, "run_id", 64, "%s", CTX.run_id };
 	column<string> netname		{this, "netname", 64, "%s"};
 	column<string> protocol   	{this, "protocol", 64, "%s" };
 	column<host_addr> src 		{this, "src", "%d"};
@@ -81,6 +83,7 @@ extern network_host_traffic_t network_host_traffic;
 struct network_interfaces_t : result_table
 {
 	// each row corresponds to a host interface
+	column_ref<string> run_id	{this, "run_id", 64, "%s", CTX.run_id };
 	column<string> netname		{this, "netname", 64, "%s"};
 	column<string> protocol   	{this, "protocol", 64, "%s" };
 	column<rpcc_t> rpcc 		{this, "rpcc", "%hu"};

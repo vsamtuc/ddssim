@@ -152,15 +152,23 @@ struct coordinator : process
 	oneway threshold_crossed(sender<node_t> ctx, int delta_bitw);
 
 	void start_round();   // initialize a new round
+	
 	void finish_round();  // finish current round and start new one
+	void finish_with_newE(const Vec& newE); // finishes round resetting with new state
 	void finish_rounds();  // finish last round
-	
-	
+
+		
 	void start_subround(double total_zeta);    // initialize a new subround
 	void finish_subround();                    // finish the subround
 	void finish_subrounds(double total_zeta);  // try to rebalance (optional)
 
-	void collect_updates();		// collect all updates from local sites
+	void fetch_updates(node_t* node, Vec& S, size_t& upd);
+
+	// Rebalancing algorithms
+	void rebalance_random(double total_zeta);
+	void rebalance_projection(double total_zeta);
+	void rebalance_random_projection(double total_zeta);
+
 
 	// 
 	// model routines
@@ -251,7 +259,15 @@ struct node : local_site
 	// This can be used for rebalancing
 	double set_drift(compressed_state newU);
 
+	// Used in projectional rebalancing
+	Vec get_projection(size_t m);
+	double set_projection(Vec mu);
+
+	// Random projections
+	Vec get_random_projection(size_t m, size_t a, size_t b);
+	double set_random_projection(Vec mu, size_t a, size_t b);
 };
+
 
 struct node_proxy : remote_proxy< node >
 {
@@ -263,6 +279,13 @@ struct node_proxy : remote_proxy< node >
 	REMOTE_METHOD(node_t, get_drift);
 	REMOTE_METHOD(node_t, set_drift);
 	REMOTE_METHOD(node_t, get_zeta);
+
+	REMOTE_METHOD(node_t, get_projection);
+	REMOTE_METHOD(node_t, set_projection);
+
+	REMOTE_METHOD(node_t, get_random_projection);
+	REMOTE_METHOD(node_t, set_random_projection);
+
 	node_proxy(process* p) : remote_proxy< node_t >(p) {}
 };
 
@@ -276,6 +299,12 @@ namespace dds{
 template <>
 inline size_t byte_size< gm::fgm::node *>
 	(gm::fgm::node * const &) { return 4; }
+
+using hdv::Vec;
+
+template <>
+inline size_t byte_size< Vec >
+	(Vec const & v) { return sizeof(float)* v.size(); }
 
 }
 

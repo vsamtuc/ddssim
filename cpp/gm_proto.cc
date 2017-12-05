@@ -151,7 +151,9 @@ void tcp_channel::transmit(size_t msg_size)
 enum_repr<rebalancing> gm::rebalancing_repr ({
     { rebalancing::none, "none" },
     { rebalancing::random, "random" },
-    { rebalancing::random_limits, "random_limits" }
+    { rebalancing::random_limits, "random_limits" },
+    { rebalancing::projection, "projection" },
+    { rebalancing::random_projection, "random_projection" }
 });
 
 
@@ -161,7 +163,15 @@ protocol_config gm::get_protocol_config(const Json::Value& js)
 
 	cfg.use_cost_model = js.get("use_cost_model", cfg.use_cost_model).asBool();
 	cfg.eikonal = js.get("eikonal", cfg.eikonal).asBool();
-    cfg.rebalance_algorithm = rebalancing_repr[js.get("rebalancing", "random_limits").asString()];
+    cfg.rebalance_algorithm = rebalancing_repr[js.get("rebalancing", "none").asString()];
+
+    if(cfg.rebalance_algorithm == rebalancing::projection || 
+        cfg.rebalance_algorithm == rebalancing::random_projection)
+    {
+        if(! js.isMember("rbl_proj_dim"))
+            throw std::invalid_argument("For projection rebalancing, 'rbl_proj_dim' option must be provided.");
+        cfg.rbl_proj_dim = js["rbl_proj_dim"].asUInt();  // compulsory parameter
+    }
 
 	return cfg;
 }

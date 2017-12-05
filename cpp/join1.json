@@ -25,6 +25,67 @@
 		    "beta": 0.02,
 		    "use_cost_model": false
 		},
+
+
+		{
+			"name": "fgm_rnd",
+		    "type": "FGM",
+		    "rebalancing": "random",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.02
+		},
+		{
+			"name": "fgm_nocm_rnd",
+		    "type": "FGM",
+		    "rebalancing": "random",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.02,
+		    "use_cost_model": false
+		},
+
+
+		{
+			"name": "fgm_prj",
+		    "type": "FGM",
+		    "rebalancing": "projection",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.02
+		},
+		{
+			"name": "fgm_nocm_prj",
+		    "type": "FGM",
+		    "rebalancing": "projection",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.02,
+		    "use_cost_model": false
+		},
+
+
+
 		{
 			"name": "sgm_nr",
 		    "type": "SGM",

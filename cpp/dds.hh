@@ -306,6 +306,8 @@ BYTE_SIZE_SIZEOF(int)
 BYTE_SIZE_SIZEOF(unsigned int)
 BYTE_SIZE_SIZEOF(long)
 BYTE_SIZE_SIZEOF(unsigned long)
+//BYTE_SIZE_SIZEOF(size_t)
+
 BYTE_SIZE_SIZEOF(float)
 BYTE_SIZE_SIZEOF(double)
 
