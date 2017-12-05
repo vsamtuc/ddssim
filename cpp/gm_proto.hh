@@ -32,16 +32,13 @@ struct compressed_state
 	const Vec& vec;
 	size_t updates;
 
-	struct __raw_record {
-		dds::key_type key;
-	};
 
 	size_t byte_size() const {
 		// State vectors are transmitted as floats (4 bytes)
 		size_t E_size = vec.size()*sizeof(float); 
 
-		// Raw updates are transmitted as __raw_record arrays (4 bytes)
-		size_t Raw_size = sizeof(__raw_record)*updates;
+		// Raw updates are transmitted as stream_update arrays (8 bytes)
+		size_t Raw_size = sizeof(dds::stream_update)*updates;
 
 		// Return the minimum of the two
 		return std::min(E_size, Raw_size);
@@ -115,25 +112,29 @@ public:
 };
 
 
-/**
-	A class containing configuration about the query answering algorithm.
 
-	This is information which is protocol-agnostic, e.g., the safe zone
-	function class to use.
+/**
+	Labels for rebalancing algorithms.
   */
-struct query_config
-{		
-	bool eikonal=true;	// select an eikonal safezone function
+enum class rebalancing
+{
+	none,
+	random,
+	random_limits
 };
 
+extern enum_repr<rebalancing> rebalancing_repr;
+
 
 /**
-	Query and protocol configuration
+	Query and protocol configuration.
   */
 struct protocol_config
 {
 	bool use_cost_model = true;		// for fgm: use the cost model if possible
 	bool eikonal = true;			// select eikonal safe zone
+	rebalancing rebalance_algorithm
+			 = rebalancing::none;	// select rebalancing algorithm
 };
 
 
@@ -254,10 +255,12 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 	column<size_t> rounds 			{this, "rounds", "%zu" };
 	column<size_t> subrounds		{this, "subrounds", "%zu" };
 	column<size_t> sz_sent			{this, "sz_sent", "%zu"};
+	column<size_t> total_updates	{this, "total_updates", "%zu"};	
 	column<size_t> total_rbl_size	{this, "total_rbl_size", "%zu"};
 
 	column<size_t> bytes_get_drift	{this, "bytes_get_drift", "%zu"};
 	column<size_t> tcp_traffic		{this, "tcp_traffic", "%zu"};
+	column<double> tcp_traffic_pct	{this, "tcp_traffic_pct", "%.10g"};
 
 	gm_comm_results_t() 
 		: gm_comm_results_t("gm_comm_results")
@@ -280,6 +283,7 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 		rounds = hub->num_rounds;
 		subrounds = hub->num_subrounds;
 		sz_sent = hub->sz_sent;
+		total_updates = hub->total_updates;
 		total_rbl_size = hub->total_rbl_size;
 
 		// number of bytes received by get_drift()
@@ -288,6 +292,13 @@ struct gm_comm_results_t : result_table, dataset_results, comm_results
 			.endp_rsp()
 			.bytes();
 
+		size_t tcp_traf = chan_frame(nw)
+			.tally<size_t>([](channel* c) { return static_cast<tcp_channel*>(c)->tcp_bytes(); });
+
+		tcp_traffic = tcp_traf;
+
+		double tcp_naive_traffic =  (tcp_channel::tcp_header_bytes + sizeof(dds::stream_update))*CTX.stream_count();
+		tcp_traffic_pct = (double)tcp_traf / tcp_naive_traffic;
 	}
 };
 extern gm_comm_results_t gm_comm_results;
@@ -321,6 +332,9 @@ struct gm_network : star_network<Net, Coord, Node>, component
 
 		on(START_STREAM, [&]() { 
 			process_init(); 
+		} );
+		on(END_STREAM, [&]() { 
+			process_fini(); 
 		} );
 		on(START_RECORD, [&]() { 
 			process_record(); 
@@ -356,6 +370,11 @@ struct gm_network : star_network<Net, Coord, Node>, component
 		// let the coordinator initialize the nodes
 		this->hub->warmup();
 		this->hub->start_round();
+	}
+
+	virtual void process_fini()
+	{
+		this->hub->finish_rounds();
 	}
 
 	virtual void output_results()

@@ -105,7 +105,6 @@ struct coordinator : process
 	safezone_func *safe_zone;			// the safe zone proper
 	safezone_func *radial_safe_zone;	// the cheap safezone (maybe null)
 	
-	size_t total_updates;		// number of stream updates received
 	size_t k;					// number of sites
 
 	// index the nodes
@@ -123,11 +122,12 @@ struct coordinator : process
 	computed<double> Qest_series;
 
 	// statistics
-	size_t num_rounds;       // number of rounds
-	size_t num_subrounds;    // number of subrounds
-	size_t sz_sent;          // safe zones sent
-	size_t total_rbl_size; 	 // total size of rebalance sets
-	size_t round_sz_sent;    // safezones sent in current round
+	size_t num_rounds;      // number of rounds
+	size_t num_subrounds;   // number of subrounds
+	size_t sz_sent;         // safe zones sent
+	size_t total_rbl_size; 	// total size of rebalance sets
+	size_t round_sz_sent;   // safezones sent in current round
+	size_t total_updates;	// number of stream updates received
 
 
 	// cost model
@@ -153,6 +153,7 @@ struct coordinator : process
 
 	void start_round();   // initialize a new round
 	void finish_round();  // finish current round and start new one
+	void finish_rounds();  // finish last round
 	
 	
 	void start_subround(double total_zeta);    // initialize a new subround

@@ -40,13 +40,16 @@ oneway node::reset(const safezone& newsz)
 
 compressed_state node::get_drift() 
 {
-	return compressed_state { U, update_count };
+	// getting the drift vector is done as getting the local statistic
+	size_t upd = update_count;
+	update_count = 0;
+	return compressed_state { U, upd };
 }
 
 void node::set_drift(compressed_state newU) 
 {
 	U = newU.vec;
-	update_count = newU.updates;
+	// we do not change the update count update_count = newU.updates;
 	zeta = szone(U);
 	assert(zeta>0);
 }
@@ -94,6 +97,10 @@ void coordinator::start_round()
 	round_total_B = 0;
 	num_rounds++;
 	num_subrounds++;
+
+	// this is zeroed here, but it is not zeroed in subsequent 
+	// rebalances, only Ubal is zeroed !
+	Ubal_updates = 0;
 }	
 
 
@@ -108,40 +115,59 @@ oneway coordinator::local_violation(sender<node_t> ctx)
 		In this function, we try to rebalance. If this fails, we
 		restart the round.
 	 */
+
+	B.clear();
+	Ubal = 0.0;
+
 	if(k>1) {
 		// attempt to rebalance		
 		// get rebalancing set
-		rebalance_random_limits(n);
+		switch(cfg().rebalance_algorithm)
+		{
+			case rebalancing::none:
+				rebalance_none(n);
+				break;
+			case rebalancing::random:
+				rebalance_random(n);
+				break;
+			case rebalancing::random_limits:
+				rebalance_random_limits(n);
+				break;
+			default:
+				throw std::runtime_error("Unknown rebalancing algoritm");
+		}
 	} else {
-		B.clear();
-		Bcompl.clear();
-		for(auto n : node_ptr) 
-			Bcompl.insert(n);
-
-		Ubal = 0.0;
-		Ubal_updates = 0;
-		Ubal_admissible = false;
-
-		finish_round();
+		rebalance_none(nullptr);
 	}
-
 }
 
+
+void coordinator::fetch_updates(node_t* node)
+{
+	compressed_state cs = proxy[node].get_drift();
+	Ubal += cs.vec;
+	Ubal_updates += cs.updates;	
+	total_updates += cs.updates;
+}
+
+
+void coordinator::rebalance_none(node_t* lvnode)
+{
+	Bcompl.clear();	
+	for(auto n : node_ptr)	
+		Bcompl.insert(n);
+	finish_round();
+}
 
 
 
 void coordinator::rebalance_random(node_t* lvnode)
 {
-	B.clear();
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	{
-		compressed_state cs = proxy[lvnode].get_drift();
-		Ubal = cs.vec;
-		Ubal_updates = cs.updates;
-	}
-	Ubal_admissible = false;		
+	fetch_updates(lvnode);
+	Ubal_admissible = false;
 	assert(query->compute_zeta(Ubal) <= 0.0);
 
 	// find a balancing set
@@ -165,9 +191,7 @@ void coordinator::rebalance_random(node_t* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_state cs = proxy[n].get_drift();
-			Ubal += cs.vec;
-			Ubal_updates += cs.updates;
+			fetch_updates(n);
 			zbal = query->compute_zeta( Ubal/((double) B.size()) );
 			Ubal_admissible =  (zbal>0.0) ? true : false;
 		}
@@ -208,9 +232,7 @@ void coordinator::rebalance_random_limits(node_t* lvnode)
 	Bcompl.clear();
 
 	B.insert(lvnode);
-	compressed_state cs = proxy[lvnode].get_drift();
-	Ubal = cs.vec;
-	Ubal_updates = cs.updates;
+	fetch_updates(lvnode);
 	Ubal_admissible = false;
 	assert(query->compute_zeta(Ubal) <= 0.0);
 
@@ -239,9 +261,7 @@ void coordinator::rebalance_random_limits(node_t* lvnode)
 			Bcompl.insert(n);
 		} else {
 			B.insert(n);
-			compressed_state cs = proxy[n].get_drift();
-			Ubal += cs.vec;
-			Ubal_updates += cs.updates;
+			fetch_updates(n);
 			zbal = query->compute_zeta( Ubal/((double) B.size()) );
 			Ubal_admissible =  (zbal>0.0) ? true : false;
 		}
@@ -299,9 +319,7 @@ void coordinator::finish_round()
 {
 	// collect all data
 	for(auto n : Bcompl) {
-		compressed_state cs = proxy[n].get_drift();
-		Ubal += cs.vec;
-		Ubal_updates += cs.updates;
+		fetch_updates(n);
 	}
 	Ubal /= (double)k;
 
@@ -314,7 +332,10 @@ void coordinator::finish_round()
 	start_round();
 }
 
-
+void coordinator::finish_rounds()
+{
+	rebalance_none(nullptr);
+}
 
 void coordinator::trace_round(const Vec& newE)
 {
@@ -343,10 +364,6 @@ void coordinator::trace_round(const Vec& newE)
 	// print elements
 	print("                  : S= ",elements_of(round_updates));	
 }
-
-
-
-
 
 
 void coordinator::warmup()
@@ -378,11 +395,11 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 : 	process(nw), proxy(this), 
 	Q(_Q), 
 	query(Q->create_query_state()),
-	total_updates(0), 
 	k(0),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query->Qest;} ),
 	Ubal(0.0, Q->state_vector_size()),
-	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0)
+	num_rounds(0), num_subrounds(0), sz_sent(0), total_rbl_size(0),
+	total_updates(0)
 {  
 	safe_zone = query->safezone();
 }

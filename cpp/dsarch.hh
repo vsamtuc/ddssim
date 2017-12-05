@@ -1365,6 +1365,14 @@ struct chan_frame : vector<channel*>
 	// trivial to use a frame with more complex queries, in code.
 	//
 
+
+	template <typename NumType, typename Extractor>
+	inline NumType tally(const Extractor& efunc) const {
+		NumType ret=0;
+		for(auto c : *this) ret += efunc(c);
+		return ret;		
+	}
+
 	// total messages over all channels
 	inline size_t msgs() const {
 		size_t ret=0;

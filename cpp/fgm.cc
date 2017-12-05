@@ -237,6 +237,10 @@ void coordinator::finish_round()
 }
 
 
+void coordinator::finish_rounds()
+{
+	coordinator::finish_round();	
+}
 
 
 void coordinator::trace_round(const Vec& newE)
@@ -344,13 +348,13 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 : 	process(nw), proxy(this), 
 	Q(_Q),
 	query(Q->create_query_state()), 
-	total_updates(0), 
 	k(nw->hids.size()),
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query->Qest;} ),
 	num_rounds(0),
 	num_subrounds(0),
 	sz_sent(0),
 	total_rbl_size(0),
+	total_updates(0),
 	cmodel(this)
 {  
 	set_name(nw->name()+":coord");

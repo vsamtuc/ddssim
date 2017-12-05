@@ -148,12 +148,20 @@ void tcp_channel::transmit(size_t msg_size)
 //
 //////////////////////////////////////
 
+enum_repr<rebalancing> gm::rebalancing_repr ({
+    { rebalancing::none, "none" },
+    { rebalancing::random, "random" },
+    { rebalancing::random_limits, "random_limits" }
+});
+
+
 protocol_config gm::get_protocol_config(const Json::Value& js)
 {
 	protocol_config cfg;
 
 	cfg.use_cost_model = js.get("use_cost_model", cfg.use_cost_model).asBool();
 	cfg.eikonal = js.get("eikonal", cfg.eikonal).asBool();
+    cfg.rebalance_algorithm = rebalancing_repr[js.get("rebalancing", "random_limits").asString()];
 
 	return cfg;
 }

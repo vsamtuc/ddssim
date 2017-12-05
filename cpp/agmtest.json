@@ -39,8 +39,35 @@
 		    "use_cost_model": false
 		},
 		{
-			"name": "gm",			
+			"name": "gm_nr",
 		    "type": "SGM",
+		    "rebalancing": "none",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "gm_rnd",			
+		    "type": "SGM",
+		    "rebalancing": "random",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "gm_rlim",
+		    "type": "SGM",
+		    "rebalancing": "random_limits",
 		    "query": "SELFJOIN",
 		    "stream": 0,
 		    "projection": {

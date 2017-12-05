@@ -50,7 +50,6 @@ struct coordinator : process
     continuous_query* Q;   		// continuous query
     query_state* query; 		// current query state
  	safezone_func* safe_zone; 	// the safe zone wrapper
- 	size_t total_updates;		// number of stream updates received
 
 	size_t k;					// number of sites
 
@@ -66,6 +65,7 @@ struct coordinator : process
 	~coordinator();
 
 	inline network_t* net() { return static_cast<network_t*>(host::net()); }
+    inline const protocol_config& cfg() const { return Q->config; }
 
 	void setup_connections() override;
 
@@ -75,6 +75,7 @@ struct coordinator : process
 	// initialize a new round
 	void start_round();
 	void finish_round();
+	void finish_rounds();
 	
 	// initialize a new subround
 	void start_subround(double total_zeta);
@@ -93,19 +94,22 @@ struct coordinator : process
 
 	Vec Ubal;					// contains \sum_{i\in B} U_i
 	size_t Ubal_updates;		// Ubal updates
-
 	bool Ubal_admissible;		// contains zeta(Ubal)>0
 
-	size_t round_total_B;           // total size of B over round
+	size_t round_total_B;       // total size of B over round
   
 
 	// This method performs the actual rebalancing and returns the delta_zeta
 	// of the rebalanced nodes.
 	void rebalance();
 
-	// Returns a rebalancing set two nodes, or empty.
+	// Rebalancing strategies (rebalancing set selectors)
+	void rebalance_none(node_t* lvnode);
 	void rebalance_random(node_t* lvnode);
 	void rebalance_random_limits(node_t* lvnode);
+
+	// add the drift vector of a node to Ubal
+	void fetch_updates(node_t* n);
 	
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning
@@ -120,6 +124,7 @@ struct coordinator : process
 	size_t num_subrounds;			 // total number of subrounds
 	size_t sz_sent;					 // total safe zones sent
 	size_t total_rbl_size; 			 // sum of all rebalance sets
+ 	size_t total_updates;		// number of stream updates received
 };
 
 
