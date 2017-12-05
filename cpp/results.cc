@@ -51,19 +51,10 @@ void comm_results::fill(basic_network* nw)
 
 
 // Global result_table objects
-local_stream_stats_t local_stream_stats;
-gm_comm_results_t gm_comm_results;
 network_comm_results_t network_comm_results;
 network_host_traffic_t network_host_traffic;
 network_interfaces_t network_interfaces;
 
-
-gm_comm_results_t::gm_comm_results_t(const string& name) 
-	: result_table(name),
-		dataset_results(this),
-		comm_results(this)
-{
-}
 
 
 

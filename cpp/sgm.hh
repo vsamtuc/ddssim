@@ -7,9 +7,6 @@
 #include <cmath>
 #include <vector>
 
-#include "dds.hh"
-#include "dsarch.hh"
-#include "method.hh"
 #include "gm_proto.hh"
 
 using std::cout;
@@ -27,24 +24,11 @@ struct node;
 struct node_proxy;
 
 
-struct network 
-	: star_network<network, coordinator, node >, 
-	component
+struct network : gm_network<network, coordinator, node >
 {
-	typedef coordinator coordinator_t;
-	typedef node node_t;
-	typedef network network_t;
-	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
-
-	continuous_query* Q;
-	const protocol_config& cfg() const { return Q->config; }
+	typedef gm_network<network_t, coordinator_t, node_t> gm_network_t;
 
 	network(const string& _name, continuous_query* Q);
-	~network();
-
-	void process_record();
-	void process_init();
-	void output_results();
 };
 
 

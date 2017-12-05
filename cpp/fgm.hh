@@ -7,9 +7,6 @@
 #include <cmath>
 #include <vector>
 
-#include "dds.hh"
-#include "dsarch.hh"
-#include "method.hh"
 #include "gm_proto.hh"
 
 namespace gm { namespace fgm {
@@ -25,24 +22,11 @@ struct node;
 struct node_proxy;
 
 struct network 
-	: 	star_network<network , coordinator , node>, 
-		component
+	: 	gm_network<network , coordinator , node>
 {
-	typedef coordinator coordinator_t;
-	typedef node node_t;
-	typedef network network_t;
-	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
-
-	continuous_query* Q;
-	
-	const protocol_config& cfg() const { return Q->config; }
+	typedef gm_network<network_t, coordinator_t, node_t> gm_network_t;
 
 	network(const string& name, continuous_query* _Q);
-	~network();
-
-	void process_record();
-	void process_init();
-	void output_results();
 };
 
 
@@ -143,7 +127,8 @@ struct coordinator : process
 	size_t num_subrounds;    // number of subrounds
 	size_t sz_sent;          // safe zones sent
 	size_t total_rbl_size; 	 // total size of rebalance sets
-	size_t round_sz_sent;    // safezones sent in curren
+	size_t round_sz_sent;    // safezones sent in current round
+
 
 	// cost model
 	cost_model cmodel;
@@ -254,10 +239,10 @@ struct node : local_site
 	int set_safezone(const safezone& newsz);
 
 	// Get the current zeta		
-	double get_zeta();
+	float get_zeta();
 
 	// called at the start a new subround
-	oneway reset_bitweight(double Z);
+	oneway reset_bitweight(float Z);
 
 	// Get the data
 	compressed_state get_drift();

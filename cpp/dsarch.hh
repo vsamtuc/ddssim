@@ -181,12 +181,12 @@ public:
 };
 
 
-class broadcast_channel : public channel
+class multicast_channel : public channel
 {
 protected:
 	size_t rxmsgs, rxbyts;
 
-	broadcast_channel(host *s, host_group* d, rpcc_t rpcc);	
+	multicast_channel(host *s, host_group* d, rpcc_t rpcc);	
 public:
 
 	virtual size_t messages_received() const override;
@@ -201,7 +201,6 @@ public:
 };
 
 
-typedef std::unordered_map<host*, channel*> channel_map;
 typedef std::unordered_set<channel*> channel_set;
 typedef std::unordered_set<host*> host_set;
 
@@ -223,7 +222,7 @@ class host : public named
 
 	basic_network* _net;
 	host_addr _addr;
-	bool _bcast;
+	bool _mcast;
 
 	friend class host_group;
 	friend class basic_network;
@@ -241,7 +240,7 @@ public:
 	/**
 		True this is a host group
 	  */
-	inline bool is_bcast() const { return _bcast; }
+	inline bool is_mcast() const { return _mcast; }
 
 	/**
 		Return the address of a host.
@@ -569,6 +568,21 @@ protected:
 	rpc_protocol rpctab;
 
 	friend class host;
+
+
+	/**
+		A factory method for channels.
+
+		Subclasses can overload this method, in order to supply custom channels to the
+		network. Notice that the semantics of custom channels must follow the semantics
+		of standard channels. In particular:
+		- if 
+
+		This method should not be confused with \c connect(). The \c connect() is the method
+		that should be called to construct the network. This method is called internally
+		by \c connect().
+	  */
+	virtual channel* create_channel(host* src, host* dest, rpcc_t rpcc) const;
 
 public:
 
@@ -1370,7 +1384,7 @@ struct chan_frame : vector<channel*>
 	inline size_t recv_msgs() const {
 		size_t ret=0;
 		for(auto c : *this) {
-			broadcast_channel* bc = dynamic_cast<broadcast_channel*>(c);
+			multicast_channel* bc = dynamic_cast<multicast_channel*>(c);
 			if(bc!=nullptr)
 				ret += c->messages_received();
 		}
@@ -1382,7 +1396,7 @@ struct chan_frame : vector<channel*>
 	inline size_t recv_bytes() const {
 		size_t ret=0;
 		for(auto c : *this) {
-			broadcast_channel* bc = dynamic_cast<broadcast_channel*>(c);
+			multicast_channel* bc = dynamic_cast<multicast_channel*>(c);
 			if(bc!=nullptr)
 				ret += c->bytes_received();
 		}
@@ -1434,12 +1448,12 @@ struct chan_frame : vector<channel*>
 	// Filter only unicast/multicast channels
 	chan_frame unicast() const {
 		return select([&](channel *c) {
-			return ! c->destination()->is_bcast();
+			return ! c->destination()->is_mcast();
 		});		
 	}
 	chan_frame multicast() const {
 		return select([&](channel *c) {
-			return c->destination()->is_bcast();
+			return c->destination()->is_mcast();
 		});		
 	}
 

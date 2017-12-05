@@ -99,6 +99,49 @@ continuous_query* gm::create_continuous_query(const Json::Value& js)
 }
 
 
+
+//////////////////////////////////////
+//
+// gm_comm_results_t  table
+//
+//////////////////////////////////////
+
+
+
+gm_comm_results_t::gm_comm_results_t(const string& name) 
+    : result_table(name),
+        dataset_results(this),
+        comm_results(this)
+{
+}
+
+gm_comm_results_t gm::gm_comm_results;
+
+
+//////////////////////////////////////
+//
+// tcp_channel
+//
+//////////////////////////////////////
+
+
+tcp_channel::tcp_channel(host* src, host* dst, rpcc_t endp)
+    : channel(src, dst, endp), tcp_byts(0)
+{ }
+
+
+void tcp_channel::transmit(size_t msg_size)
+{
+    // update parent statistics
+    channel::transmit(msg_size);
+
+    // update tcp byte count
+    size_t segno = (msg_size + tcp_mss - 1)/tcp_mss;
+    tcp_byts += msg_size + segno * tcp_header_bytes;
+}
+
+
+
 //////////////////////////////////////
 //
 // Protocol configuration

@@ -20,9 +20,9 @@ using namespace std;
 
 
 host::host(basic_network* n, bool _b) 
-: _net(n), _addr(unknown_addr), _bcast(_b)
+: _net(n), _addr(unknown_addr), _mcast(_b)
 {
-	if(!_bcast) {
+	if(!_mcast) {
 		_net->_hosts.insert(this);
 	}
 	else
@@ -40,7 +40,7 @@ host::~host()
 		c->dst = nullptr;
 
 	// remove from network
-	if(!_bcast) {
+	if(!_mcast) {
 		_net->_hosts.erase(this);
 	}
 	else
@@ -110,17 +110,17 @@ void channel::transmit(size_t msg_size)
 }
 
 
-broadcast_channel::broadcast_channel(host *s, host_group* d, rpcc_t rpcc)
+multicast_channel::multicast_channel(host *s, host_group* d, rpcc_t rpcc)
 	: channel(s,d,rpcc), rxmsgs(0), rxbyts(0)
 {
 }
 
 
-size_t broadcast_channel::messages_received() const { return rxmsgs; }
+size_t multicast_channel::messages_received() const { return rxmsgs; }
 
-size_t broadcast_channel::bytes_received() const { return rxbyts; }
+size_t multicast_channel::bytes_received() const { return rxbyts; }
 
-void broadcast_channel::transmit(size_t msg_size)
+void multicast_channel::transmit(size_t msg_size)
 {
 	channel::transmit(msg_size);
 	size_t gsize = static_cast<host_group*>(dst)->receivers(src);
@@ -137,7 +137,7 @@ string channel::repr() const {
 	return ss.str();
 }
 
-string broadcast_channel::repr() const {
+string multicast_channel::repr() const {
 	ostringstream ss;
 	ss << "[chan " << src->addr() << "->" << dst->addr() << " traffic:"
 		<< msgs << "(" << rxmsgs <<  ")," << byts << "(" << rxbyts << ")]";
@@ -153,6 +153,14 @@ string broadcast_channel::repr() const {
 //-------------------
 
 
+channel* basic_network::create_channel(host* src, host* dst, rpcc_t endp) const
+{
+	if(dst->is_mcast())
+		return new multicast_channel(src, static_cast<host_group*>(dst), endp);
+	else
+	 	return new channel(src, dst, endp);	
+}
+
 
 
 channel* basic_network::connect(host* src, host* dst, rpcc_t endp)
@@ -164,18 +172,14 @@ channel* basic_network::connect(host* src, host* dst, rpcc_t endp)
 			return chan;
 	}
 
-	if(src->is_bcast())
+	if(src->is_mcast())
 		throw std::logic_error("A channel source cannot be a host group");
-	if(dst->is_bcast() && !rpc().get_method(endp).one_way) {
+	if(dst->is_mcast() && !rpc().get_method(endp).one_way) {
 		throw std::logic_error("A broadcast channel on a non-one_way method cannot be created");
 	}
 
 	// create new channel
-	channel* chan;
-	if(dst->is_bcast())
-		chan = new broadcast_channel(src, static_cast<host_group*>(dst), endp);
-	else
-	 	chan = new channel(src, dst, endp);
+	channel* chan = create_channel(src, dst, endp);
 
 	// add it to places
 	_channels.insert(chan);
@@ -233,8 +237,8 @@ bool basic_network::assign_address(host* h, host_addr a)
 
 	if(a==unknown_addr) {
 		// assign a default address
-		int step = h->is_bcast() ? -1 : 1;
-		host_addr& ap = h->is_bcast() ? new_group_addr : new_host_addr;
+		int step = h->is_mcast() ? -1 : 1;
+		host_addr& ap = h->is_mcast() ? new_group_addr : new_host_addr;
 
 		while(h->_addr == unknown_addr) {
 
@@ -439,7 +443,7 @@ const rpc_protocol rpc_protocol::empty;
 rpc_proxy::rpc_proxy(size_t ifc, host* _own)
 : _r_ifc(ifc), _r_owner(_own)
 { 
-	assert(! _own->is_bcast()); 
+	assert(! _own->is_mcast()); 
 }
 
 
@@ -494,7 +498,7 @@ void rpc_call::connect(host* dst)
 	basic_network* nw = _proxy->_r_owner->net();
 	host* owner = _proxy->_r_owner;
 
-	assert(dst->is_bcast() <= one_way); 
+	assert(dst->is_mcast() <= one_way); 
 	_req_chan = nw->connect(owner, dst, _endpoint);
 	if(! one_way)
 		_resp_chan = nw->connect(dst, owner, _endpoint | RPCC_RESP_MASK);

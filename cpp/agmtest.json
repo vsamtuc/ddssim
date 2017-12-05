@@ -78,7 +78,7 @@
 		//"data_source" : "gen:uniform?maxsid=1,maxhid=4,maxkey=1000000,maxts=10000000"
 
 		,"hash_streams": 1
-		//,"max_length": 1000000
+		,"max_length": 1000000
 		//,"max_length": 10000000
 		//,"hash_sources": 4
 		,"time_window": 7200    // 4*3600

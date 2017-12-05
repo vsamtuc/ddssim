@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <boost/range/adaptors.hpp>
 
-#include "results.hh"
 #include "binc.hh"
 #include "fgm.hh"
 
@@ -51,12 +50,12 @@ int node::set_safezone(const safezone& newsz)
 	return delta_bitweight;
 }
 	
-double node::get_zeta() 
+float node::get_zeta() 
 {
 	return zeta;
 }
 
-oneway node::reset_bitweight(double Z)
+oneway node::reset_bitweight(float Z)
 {
 	minzeta = zeta_0 = zeta;
 	zeta_quantum = Z;
@@ -407,8 +406,6 @@ void cost_model::update_model()
 	
 	// this is used to scale alpha and beta
 	const double zeta_E = coord->query->zeta_E;
-	double kzeta = (double)k * zeta_E;
-	assert(kzeta > 0.0);
 
 	// count the non-ignored sites
 	size_t kk=0;
@@ -435,10 +432,6 @@ void cost_model::update_model()
 		if(alpha[i]<0.0) { beta[i]-=alpha[i]; alpha[i] = 0.0; }
 		else if(alpha[i]>beta[i]) alpha[i] = beta[i];
 
-		// normalize here, instead of the cost model
-		alpha[i] /= kzeta;
-		beta[i]  /= kzeta;
-
 		assert(beta[i] >= alpha[i]);
 		assert(alpha[i] >= 0.0);
 		assert(gamma[i]>0.0);
@@ -453,6 +446,15 @@ void cost_model::update_model()
 
 	// No input maybe?
 	if(kk==0) return;
+	double kzeta = (double)kk * zeta_E;
+	assert(kzeta > 0.0);
+
+	// normalize here, so that compute_model does not have to deal with zetas
+	alpha /= kzeta;
+	total_alpha /= kzeta;
+
+	beta  /= kzeta;
+	total_beta /= kzeta;
 
 	assert(round_updates > 0.0);
 
@@ -466,9 +468,6 @@ void cost_model::update_model()
 	total_alpha /= round_updates;
 	total_beta /= round_updates;
 
-	// Report on the accuracy of the previous estimate
-	//if(max_gain<0) return;
-	//print("Previous estimate: tau=", tau_opt," actual=", round_updates);
 }
 
 
@@ -495,6 +494,21 @@ void cost_model::compute_model()
 		return;
 	}
 
+	// We do not have enough data to have a reasonable chance at 
+	// estimating the alphas
+	if(round_updates <= 100.*(double)k) {
+		tau_opt = 1.0/total_beta;
+		max_gain = 0.0;
+		return;
+	}
+
+	// Report on the accuracy of the previous estimate
+	//if(max_gain<0) return;
+	print("Previous estimate: tau=", tau_opt," actual=", round_updates);
+	print("----");
+	print("Current tau bounds min=", 1./total_beta, "max=",1./total_alpha, 
+		"    total_alpha=",total_alpha,"total_beta=",total_beta, "kk=",kk);
+
 	// tau(d) = 1/(beta_total - dot(theta, alpha))
 	Vec theta = beta-alpha;
 
@@ -518,6 +532,10 @@ void cost_model::compute_model()
 	double invtau = 0.0;
 	for(auto i : I) invtau += beta[i];
 	assert(invtau > 0.0);
+
+	print("invtau=",invtau,"total_beta=",total_beta);
+	//assert(invtau == total_beta);
+
 
 	//
 	// Computing \f$\sum_{i=1}^k \min\{\gamma_i \tau, D\}\f$.
@@ -576,12 +594,16 @@ void cost_model::compute_model()
 		}
 	}
 
+	print("invtau=",invtau,"total_alpha=",total_alpha);
+
 	assert(max_gain >= 0.0);
+	assert(tau_opt >= 0.99/total_beta);  // give a 1% margin for roundoff errors
+	assert(tau_opt <= 1.01/total_alpha); // give a 1% margin for roundoff errors
 
 	for(size_t i=0; i<argmax_gain; i++)
 		d[I[i]] = true;
 
-	//print("Query plan for next round: ", elements_of(d));
+	print("Query plan for next round: ", elements_of(d));
 
 	// finito
 }
@@ -607,64 +629,11 @@ void cost_model::print_model()
 
 
 fgm::network::network(const string& _name, continuous_query* _Q)
-	: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
+	: 	gm_network_t(_name, _Q)
 {
-	set_name(_name);
 	this->set_protocol_name("AGMC");
-
-	this->setup(Q);
-
-	on(START_STREAM, [&]() { 
-		process_init(); 
-	} );
-	on(START_RECORD, [&]() { 
-		process_record(); 
-	} );
-	on(RESULTS, [&](){ 
-		output_results();
-	});
-	on(INIT, [&]() {
-		CTX.timeseries.add(this->hub->Qest_series);
-	});
-	on(DONE, [&]() { 
-		CTX.timeseries.remove(this->hub->Qest_series);
-	});
 }
 
-
-network::~network()
-{
-	delete Q;
-}
-
-
-void fgm::network::process_record()
-{
-	const dds_record& rec = CTX.stream_record();
-	this->source_site(rec.hid)->update_stream();		
-}
-
-void fgm::network::process_init()
-{
-	// let the coordinator initialize the nodes
-	this->hub->warmup();
-	this->hub->start_round();
-}
-
-
-void fgm::network::output_results()
-{
-	//network_comm_results.netname = "GM2";
-
-	network_comm_results.fill_columns(this);
-	network_comm_results.emit_row();
-
-	network_host_traffic.output_results(this);
-	network_interfaces.output_results(this);
-
-	gm_comm_results.fill(this);
-	gm_comm_results.emit_row();
-}
 
 gm::p_component_type< gm::fgm::network > gm::fgm::fgm_comptype("FGM");
 

@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <boost/range/adaptors.hpp>
 
-#include "results.hh"
 #include "binc.hh"
 #include "sgm.hh"
 
@@ -403,60 +402,10 @@ coordinator::~coordinator()
 
 
 sgm::network::network(const string& _name, continuous_query* _Q)
-: 	star_network_t(CTX.metadata().source_ids()), Q(_Q)
+: 	gm_network_t(_name, _Q)
 {
-	set_name(_name);
 	this->set_protocol_name("GM");
-	
-	this->setup(Q);
-
-	on(START_STREAM, [&]() { 
-		process_init(); 
-	});
-	on(START_RECORD, [&]() { 
-		process_record(); 
-	});
-	on(RESULTS, [&](){ 
-		output_results();
-	});
 }
-
-sgm::network::~network()
-{
-	delete Q;
-}
-
-void sgm::network::process_record()
-{
-	const dds_record& rec = CTX.stream_record();
-	this->source_site(rec.hid)->update_stream();
-}
-
-
-void sgm::network::process_init()
-{
-	// let the coordinator initialize the nodes
-	CTX.timeseries.add(this->hub->Qest_series);
-	this->hub->warmup();
-	this->hub->start_round();
-}
-
-
-
-void sgm::network::output_results()
-{
-	//network_comm_results.netname = "GM2";
-
-	network_comm_results.fill_columns(this);
-	network_comm_results.emit_row();
-
-	network_host_traffic.output_results(this);
-	network_interfaces.output_results(this);
-
-	gm_comm_results.fill(this);
-	gm_comm_results.emit_row();
-}
-
 
 gm::p_component_type<network> sgm::sgm_comptype("SGM");
 
