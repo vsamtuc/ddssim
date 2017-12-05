@@ -166,6 +166,9 @@ struct context : basic_control
 	/// Must be default-constructible!
 	context() : timeseries("timeseries"), query_estimate("query_estimate") {}
 
+	/// initialized to a unique id
+	string run_id;
+
 	/// Start the simulation
 	void run();
 };

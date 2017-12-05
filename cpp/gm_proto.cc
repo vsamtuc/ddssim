@@ -99,11 +99,63 @@ continuous_query* gm::create_continuous_query(const Json::Value& js)
 }
 
 
+
+//////////////////////////////////////
+//
+// gm_comm_results_t  table
+//
+//////////////////////////////////////
+
+
+
+gm_comm_results_t::gm_comm_results_t(const string& name) 
+    : result_table(name),
+        dataset_results(this),
+        comm_results(this)
+{
+}
+
+gm_comm_results_t gm::gm_comm_results;
+
+
+//////////////////////////////////////
+//
+// tcp_channel
+//
+//////////////////////////////////////
+
+
+tcp_channel::tcp_channel(host* src, host* dst, rpcc_t endp)
+    : channel(src, dst, endp), tcp_byts(0)
+{ }
+
+
+void tcp_channel::transmit(size_t msg_size)
+{
+    // update parent statistics
+    channel::transmit(msg_size);
+
+    // update tcp byte count
+    size_t segno = (msg_size + tcp_mss - 1)/tcp_mss;
+    tcp_byts += msg_size + segno * tcp_header_bytes;
+}
+
+
+
 //////////////////////////////////////
 //
 // Protocol configuration
 //
 //////////////////////////////////////
+
+enum_repr<rebalancing> gm::rebalancing_repr ({
+    { rebalancing::none, "none" },
+    { rebalancing::random, "random" },
+    { rebalancing::random_limits, "random_limits" },
+    { rebalancing::projection, "projection" },
+    { rebalancing::random_projection, "random_projection" }
+});
+
 
 protocol_config gm::get_protocol_config(const Json::Value& js)
 {
@@ -111,6 +163,15 @@ protocol_config gm::get_protocol_config(const Json::Value& js)
 
 	cfg.use_cost_model = js.get("use_cost_model", cfg.use_cost_model).asBool();
 	cfg.eikonal = js.get("eikonal", cfg.eikonal).asBool();
+    cfg.rebalance_algorithm = rebalancing_repr[js.get("rebalancing", "none").asString()];
+
+    if(cfg.rebalance_algorithm == rebalancing::projection || 
+        cfg.rebalance_algorithm == rebalancing::random_projection)
+    {
+        if(! js.isMember("rbl_proj_dim"))
+            throw std::invalid_argument("For projection rebalancing, 'rbl_proj_dim' option must be provided.");
+        cfg.rbl_proj_dim = js["rbl_proj_dim"].asUInt();  // compulsory parameter
+    }
 
 	return cfg;
 }

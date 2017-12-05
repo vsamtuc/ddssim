@@ -1,6 +1,9 @@
 
 #include <boost/functional/hash.hpp>
 #include <boost/polymorphic_pointer_cast.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include "method.hh"
 
@@ -118,6 +121,12 @@ void context::clear()
 
 void context::run()
 {
+	if(run_id.size()==0) {
+		boost::uuids::random_generator gen;
+		boost::uuids::uuid u = gen();
+
+		run_id = boost::uuids::to_string(u);
+	}
 	basic_control::run();
 }
 

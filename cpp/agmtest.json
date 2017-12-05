@@ -13,19 +13,6 @@
 		    "beta": 0.1
 		},
 		{
-			"name": "fgm_noneik",
-		    "type": "FGM",
-		    "query": "SELFJOIN",
-		    "stream": 0,
-		    "projection": {
-				"depth": 7,
-				"width":1500,
-				"epsilon": 0.05
-		    },
-		    "beta": 0.1,
-	    	"eikonal":  false 
-		},
-		{
 			"name": "fgm_nocm",
 		    "type": "FGM",
 		    "query": "SELFJOIN",
@@ -38,9 +25,118 @@
 		    "beta": 0.1,
 		    "use_cost_model": false
 		},
+
+		// WITH REBALANCING random
 		{
-			"name": "gm",			
+			"name": "fgm_rnd",
+		    "type": "FGM",
+		    "rebalancing": "random",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "fgm_nocm_rnd",
+		    "type": "FGM",
+		    "rebalancing": "random",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1,
+		    "use_cost_model": false
+		},
+
+
+		// WITH REBALANCING projection
+		{
+			"name": "fgm_prj",
+		    "type": "FGM",
+		    "rebalancing": "projection",
+		    "rbl_proj_dim": 350,
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "fgm_nocm_prj",
+		    "type": "FGM",
+		    "rebalancing": "projection",
+		    "rbl_proj_dim": 350,
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1,
+		    "use_cost_model": false
+		},
+
+
+		// WITH REBALANCING projection
+		{
+			"name": "fgm_rndprj",
+		    "type": "FGM",
+		    "rebalancing": "random_projection",
+		    "rbl_proj_dim": 350,
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "fgm_nocm_rndprj",
+		    "type": "FGM",
+		    "rebalancing": "random_projection",
+		    "rbl_proj_dim": 350,
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1,
+		    "use_cost_model": false
+		},
+
+
+		{
+			"name": "sgm_nr",
 		    "type": "SGM",
+		    "rebalancing": "none",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width":1500,
+				"epsilon": 0.05
+		    },
+		    "beta": 0.1
+		},
+		{
+			"name": "sgm_rlim",
+		    "type": "SGM",
+		    "rebalancing": "random_limits",
 		    "query": "SELFJOIN",
 		    "stream": 0,
 		    "projection": {
@@ -78,9 +174,9 @@
 		//"data_source" : "gen:uniform?maxsid=1,maxhid=4,maxkey=1000000,maxts=10000000"
 
 		,"hash_streams": 1
-		//,"max_length": 1000000
+		,"max_length": 1000000
 		//,"max_length": 10000000
-		//,"hash_sources": 4
+		,"hash_sources": 12
 		,"time_window": 7200    // 4*3600
 		//,"fixed_window": 10000000
 		//,"flush_window": false

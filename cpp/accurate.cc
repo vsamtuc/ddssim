@@ -132,6 +132,9 @@ void data_source_statistics::report(std::ostream& s)
 }
 
 
+local_stream_stats_t dds::local_stream_stats;
+
+
 //
 //////////////////////////////////////////////
 //

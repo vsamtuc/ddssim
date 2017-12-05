@@ -7,9 +7,6 @@
 #include <cmath>
 #include <vector>
 
-#include "dds.hh"
-#include "dsarch.hh"
-#include "method.hh"
 #include "gm_proto.hh"
 
 namespace gm { namespace fgm {
@@ -25,24 +22,11 @@ struct node;
 struct node_proxy;
 
 struct network 
-	: 	star_network<network , coordinator , node>, 
-		component
+	: 	gm_network<network , coordinator , node>
 {
-	typedef coordinator coordinator_t;
-	typedef node node_t;
-	typedef network network_t;
-	typedef star_network<network_t, coordinator_t, node_t> star_network_t;
-
-	continuous_query* Q;
-	
-	const protocol_config& cfg() const { return Q->config; }
+	typedef gm_network<network_t, coordinator_t, node_t> gm_network_t;
 
 	network(const string& name, continuous_query* _Q);
-	~network();
-
-	void process_record();
-	void process_init();
-	void output_results();
 };
 
 
@@ -121,7 +105,6 @@ struct coordinator : process
 	safezone_func *safe_zone;			// the safe zone proper
 	safezone_func *radial_safe_zone;	// the cheap safezone (maybe null)
 	
-	size_t total_updates;		// number of stream updates received
 	size_t k;					// number of sites
 
 	// index the nodes
@@ -139,11 +122,13 @@ struct coordinator : process
 	computed<double> Qest_series;
 
 	// statistics
-	size_t num_rounds;       // number of rounds
-	size_t num_subrounds;    // number of subrounds
-	size_t sz_sent;          // safe zones sent
-	size_t total_rbl_size; 	 // total size of rebalance sets
-	size_t round_sz_sent;    // safezones sent in curren
+	size_t num_rounds;      // number of rounds
+	size_t num_subrounds;   // number of subrounds
+	size_t sz_sent;         // safe zones sent
+	size_t total_rbl_size; 	// total size of rebalance sets
+	size_t round_sz_sent;   // safezones sent in current round
+	size_t total_updates;	// number of stream updates received
+
 
 	// cost model
 	cost_model cmodel;
@@ -167,14 +152,23 @@ struct coordinator : process
 	oneway threshold_crossed(sender<node_t> ctx, int delta_bitw);
 
 	void start_round();   // initialize a new round
+	
 	void finish_round();  // finish current round and start new one
-	
-	
+	void finish_with_newE(const Vec& newE); // finishes round resetting with new state
+	void finish_rounds();  // finish last round
+
+		
 	void start_subround(double total_zeta);    // initialize a new subround
 	void finish_subround();                    // finish the subround
 	void finish_subrounds(double total_zeta);  // try to rebalance (optional)
 
-	void collect_updates();		// collect all updates from local sites
+	void fetch_updates(node_t* node, Vec& S, size_t& upd);
+
+	// Rebalancing algorithms
+	void rebalance_random(double total_zeta);
+	void rebalance_projection(double total_zeta);
+	void rebalance_random_projection(double total_zeta);
+
 
 	// 
 	// model routines
@@ -254,10 +248,10 @@ struct node : local_site
 	int set_safezone(const safezone& newsz);
 
 	// Get the current zeta		
-	double get_zeta();
+	float get_zeta();
 
 	// called at the start a new subround
-	oneway reset_bitweight(double Z);
+	oneway reset_bitweight(float Z);
 
 	// Get the data
 	compressed_state get_drift();
@@ -265,7 +259,15 @@ struct node : local_site
 	// This can be used for rebalancing
 	double set_drift(compressed_state newU);
 
+	// Used in projectional rebalancing
+	Vec get_projection(size_t m);
+	double set_projection(Vec mu);
+
+	// Random projections
+	Vec get_random_projection(size_t m, size_t a, size_t b);
+	double set_random_projection(Vec mu, size_t a, size_t b);
 };
+
 
 struct node_proxy : remote_proxy< node >
 {
@@ -277,6 +279,13 @@ struct node_proxy : remote_proxy< node >
 	REMOTE_METHOD(node_t, get_drift);
 	REMOTE_METHOD(node_t, set_drift);
 	REMOTE_METHOD(node_t, get_zeta);
+
+	REMOTE_METHOD(node_t, get_projection);
+	REMOTE_METHOD(node_t, set_projection);
+
+	REMOTE_METHOD(node_t, get_random_projection);
+	REMOTE_METHOD(node_t, set_random_projection);
+
 	node_proxy(process* p) : remote_proxy< node_t >(p) {}
 };
 
@@ -290,6 +299,12 @@ namespace dds{
 template <>
 inline size_t byte_size< gm::fgm::node *>
 	(gm::fgm::node * const &) { return 4; }
+
+using hdv::Vec;
+
+template <>
+inline size_t byte_size< Vec >
+	(Vec const & v) { return sizeof(float)* v.size(); }
 
 }
 
