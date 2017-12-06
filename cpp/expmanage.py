@@ -142,7 +142,7 @@ class QStat:
     def __qstat_all():
         return subprocess.run(['/storage/exp_soft/tuc/torque/bin/qstat','-x'],
                               stdout=subprocess.PIPE)
-
+    @staticmethod
     def __qstat_job(pbs_job):
         return subprocess.run(['/storage/exp_soft/tuc/torque/bin/qstat','-x', pbs_job],
                               stdout=subprocess.PIPE)
