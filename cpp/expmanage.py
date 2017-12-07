@@ -101,7 +101,10 @@ class Job:
     def run(self, overwrite=False):
         # let the experiment actually do it
         self.exp.run(self, overwrite)
-        
+
+    def alter(self, **kwargs):
+        return self.exp.alter(self, **kwargs)
+    
 
 class Metadata:
     """
@@ -268,6 +271,9 @@ class JobList:
 
     def __iter__(self):
         return iter(self.jobs)
+
+    def __len__(self):
+        return len(self.jobs)
     
 class Experiment(JobList):
     """
@@ -317,8 +323,26 @@ class Experiment(JobList):
         qstat = QStat(pbs_jobid)
         self.__gather_state_for_job(job, qstat)
         return pbs_jobid
-        
 
+    def alter(self, job, resources=None):
+        if job.pbs_job is None:
+            raise RuntimeError("A job which is not running or queued cannot be altered!")
+        pbs_id = job.pbs_job.Job_Id
+        alterations = []
+        if resources is not None:
+            alterations.append("-l {resources}".format(resources=resources))
+
+        proc = subprocess.run(["qalter"]+alterations+[pbs_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Raise if unsuccessful
+        proc.check_returncode()
+
+        # Get QStat for the new job
+        qstat = QStat(pbs_id)
+        self.__gather_state_for_job(job, qstat)
+        return job
+        
+    
 class ExperimentBrowser:
     """
     A view of an experiment object, adorned with widgets.

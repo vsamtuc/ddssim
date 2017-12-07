@@ -24,6 +24,9 @@ class Attribute(object):
 			self.type = atype
 	def sql_create(self):
 		return ' '.join([self.name, self.type])
+	def __repr__(self):
+		return "Attribute('{name}',{type})".format(name=self.name, type=self.type.__name__)
+
 
 
 def sql_scalar(value):
@@ -197,6 +200,11 @@ class Relation(object):
 	def frame(self, alist='*', where=None, order=[], distinct=False):
 		return self.dataset.frame(self, alist=alist, where=where, order=order, distinct=distinct)
 
+	def __repr__(self):
+		return "<{clsname}:{name}({attr})>".format(
+			clsname=self.__class__.__name__,
+			name=self.name,
+			attr=",".join(a.name for a in self.attributes))
 
 
 class Table(Relation):
