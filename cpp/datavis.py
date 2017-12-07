@@ -341,6 +341,18 @@ class Dataset(object):
 		else:
 			return self.__load_relation(name)
 
+	def insert_table_data(self, rel, data):
+		"""
+		Insert rows into a table.
+
+		rel - a string (table name) or table object
+		data - an interable of tuples matching the table schema
+		"""
+
+		table = self.__get_relation(rel) if isinstance(rel, str) else rel
+		assert isinstance(table,Table)
+		self.conn.executemany(table.sql_insertmany(), data)
+                
 	def create_view(self, name, qry):
 		"""
 		Create view and add it to the query,
@@ -350,7 +362,7 @@ class Dataset(object):
 		return view
 		
 
-	def load_csv(self, filename, dialect='excel', **fmtargs):
+	def load_csv(self, f, dialect='excel', **fmtargs):
 		"""
 		Load data from a CSV file.
 
@@ -362,7 +374,9 @@ class Dataset(object):
 
 		# break up input file based on the first argument
 		tabdata = {}
-		with closing(open(filename,"r")) as fin:
+		if isinstance(f, str):
+			f = open(f, 'r')
+		with f as fin:
 			reader = csv.reader(fin, dialect, **fmtargs)
 			for row in reader:
 				if row[0] not in tabdata:
@@ -371,25 +385,29 @@ class Dataset(object):
 		
 		# load each table with the data
 		for tabname in tabdata:
-			table = self.__get_relation(tabname)
-			assert isinstance(table,Table)
-			self.conn.executemany(table.sql_insertmany(), tabdata[tabname])
+			self.insert_table_data(tabname, tabdata[tabname])
 
-	def load_csv_in_table(self, tabname, filename, dialect='excel', **fmtargs):
+
+	def load_csv_in_table(self, table, filename, dialect='excel', **fmtargs):
 		"""
 		Load data in a table from a csv file.
 
 		This function utilizes the standard library's csv module.
 		Arguments 'dialect' and 'fmtargs' are passed to csv.reader unchanged.
+
+                table - a table name or a table object
+                filename - a filename of a csv file
 		"""
+                
+                # read the data
 		data=[]
 		with closing(open(filename,"r")) as fin:
 			reader = csv.reader(fin, dialect, **fmtargs)
 			data = [row for row in reader]
 
-		table = self.__get_relation(tabname)
-		assert isinstance(table,Table)
-		self.conn.executemany(table.sql_insertmany(), data)
+                # load the table
+		self.insert_table_data(table, data)
+
 		
 
 	def print_relation(self, name):
@@ -756,6 +774,13 @@ def make_plot(rel, x, y, axes, select={}, title=DEFAULT, style='linespoints',
 	return plot
 
 
+def __get_multi_setting(i, s):
+	if isinstance(s,list):
+		return s[i]
+	else:
+		return s
+
+
 def make_multiplot_for_each_y(
 		rel, x, ys, axes, select={}, title=DEFAULT, style='linespoints', 
 		legend=DEFAULT, 
@@ -811,25 +836,35 @@ def make_multiplot_for_each_y(
 	mplot = Multiplot(title=title, layout="1,{c}".format(c=len(ys)), 
 		terminal=terminal, output=output)
 
-	for y in ys:
+	for i,y in enumerate(ys):
 
-		if xlabel is None: xlabel = x
-		if ylabel is None: ylabel = y
+		xlabel_i = __get_multi_setting(i, xlabel)
+		if xlabel_i is None: xlabel_i = x
+
+		ylabel_i = __get_multi_setting(i, ylabel)
+		if ylabel_i is None: ylabel_i = y
 
 		# prepare the legend titles
 		if legend is DEFAULT:
 			legend = ','.join("%s=%%(%s)s" % (axis, axis) for axis in axes if len(axisvalues[axis])>1)
 
 		# create the plot
-		plot = mplot.add_plot(title=y, 
-					xlabel=xlabel,
-					x_range=x_range, y_range=y_range, 
-					logscale=logscale, grid=grid, key=key)
+		plot = mplot.add_plot(title=ylabel_i,
+				      xlabel=xlabel_i,
+				      x_range= __get_multi_setting(i, x_range),
+				      y_range= __get_multi_setting(i, y_range), 
+				      logscale= __get_multi_setting(i, logscale),
+				      grid= __get_multi_setting(i, grid),
+				      key= __get_multi_setting(i, key)
+		)
 		
 		# make the graphs
 		for row in axisdata:
 			sel = dict(zip(axes,row))
-			plot.add_graph(rel, x, y, select=sel, title=(legend%sel), style=style)
+			plot.add_graph(rel, x, y, select=sel,
+				       title=( __get_multi_setting(i, legend) % sel ),
+				       style= __get_multi_setting(i, style)
+			)
 
 	return mplot
 	
