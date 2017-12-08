@@ -6,6 +6,20 @@ import csv, json
 import pandas as pd
 
 
+######################################################################
+#
+#
+#  Data manipulation
+#
+#  These classes represent relational schemas as python objects
+#  and allow SQL queries to be composed programmatically by simple
+#  Python constructs, but with consistency checking.
+#
+#
+#######################################################################
+
+
+
 class Attribute(object):
 	"""
 	A relational attribute
@@ -460,11 +474,19 @@ class Dataset(object):
 		return pd.DataFrame(data=pdata)
 
 
+
+
+######################################################################
+#
 #
 # Plot creation
 #
-
-
+# The classes that represent gnuplot output objects, including
+# - Plots
+# - Multiplots
+# - Histograms
+#
+#######################################################################
 
 class Gnuplottable:
 	"""
@@ -517,9 +539,9 @@ class Gnuplottable:
 
 
 		
-#
+###########################################
 # Gnuplot terminals
-#
+###########################################
 
 class PNG:
 	def __init__(self,filename=None,size=(1024,768)):
@@ -570,8 +592,17 @@ class Tikz:
 		return ret
 
 
+######################################################
+# A multiplot is a collection of many Plot objects
+# arranged in rows and columns
+#########################################################
+
+
 class Multiplot(Gnuplottable):
 	def __init__(self, title=None, layout=None, terminal=None, output=None):
+		"""
+		The default layout is 1xN, where N is the number of plots.
+		"""
 		super().__init__(terminal, output)
 		self.plots = []
 		self.title = title
@@ -599,6 +630,11 @@ class Multiplot(Gnuplottable):
 		self.plots.append(p)
 		return p
 
+
+######################################################
+# A Plot is a collection of many Graph objects.
+# Each Graph object represents a curve of the plot.
+#########################################################
 
 
 class Plot(Gnuplottable):
@@ -642,6 +678,10 @@ class Plot(Gnuplottable):
 		return self
 
 
+######################################################
+# A Graph object represents a curve of the plot.
+#########################################################
+
 
 class Graph:
 	def __init__(self, plot, rel, x, y, select=[], title=None, style='linespoints'):
@@ -681,10 +721,15 @@ class Graph:
 
 
 
-
+###########################################################
 #
 # Plotting utilities
 #
+# There routines create gnuplottable objects by applying
+# reasonable defaults, thus greatly simplifying the creation
+# of plottables
+#
+###########################################################
 
 DEFAULT='DEFAULT'
 
@@ -799,11 +844,21 @@ def make_multiplot_for_each_y(
 		 a list of values or a Selector.
 	title: a string to be used as Multilot title. If not given, a title is created automatically.
 
+	The following attributes are per-plot attributes.
+
 	style: this is passed to the Graph objects
 	legend: a string, used to produce the legend for each Graph.
 	xlabel, x_range, ylabel, y_range: strings passed to gnuplot
 	logscale: a string passed to gnuplot
 	grid: a string passed to gnuplot
+	key: a string passed to gnuplot
+
+	Also, the above attributes can be customized on a per-plot basis,
+	by passing a list of length equal to len(ys). For example, if 
+	ys contains 3 elements, and we wish to plot the third element in
+	logscale, we can pass   ' logscale=[None, None, "y"] '.
+
+	The following attributes are passed to Gnuplottable
 
 	terminal: an object used to select and configure a gnuplot terminal
 	output: a string used to create output file of gnuplot    	
@@ -869,14 +924,32 @@ def make_multiplot_for_each_y(
 	return mplot
 	
 
+####################################################
+# Jupyter notebook related plotting utils
 #
-# Jupyter related plotting utils
-#
+####################################################
 
 #
 # Decorator to create a interactive browser of plots
 #
+# TODO: this is currently a hack; it should be replaced
+# by a proper GUI function...
+# 
 def browse(rel, x, ys, graphs=[], **kwargs):
+	"""
+	Use as in:
+
+	@browse(rel, 'k', 'ya', graphs=['foo'])
+	def duumy_func(bar, baz, binc):
+		pass
+
+	where bar,baz and binc are bound to (single-valued) selectors.
+
+	Alternatively, dummy_func may return a title string for the
+	multiplot.
+
+	"""
+
 	from functools import wraps
 	from ipywidgets import interact
 	# see if graphs is just one attribute
