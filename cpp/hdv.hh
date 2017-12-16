@@ -255,10 +255,10 @@ struct delta_vector
 
 		That is, a +=  xnew-xold
 	  */
-	inline void apply_delta(Vec& a) {  a[index] += xnew - xold; }
+	inline void apply_delta(Vec& a) const {  a[index] += xnew - xold; }
 
 	/**
-	 	Reset to a new base vector plus the delta.
+	 	\brief Reset to a new base vector plus the delta.
 		
 		This call makes \c xold equal to \c a[index] and changes \c xnew so
 		that \c xnew-xold remains unchanged.
@@ -269,6 +269,28 @@ struct delta_vector
 		Reset to a new base of the 0 vector.
 	  */
 	inline void rebase() { 	xnew -= xold; xold = 0.0; }
+
+	/**
+		Combination of \c apply_delta and \c rebase.
+
+		After the call, \c a is updated as  a[index] += xnew - xold,
+		and \c this is rebased to a (before the update).
+		This is equivalent to
+
+		\code
+		this->rebase(a);
+		this->apply_delta(a);
+		\endcode
+
+		but is executed more efficiently.
+	  */
+	inline void rebase_apply_delta(Vec& a) {
+		for(size_t i=0; i < index.size(); i++) {
+			double delta = xnew[i] - xold[i];
+			xold[i] = a[index[i]];
+			xnew[i] = a[index[i]] = xold[i] + delta;
+		}
+	}
 
 
 	/**

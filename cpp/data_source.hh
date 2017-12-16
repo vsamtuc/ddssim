@@ -211,6 +211,35 @@ datasrc open_data_source(const std::string& type,
 
 //------------------------------------
 //
+//  Looped data source
+//
+//------------------------------------
+
+/**
+	Replay a given data source a number of times, adjusting the timestamp.
+  */
+class looped_data_source : public rewindable_data_source
+{
+protected:
+	datasrc sub;
+	size_t loops;
+	size_t loop;
+	timestamp toffset, tlast;
+public:
+	looped_data_source(datasrc _sub, size_t _loops);
+
+	void rewind() override;
+	void advance() override;	
+};
+
+inline datasrc looped_ds(datasrc _sub, size_t nloops)
+{
+	return datasrc(new looped_data_source(_sub, nloops));
+}
+
+
+//------------------------------------
+//
 //  Filtered and generated data sources
 //
 //------------------------------------
@@ -252,7 +281,8 @@ public:
 		advance();
 	}
 
-	void advance() { 
+	void advance() override
+	{ 
 		if(isvalid){
 		 	if(sub->valid()) {
 				rec = sub->get();

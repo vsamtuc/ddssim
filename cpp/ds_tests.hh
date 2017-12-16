@@ -129,6 +129,33 @@ public:
 
 	}
 
+	void test_loops()
+	{
+		const stream_id maxstream = 10;
+		const source_id maxsource = 20;
+		const key_type maxkey = 1000000;
+		const timestamp maxtime = 100;
+		const size_t loops = 10;
+
+		datasrc ds { new uniform_data_source(maxstream, maxsource, maxkey, maxtime) };
+
+		datasrc lds = looped_ds(ds, loops);
+
+		buffered_dataset dset;
+		dset.load(lds);
+		ds_metadata dsm;
+		dset.analyze(dsm);
+
+		TS_ASSERT_EQUALS(dsm.size(), loops*maxtime );
+		TS_ASSERT_EQUALS(dsm.mintime(), 1);
+		TS_ASSERT_EQUALS(dsm.maxtime(), loops*maxtime);
+
+		lds->rewind();
+		buffered_dataset dset2;
+		dset2.load(lds);
+		TS_ASSERT_EQUALS(dset, dset2);
+	}
+
 };
 
 

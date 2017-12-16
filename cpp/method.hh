@@ -264,7 +264,8 @@ class dataset : reactive
 
 	boost::optional<string> _name;
 
-
+	
+	boost::optional<size_t> _loops;
 	boost::optional<size_t> _max_length;
 	boost::optional<timestamp> _max_timestamp;
 	boost::optional<stream_id> _streams;
@@ -288,7 +289,8 @@ public:
 	void clear();
 	void load(datasrc _src);
 
-	void set_name(const string&);	
+	void set_name(const string&);
+	void set_loops(size_t loops);
 	void set_max_length(size_t n);
 	void set_max_timestamp(timestamp t);
 	void hash_streams(stream_id h);

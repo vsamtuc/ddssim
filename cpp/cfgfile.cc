@@ -49,7 +49,7 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 
 	set<string> kwords {
 		"data_source", // this is a url
-		"max_length", "max_timestamp", "hash_sources", "hash_streams", 
+		"loops", "max_length", "max_timestamp", "hash_sources", "hash_streams", 
 		"time_window", "fixed_window", "flush_window",
 		"warmup_time", "warmup_size"
 	};
@@ -68,6 +68,11 @@ void dds::prepare_dataset(Value& cfg, dataset& D)
 	
 	D.load(ds);
 
+	{
+		Json::Value js = jdset["loops"];
+		if(!js.isNull())
+			D.set_loops(js.asUInt());
+	}
 	{
 		Json::Value js = jdset["max_length"];
 		if(!js.isNull())
