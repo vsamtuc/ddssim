@@ -32,6 +32,8 @@ struct compressed_state
 	const Vec& vec;
 	size_t updates;
 
+	inline compressed_state(const Vec& _vec, size_t _updates)
+		: vec(_vec), updates(_updates) { }
 
 	size_t byte_size() const {
 		// State vectors are transmitted as floats (4 bytes)

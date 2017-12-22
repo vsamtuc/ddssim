@@ -1,0 +1,118 @@
+{
+    "components" : [
+	//{ "name": "stat", "type": "data_source_statistics" },
+	{
+	    "name": "sj0",
+	    "type": "exact_query",
+	    "query": "SELFJOIN",
+	    "stream": 0
+	},
+	{
+	    "name": "amsj0",
+	    "type": "agms_query",
+	    "stream": 0,
+	    "query": "SELFJOIN",
+	    "projection": {
+		"depth": 7,
+		"width": 10,
+		"epsilon": 0.0
+	    },
+	    "beta": 0.05
+	},
+	{
+	    "name": "fgm",
+	    "type": "FGM",
+	    "query": "SELFJOIN",
+	    "stream": 0,
+	    "projection": {
+		"depth": 7,
+		"width": 10,
+		"epsilon": 0.0
+	    },
+	    "beta": 0.05
+	},
+	{
+	    "name": "fgm_nocm",
+	    "type": "FGM",
+	    "query": "SELFJOIN",
+	    "stream": 0,
+	    "projection": {
+		"depth": 7,
+		"width": 10,
+		"epsilon": 0.0
+	    },
+	    "beta": 0.05,
+	    "use_cost_model": false
+	},
+
+		{
+		    "name": "sgm_nr",
+		    "type": "SGM",
+		    "rebalancing": "none",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width": 10,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05
+		},
+		{
+		    "name": "sgm_rlim",
+		    "type": "SGM",
+		    "rebalancing": "random_limits",
+		    "query": "SELFJOIN",
+		    "stream": 0,
+		    "projection": {
+				"depth": 7,
+				"width": 10,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05
+		}
+
+	
+    ],
+
+    "dataset" : {
+	"data_source": "crawdad:/home/vsam/src/datasets/wifi_crawdad_sorted"
+
+	,"loops":4
+	,"hash_streams": 1
+	//,"max_length": 1000000
+	//,"max_length": 10000000
+	//,"hash_sources": 15
+	//,"time_window": 7200    // 4*3600
+	,"fixed_window": 300000
+	//,"flush_window": false
+	//create with warmup. Omit to create without warmup
+	//,"warmup_time": 1800
+	,"warmup_size": 300000
+    },
+
+
+    // Output configuration
+    "files" : {
+	"sto" : "stdout:",
+	//"gm_comm" : "file:wc_gm_comm.dat?open_mode=append",
+	//"comm" : "file:wc_comm.dat?open_mode=append",
+	//"h5f" : "hdf5:wc_results.h5",
+	"cdad_out" : "file:cdad_tseries.dat?open_mode=truncate,format=csvtab"
+    },
+
+    "bind" : {
+	"timeseries" : ["cdad_out"],
+	"gm_comm_results": ["sto"],
+	"local_stream_stats": ["sto"]
+	//"network_comm_results": ["comm", "h5f"],
+	//"network_host_traffic": ["h5f"],
+	//"network_interfaces" : ["h5f"]
+    },
+
+    "sample" : {
+	"timeseries": 1000
+    }
+
+    
+}

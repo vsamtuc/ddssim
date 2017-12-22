@@ -147,6 +147,7 @@ void dataset::clear()
 	src.reset();
 	base_src.reset();
 	_name = none;
+	_loops = none;
 	_max_length = none;
 	_max_timestamp = none;
 	_streams = none;
@@ -164,7 +165,7 @@ void dataset::load(datasrc _src)
 	base_src = src = _src;
 }
 
-
+void dataset::set_loops(size_t loops) { _loops = loops; }
 void dataset::set_name(const string& n) { _name = n; }
 void dataset::set_max_length(size_t n) { _max_length = n; }
 void dataset::set_max_timestamp(timestamp t) { _max_timestamp = t; }
@@ -205,6 +206,10 @@ datasrc dataset::apply_filters()
 	using boost::none;
 	
 	// apply filters
+
+	if(_loops != none) 
+		src = looped_ds(src, _loops.value());
+
 	if(_max_length != none) {
 		auto ds = filtered_ds(src, max_length(_max_length.value()));
 		assert(src.use_count()>1);

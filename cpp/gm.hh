@@ -43,6 +43,11 @@ namespace fgm {
 	extern p_component_type<network> fgm_comptype;
 }
 
+namespace frgm {
+	struct network;
+	extern p_component_type<network> frgm_comptype;
+}
+
 
 } // end namespace gm
 

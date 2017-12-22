@@ -49,7 +49,7 @@ DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	cfgfile.cc dsarch.cc \
 	accurate.cc query.cc results.cc\
 	sz_quorum.cc sz_bilinear.cc\
-	tods.cc  safezone.cc gm_proto.cc gm_szone.cc gm_query.cc fgm.cc sgm.cc 
+	tods.cc  safezone.cc gm_proto.cc gm_szone.cc gm_query.cc fgm.cc sgm.cc frgm.cc
 
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	hdv_tests.hh exec_tests.hh output_tests.hh \

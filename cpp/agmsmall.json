@@ -1,0 +1,118 @@
+{
+    "components" : [
+		{
+			"name": "fgm",
+		    "type": "FGM",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":100,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05
+		},
+		{
+			"name": "fgm_nocm",
+		    "type": "FGM",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":100,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05,
+		    "use_cost_model": false
+		},
+
+
+		{
+			"name": "sgm_nr",
+		    "type": "SGM",
+		    "rebalancing": "none",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":100,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05
+		},
+		{
+			"name": "sgm_rlim",
+		    "type": "SGM",
+		    "rebalancing": "random_limits",
+		    "query": "JOIN",
+		    "streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":100,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05
+		},
+
+		//{ "name": "stat", "type": "data_source_statistics" },
+		{
+			"name": "sj0",
+			"type": "exact_query",
+			"query": "JOIN",
+			"streams": [0,1]
+		},
+		{
+			"name": "amssj0",
+			"type": "agms_query",
+			"query": "JOIN",
+			"streams": [0,1],
+		    "projection": {
+				"depth": 7,
+				"width":100,
+				"epsilon": 0.0
+		    },
+		    "beta": 0.05			
+		}
+    ],
+
+    "dataset" : {
+		//"data_source" : "hdf5:/home/vsam/src/datasets/wc_day46.h5?dataset=wc_day46_1"
+		"data_source" : "hdf5:/home/vsam/git/ddssim/cpp/wc_day46.h5"
+		//"data_source" : "wcup:/home/vsam/src/datasets/wc_day46"
+		//"data_source" : "gen:uniform?maxsid=1,maxhid=4,maxkey=1000000,maxts=10000000"
+
+		,"hash_streams": 2
+		,"max_length": 4000000
+		//,"max_length": 10000000
+		//,"hash_sources": 12
+		,"time_window": 14400    // 4*3600
+		//,"fixed_window": 1000000
+		//,"flush_window": false
+		//create with warmup. Omit to create without warmup
+		,"warmup_time": 14400
+    },
+
+
+    // Output configuration
+    "files" : {
+		"sto" : "stdout:",
+		"gm_comm" : "file:wc_gm_comm.dat?open_mode=append",
+		"comm" : "file:wc_comm.dat?open_mode=append",
+		"h5f" : "hdf5:wc_results.h5",
+		"wcout" : "file:wc_tseries.dat?open_mode=truncate,format=csvtab"
+    },
+
+    "bind" : {
+		"timeseries" : ["wcout", "h5f"],
+		"gm_comm_results": ["sto", "gm_comm", "h5f"],
+		"network_comm_results": ["comm", "h5f"],
+		"network_host_traffic": ["h5f"],
+		"network_interfaces" : ["h5f"]
+    },
+
+    "sample" : {
+		"timeseries": 1000
+    }
+
+    
+}

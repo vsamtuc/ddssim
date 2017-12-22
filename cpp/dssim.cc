@@ -25,6 +25,7 @@ void usage()
 	c.push_back(&tods::tods_comptype);
 	c.push_back(&gm::sgm::sgm_comptype);
 	c.push_back(&gm::fgm::fgm_comptype);
+	c.push_back(&gm::frgm::frgm_comptype);
 	c.push_back(&dds::data_source_statistics::comp_type);
 	c.push_back(&dds::exact_query_comptype);
 	c.push_back(&dds::agms_query_comptype);

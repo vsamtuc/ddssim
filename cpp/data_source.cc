@@ -195,6 +195,77 @@ void data_source::warmup_size(size_t wsize, buffered_dataset* buf)
 }
 
 
+//-----------------------------
+//	Looped data source
+//-----------------------------
+
+
+
+looped_data_source::looped_data_source(datasrc _sub, size_t _loops)
+	: sub(_sub), loops(_loops), loop(0), toffset(0), tlast(0)
+{
+	if(loops==0)
+		throw std::invalid_argument("Cannot loop 0 times in looped_data_source.");
+
+	if(! sub->rewindable())
+		throw std::invalid_argument("Non-rewindable data source given to looped_data_source.");
+
+	set_metadata(sub->metadata());
+
+
+	if(dsm.valid()) {
+		// adjust metadata
+		dsm.set_size(sub->metadata().size() * loops);
+		timestamp Dt = sub->metadata().maxtime() - sub->metadata().mintime() + 1;			
+		dsm.set_ts_range(sub->metadata().mintime(), Dt*(loops-1)+sub->metadata().maxtime());
+	}
+
+	advance();
+}
+
+void looped_data_source::rewind()
+{
+	loop=0;
+	toffset=0;
+	isvalid = true;
+	sub->rewind();
+
+	advance();
+}
+
+void looped_data_source::advance() 
+{
+	if(isvalid) {
+		if(sub->valid()) {
+			rec = sub->get();
+			sub->advance();
+			// adjust timestamp
+			tlast = rec.ts;
+			rec.ts += toffset;
+		} else {
+			// loop
+			if(loop <= loops) loop++;
+
+			if( loop < loops ) {
+
+				// rewind
+				sub->rewind();
+
+				// adjust toffset
+				if(sub->valid()) {
+					// this to ensure increasing timestamps
+					toffset += tlast + 1 - sub->get().ts;
+				}
+				
+				// reset toffset count
+				advance();  // recurse
+			} else
+				isvalid = false;
+		}
+	}
+}
+
+
 
 //-----------------------------
 //	Crawdad
