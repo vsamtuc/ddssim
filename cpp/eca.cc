@@ -1,17 +1,14 @@
+#include <cassert>
+#include <algorithm>
+#include <cmath>
 
-#include "dds.hh"
 #include "eca.hh"
-#include "method.hh"
 
 #define ECA_TRACE
 
+using namespace eca;
 
-using namespace dds;
-
-//using namespace std::literals;
-
-
-void basic_control::cancel_rule(eca_rule rule)
+void engine::cancel_rule(eca_rule rule)
 {
 	// Rule cancelation is complicated by the fact
 	// that we need to delete the action
@@ -33,62 +30,18 @@ void basic_control::cancel_rule(eca_rule rule)
 	aseq.erase(i);
 }
 
-void basic_control::purge_action(action* a)
+void engine::purge_action(action* a)
 {
 	// remove from the action queue ( O(n) time ...)
-	auto pos = remove(action_queue.begin(), action_queue.end(), a);
+	auto pos = std::remove(action_queue.begin(), action_queue.end(), a);
 	auto num_instances = distance(pos, action_queue.end());
 	action_queue.resize(action_queue.size()-num_instances);
 	delete a;
 }
 
 
-void basic_control::empty_handler()
-{
 
-	switch(state) {
-		case Start:
-			_step = 0;
-			emit(INIT);
-			state = Init;
-			break;
-		case Init:
-			if(ds) {
-				emit(START_STREAM);
-				state = Data;
-			} else {
-				emit(RESULTS);
-				state = Results;
-			}
-			break;
-		case Data:
-			emit(VALIDATE);
-			state = Validate;
-			break;
-		case Validate:
-			emit(REPORT);
-			state = Report;
-			break;
-		case Report:
-			emit(END_RECORD);
-			state = Data;
-			break;
-		case EndData:
-			emit(RESULTS);
-			state = Results;
-
-			break;
-		case Results:
-			emit(DONE);
-			state = End;
-			break;			
-		case End:
-			assert(0);
-	}
-}
-
-
-void basic_control::run_action(action* a)
+void engine::run_action(action* a)
 {
 	_step++;
 	current_action = a;
@@ -101,56 +54,16 @@ void basic_control::run_action(action* a)
 }
 
 
-void basic_control::advance()
-{
-	assert(ds->valid());
 
-	ds->advance();
-	proceed();
-}
-
-void basic_control::proceed()
-{
-	if(ds->valid()) {
-		// set the time!
-		_now = ds->get().ts;
-		emit(START_RECORD);
-	} else {
-		emit(END_STREAM);
-	}	
-}
-
-
-void basic_control::dispatch_event(Event evt)
+void engine::dispatch_event(Event evt)
 {
 	// Actions for control and data handling
-	switch(evt) {
-		case START_STREAM:
-			proceed();				
-			break;
-
-		case START_RECORD:
-			_recno++;
-			break;
-
-		case END_RECORD:
-			advance();
-			break;
-
-		case END_STREAM:
-			state = EndData;
-			break;
-
-		default:
-			break;
-	}
-
 	auto aseq = rules[evt];
 	std::copy(aseq.begin(), aseq.end(), back_inserter(action_queue));
 }
 
 
-void basic_control::run()
+void engine::run()
 {
 	while(true) {
 
@@ -166,8 +79,11 @@ void basic_control::run()
 			event_queue.pop_front();
 			dispatch_event(evt);
 
-		} else if(state != End) {
-			empty_handler();			
+		} else if(! event_stack.empty()) {
+
+			Event evt = event_stack.back();
+			event_stack.pop_back();
+			dispatch_event(evt);			
 
 		} else {
 			break;
@@ -177,58 +93,32 @@ void basic_control::run()
 }
 
 
-void basic_control::initialize()
+void engine::initialize()
 {
-	data_feed(nullptr);
 	event_queue.clear();
 	action_queue.clear();
 	current_action = nullptr;
 	purge_current = false;
 
-	state = Start;
-	_recno = 0;
 	_step = 0;
-	_now = MAX_TS;
 }
 
 
-// used for an invalid data source
-namespace {
-	struct __invalid_data_source : data_source {
-		__invalid_data_source() { isvalid = false; }
-	};
-}
 
-void basic_control::data_feed(datasrc src)
+engine::engine()
 {
-	// delete current ds
-	if(!src) {
-		ds = datasrc(new __invalid_data_source());
-		return;
-	}
-
-	// analyze if needed
-	if(!src->analyzed()) {
-		// not an analyzed data source, analyze
-		ds = datasrc(new materialized_data_source(src));
-	} else {
-		ds = src;
-	}
-}
-
-basic_control::basic_control()
-{
-	data_feed(nullptr);
 }
 
 
-basic_control::~basic_control()
+engine::~engine()
 { }
 
 
+//-----------------------------------------
 //
 //  Condition objects
 //
+//-----------------------------------------
 
 
 every_n_times::every_n_times(size_t _n) 
@@ -275,10 +165,6 @@ bool n_times_out_of_N::operator()()
 }
 
 
-n_times_out_of_N dds::n_times(size_t n)
-{
-	return n_times_out_of_N(n, CTX.metadata().size());
-}
 
 
 level_changed::level_changed(const real_func& _f, double _p, double _d, 

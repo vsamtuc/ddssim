@@ -11,7 +11,7 @@ namespace dds {
 /**
 	Statistics mixin for the metadata of the data source.
   */
-struct dataset_results : private reactive
+struct dataset_results : private eca::reactive
 {
 	column<string> dset_name        { "dset_name", 64, "%s" };
 	column<timestamp> dset_window   { "dset_window", "%d" };

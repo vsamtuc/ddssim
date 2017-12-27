@@ -157,7 +157,7 @@ public:
 	an AGMS sketch on a specific
 	stream.
 */
-struct agms_sketch_updater : reactive
+struct agms_sketch_updater : component
 {
 	stream_id sid;
 	agms::isketch isk;

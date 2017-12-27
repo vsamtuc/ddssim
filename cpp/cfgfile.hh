@@ -79,7 +79,7 @@ namespace dds
 	void parse_url(const string& url, parsed_url& purl);
 	
 	void prepare_dataset(Json::Value& cfg, dataset& D);
-	void prepare_components(Json::Value&, vector<reactive*>& comp);
+	void prepare_components(Json::Value&, vector<component*>& comp);
 	output_file_map prepare_output(Json::Value&, reporter&);
 
 	void execute(Json::Value&);

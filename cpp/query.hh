@@ -89,7 +89,7 @@ inline std::string repr(const basic_stream_query& q)
 
 	This is the base class.
   */
-class query_protocol : public reactive
+class query_protocol : public component
 {
 public:
 	virtual const basic_stream_query& query() const = 0;

@@ -6,6 +6,7 @@
 namespace dds {
 
 dataset_results::dataset_results(result_table* table) 
+	:  eca::reactive(&CTX)
 {
 	table->add({&dset_name, &dset_window, &dset_warmup,
 		&dset_size, &dset_duration, &dset_streams,

@@ -184,7 +184,7 @@ basic_stream_query dds::get_query(const Value& js)
 }
 
 
-void dds::prepare_components(Value& js, vector<reactive*>& components)
+void dds::prepare_components(Value& js, vector<component*>& components)
 {
 	Value jcomp = js["components"];
 
@@ -379,7 +379,7 @@ void dds::execute(Value& cfg)
 	prepare_dataset(cfg, D);
 	
 	/* Create components */
-	std::vector<reactive*> components;
+	std::vector<component*> components;
 	prepare_components(cfg, components);
 	
 	/* Create output files */

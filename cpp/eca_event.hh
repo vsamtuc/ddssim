@@ -1,32 +1,11 @@
 #ifndef __ECA_EVENT_HH__
 #define __ECA_EVENT_HH__
 
+#include "eca.hh"
+
 namespace dds {
 
-
-/**
-	The ECA event types
-  */
-class Event
-{
-	int id;
-public:
-	Event() : id(0) { }
-
-	// used to construct new event ids, usually a global constants.
-	constexpr Event(int _id): id(_id) { }
-
-	constexpr inline bool operator==(Event evt) const {
-		return id==evt.id;
-	}
-	constexpr inline bool operator<(Event evt) const {
-		return id<evt.id;
-	}
-
-	constexpr inline operator int () const { return id; }
-};
-
-
+using eca::Event;
 /**
 	The system event types. The logic of the loop goes as follows
 	(in context-free grammar notation)
@@ -89,18 +68,6 @@ constexpr Event STREAM_SKETCH_INITIALIZED(101);
 }
 
 
-// Extend the hash<> template in namespace std
-namespace std {
-template<> struct hash<dds::Event>
-{
-    typedef dds::Event argument_type;
-    typedef std::size_t result_type;
-    result_type operator()(argument_type s) const
-    {
-    	return hash<int>()(s);
-    }
-};
-}
 
 
 #endif

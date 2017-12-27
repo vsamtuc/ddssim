@@ -9,7 +9,13 @@
 
 using namespace dds;
 
-context dds::CTX;
+
+//------------------------------------------------
+//
+// component types and components
+//
+//------------------------------------------------
+
 
 std::map<std::string, basic_component_type*>& basic_component_type::ctype_map()
 {
@@ -70,9 +76,11 @@ basic_component_type* basic_component_type::get_component_type(const type_info& 
 
 
 component::component()
+	: eca::reactive(&CTX)
 { }
 
 component::component(const string& _name)
+	: eca::reactive(&CTX)
 { 
 	set_name(_name);
 }
@@ -85,6 +93,23 @@ basic_factory::~basic_factory()
 {
 	
 }
+
+
+//------------------------------------------------
+//
+// context
+//
+//------------------------------------------------
+
+context dds::CTX;
+
+
+context::context()
+	: timeseries("timeseries"), query_estimate("query_estimate") 
+{
+	data_feed(nullptr);
+}
+
 
 output_file* context::open(FILE* f, bool owner, text_format fmt) 
 {
@@ -119,6 +144,16 @@ void context::clear()
 {
 }
 
+void context::initialize()
+{
+	eca::engine::initialize();
+
+	data_feed(nullptr);
+	_recno = 0;
+	_now = MAX_TS;
+
+}
+
 void context::run()
 {
 	if(run_id.size()==0) {
@@ -127,9 +162,42 @@ void context::run()
 
 		run_id = boost::uuids::to_string(u);
 	}
-	basic_control::run();
+	emit_idle(DONE);
+	emit(INIT);
+	eca::engine::run();
 }
 
+// used for an invalid data source
+namespace {
+	struct __invalid_data_source : data_source {
+		__invalid_data_source() { isvalid = false; }
+	};
+}
+
+
+void context::data_feed(datasrc src)
+{
+	// delete current ds
+	if(!src) {
+		ds = datasrc(new __invalid_data_source());
+		return;
+	}
+
+	// analyze if needed
+	if(!src->analyzed()) {
+		// not an analyzed data source, materialize
+		ds = datasrc(new materialized_data_source(src));
+	} else {
+		ds = src;
+	}
+}
+
+
+//------------------------------------------------
+//
+// dataset
+//
+//------------------------------------------------
 
 
 dataset::dataset() 

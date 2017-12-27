@@ -12,13 +12,15 @@
 #include <jsoncpp/json/json.h>
 
 #include "dds.hh"
-#include "eca.hh"
+#include "eca_event.hh"
 #include "data_source.hh"
 #include "output.hh"
 
 namespace dds {
 
-
+using eca::Event;
+using eca::eca_rule;
+using eca::n_times_out_of_N;
 
 /****************************************
 
@@ -138,14 +140,43 @@ struct factory<T> : basic_factory
 
 using fileset_t = std::vector<output_file*>;
 
+class component;
 class dataset;
+class reporter;
 
 
 /**
 	The CTX context object's type
   */
-struct context : basic_control
+struct context : eca::engine
 {
+
+	// count stream records
+	size_t _recno;
+
+	// current time
+	timestamp _now;
+
+	// data source
+	datasrc ds;
+
+	inline timestamp now() const { return _now; }
+
+	inline const dds_record& stream_record() const { return ds->get(); }
+
+	inline size_t stream_count() const { return _recno; }
+
+	inline const ds_metadata& metadata() const {
+		return ds->metadata();
+	}
+
+	/**
+		Add data source to the controller
+	  */
+	void data_feed(datasrc src);
+
+
+
 	/// Each simulation generates one time series table
 	time_series timeseries;
 	time_series query_estimate;
@@ -164,10 +195,13 @@ struct context : basic_control
 	void clear();
 
 	/// Must be default-constructible!
-	context() : timeseries("timeseries"), query_estimate("query_estimate") {}
+	context();
 
 	/// initialized to a unique id
 	string run_id;
+
+	/// Initialize the context for a new execution
+	void initialize();
 
 	/// Start the simulation
 	void run();
@@ -183,14 +217,14 @@ extern context CTX;
 template <typename Action>
 inline auto ON(Event evt, const Action& action)
 {
-	return CTX.add_rule(evt, new action_function<Action>(action));
+	return CTX.add_rule(evt, new eca::action_function<Action>(action));
 }
 
 template <typename Condition, typename Action>
 inline auto ON(Event evt, const Condition& cond, const Action& action)
 {
 	return CTX.add_rule(evt, 
-		new condition_action<Condition, Action>(cond, action));
+		new eca::condition_action<Condition, Action>(cond, action));
 }
 
 /// Used to emit an event
@@ -199,65 +233,69 @@ inline void emit(Event evt)
 	CTX.emit(evt);
 }
 
-/**
-	Reactive objects manage a set of rules conveniently.
 
-	Use the \c on() member to add ECA rules, that will be
-	cancelled when the object is destroyed.
-
-	\note this class (and its subclasses) are non-copyable
-	and non-movable. 
-  */
-struct reactive
+inline n_times_out_of_N n_times(size_t n)
 {
-	std::list<eca_rule> eca_rules;
+	return n_times_out_of_N(n, CTX.metadata().size());
+}
 
-	reactive() { }
-	reactive(const reactive&) = delete;
-	reactive& operator=(const reactive&) = delete;
-	reactive(reactive&&) = delete;
-	reactive& operator=(reactive&&) = delete;
 
-	virtual ~reactive() {
-		cancel_all();
-	}
 
-	inline eca_rule add_rule(Event evt, action* action) {
-		eca_rule rule = CTX.add_rule(evt, action);
-		eca_rules.push_back(rule);
-		return rule;		
-	}
 
-	template <typename Action>
-	inline eca_rule on(Event evt, const Action& action) {
-		eca_rule rule = ON(evt, action);
-		eca_rules.push_back(rule);
-		return rule;
-	}
+class component;
 
-	template <typename Condition, typename Action>
-	inline eca_rule on(Event evt, const Condition& cond, const Action& action) {
-		eca_rule rule = ON(evt, cond, action);
-		eca_rules.push_back(rule);
-		return rule;
-	}
 
-	inline void cancel(eca_rule rule) {
-		CTX.cancel_rule(rule);
-		eca_rules.remove(rule);
-	}
+/**
+	A component type is a factry for components of a certain type.
 
-	inline void cancel_all() {
-		for(auto rule : eca_rules) CTX.cancel_rule(rule);
-	}
+	This is the abstract base class. Subclasses need to implement the
+	abstract method \c create(json).
+
+	Each component type has a unique name. The json config file can 
+	declare such components by the 'type' attribute.
+  */
+class basic_component_type : public named
+{
+protected:
+	static std::map<string, basic_component_type*>& ctype_map();
+	basic_component_type(const string& _name);
+	basic_component_type(const type_info& ti);
+	virtual ~basic_component_type();
+public:
+	virtual component* create(const Json::Value&) = 0;
+
+	static basic_component_type* get_component_type(const string& _name);
+	static basic_component_type* get_component_type(const type_info& ti);
+	static const std::map<string, basic_component_type*>& component_types();
+	static std::set<string> aliases(basic_component_type* ctype);
 };
+
+template <typename C>
+class component_type : public basic_component_type
+{
+public:
+	component_type(const string& _name) : basic_component_type(_name) {}
+	component_type() : basic_component_type(typeid(C)) {}
+	virtual C* create(const Json::Value&) override ;
+};
+
+
+class component : public virtual named, public eca::reactive
+{
+public:
+	component();
+	component(const string& _name);
+	virtual ~component();
+};
+
+
 
 
 /**
 	Used to prepare and load a dataset to the
 	context
   */
-class dataset : reactive
+class dataset : public component
 {
 	datasrc base_src;
 	datasrc src;
@@ -316,7 +354,7 @@ public:
 	- call emit_row() on timeseries using a particular
 	  sampling logic 
   */
-class reporter : public reactive
+class reporter : public component
 {
 	// remember output tables we watch
 	std::unordered_set<output_table*> _watched;
@@ -400,7 +438,8 @@ public:
 
 };
 
-struct progress_reporter : reactive, progress_bar
+
+struct progress_reporter : public component, progress_bar
 {
 	progress_reporter(size_t _marks) 
 	: progress_reporter(stdout,_marks,"Progress:") {}
@@ -417,48 +456,6 @@ struct progress_reporter : reactive, progress_bar
 };
 
 
-
-class component;
-
-
-/**
-	A protocol is a simulation of a query answering method.
-
-	This is the base class.
-  */
-class basic_component_type : public named
-{
-protected:
-	static std::map<string, basic_component_type*>& ctype_map();
-	basic_component_type(const string& _name);
-	basic_component_type(const type_info& ti);
-	virtual ~basic_component_type();
-public:
-	virtual component* create(const Json::Value&) = 0;
-
-	static basic_component_type* get_component_type(const string& _name);
-	static basic_component_type* get_component_type(const type_info& ti);
-	static const std::map<string, basic_component_type*>& component_types();
-	static std::set<string> aliases(basic_component_type* ctype);
-};
-
-template <typename C>
-class component_type : public basic_component_type
-{
-public:
-	component_type(const string& _name) : basic_component_type(_name) {}
-	component_type() : basic_component_type(typeid(C)) {}
-	virtual C* create(const Json::Value&) override ;
-};
-
-
-class component : public virtual named, public reactive
-{
-public:
-	component();
-	component(const string& _name);
-	virtual ~component();
-};
 
 
 } //end namespace dds

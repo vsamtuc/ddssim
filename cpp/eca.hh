@@ -6,13 +6,53 @@
 #include <unordered_map>
 #include <deque>
 #include <list>
+#include <functional>
 
-#include "dds.hh"
-#include "data_source.hh"
-#include "output.hh"
-#include "eca_event.hh"
 
-namespace dds {
+namespace eca {
+
+
+/**
+	The ECA event types
+  */
+class Event
+{
+	int id;
+public:
+	Event() : id(0) { }
+
+	// used to construct new event ids, usually a global constants.
+	constexpr Event(int _id): id(_id) { }
+
+	constexpr inline bool operator==(Event evt) const {
+		return id==evt.id;
+	}
+	constexpr inline bool operator<(Event evt) const {
+		return id<evt.id;
+	}
+
+	constexpr inline operator int () const { return id; }
+};
+
+}
+
+
+// Extend the hash<> template in namespace std
+namespace std {
+	template<> struct hash<eca::Event>
+	{
+	    typedef eca::Event argument_type;
+	    typedef std::size_t result_type;
+	    result_type operator()(argument_type s) const
+	    {
+	    	return hash<int>()(s);
+	    }
+	};
+}
+
+
+
+namespace eca {
 
 /*
 	An event-based execution model.
@@ -40,6 +80,8 @@ namespace dds {
 
 	New event types can be added in eca_event.hh
  */
+
+
 
 
 using event_queue_t = std::deque<Event>;
@@ -203,69 +245,32 @@ struct level_changed
 	event.
 
  */
-struct basic_control
+struct engine
 {
 protected:
 
 	// State for ECA callbacks
 
 	event_queue_t event_queue; // the emitted but not dispatched events
+	event_queue_t event_stack; // the delayed events
+
 	action_queue_t action_queue; // the dispatched actions
 	eca_map rules;  // the rules
 	action* current_action;  // the current action, or null
 	bool purge_current = false; // denote that the current action 
 							// is to be purged asap (or null)
 
-	void purge_action(action* a);
-
-
-	// current time
-	timestamp _now;
-
-	// data source
-	datasrc ds;
 
 	// internal methods
 	void run_action(action*);
+	void purge_action(action* a);
 	void dispatch_event(Event);
-	void empty_handler();
-	void advance();
-	void proceed();
-
-
-public:
-
-	enum State { 
-		Start,
-		Init, Data, Validate, Report, EndData, 
-		Results,
-		End
-	};
-
-protected:
-	State state = Start;
 
 	size_t _step;
-	size_t _recno;
 public:
-	inline State get_state() const { return state; }
 
-	inline timestamp now() const { return _now; }
 
 	inline size_t step() const { return _step; }
-
-	inline const dds_record& stream_record() const { return ds->get(); }
-
-	inline size_t stream_count() const { return _recno; }
-
-	inline const ds_metadata& metadata() const {
-		return ds->metadata();
-	}
-
-	/**
-		Add data source to the controller
-	  */
-	void data_feed(datasrc src);
 
 	/**
 		Run the controller
@@ -318,15 +323,94 @@ public:
 		event_queue.push_back(evt);
 	}
 
-	basic_control();
 
-	~basic_control();
+	inline void emit_idle(Event evt)
+	{
+		event_stack.push_back(evt);
+	}
+
+
+	engine();
+
+	~engine();
 };
 
 
 
+/**
+	Reactive objects manage a set of rules conveniently.
+
+	Use the \c on() member to add ECA rules, that will be
+	cancelled when the object is destroyed.
+
+	\note this class (and its subclasses) are non-copyable
+	and non-movable. 
+  */
+struct reactive
+{
+private:
+	engine* e;
+	std::list<eca_rule> eca_rules;
+
+public:
+	reactive() : e(nullptr)  { }
+	explicit reactive(engine* _e) : e(_e) { }
+
+	reactive(const reactive&) = delete;
+	reactive& operator=(const reactive&) = delete;
+	reactive(reactive&&) = delete;
+	reactive& operator=(reactive&&) = delete;
+
+	virtual ~reactive() {
+		cancel_all();
+	}
+
+	inline engine* rule_engine() const { return e; }
+
+	inline void set_rule_engine(engine* _e) {
+		if( (! eca_rules.empty()) && (e!=_e))
+			throw std::logic_error("The rule engine of a reactive object cannot change while rules exist");
+		e = _e;
+	}
+
+	inline const std::list<eca_rule>& rules() const { return eca_rules; }
+
+	inline eca_rule add_rule(Event evt, action* action) 
+	{
+		eca_rule rule = e->add_rule(evt, action);
+		eca_rules.push_back(rule);
+		return rule;		
+	}
+
+	template <typename Action>
+	inline eca_rule on(Event evt, const Action& action) 
+	{
+		eca_rule rule = e->add_rule(evt, new eca::action_function<Action>(action));
+		eca_rules.push_back(rule);
+		return rule;
+	}
+
+	template <typename Condition, typename Action>
+	inline eca_rule on(Event evt, const Condition& cond, const Action& action) 
+	{
+		eca_rule rule = e->add_rule(evt, new eca::condition_action<Condition, Action>(cond, action));
+		eca_rules.push_back(rule);
+		return rule;
+	}
+
+	inline void cancel(eca_rule rule) {
+		e->cancel_rule(rule);
+		eca_rules.remove(rule);
+	}
+
+	inline void cancel_all() {
+		for(auto rule : eca_rules) 	e->cancel_rule(rule);
+		eca_rules.clear();
+	}
+};
 
 
-} // end namespace dds
+
+} // end namespace eca
 
 #endif
