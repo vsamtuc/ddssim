@@ -48,7 +48,7 @@ ostream& basic_stream_query::repr(ostream& s) const
 }
 
 
-enum_repr<qtype> dds::qtype_repr {
+binc::enum_repr<qtype> dds::qtype_repr {
 	{qtype::VOID, "VOID"},
 	{qtype::SELFJOIN, "SELFJOIN"},
 	{qtype::JOIN, "JOIN"}

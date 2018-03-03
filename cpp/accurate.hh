@@ -22,6 +22,10 @@ using std::vector;
 using std::cout;
 using std::endl;
 
+using binc::enum_repr;
+using tables::column;
+using tables::column_ref;
+using tables::result_table;
 using namespace std::string_literals;
 using namespace hdv;
 

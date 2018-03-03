@@ -19,6 +19,7 @@
 
 
 using namespace dds;
+using namespace tables;
 
 using std::vector;
 using std::initializer_list;
@@ -352,7 +353,7 @@ output_file_map dds::prepare_output(Json::Value& jsctx, reporter& R)
 	// set up sampling
 	Value sample = jsctx["sample"];
 	for(auto ts_name : sample.getMemberNames()) {
-		time_series* ts = dynamic_cast<time_series*>(output_table::get(ts_name));
+		time_series<timestamp>* ts = dynamic_cast<time_series<timestamp>*>(output_table::get(ts_name));
 		if(ts == nullptr || ts->flavor()!=table_flavor::TIMESERIES)
 			throw std::runtime_error("Could not find time series table `"+ts_name+"'");
 		R.sample(*ts, sample[ts_name].asUInt());

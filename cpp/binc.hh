@@ -1,6 +1,8 @@
 #ifndef __BINC_HH__
 #define __BINC_HH__
 
+
+#include <map>
 #include <iostream>
 #include <sstream>
 #include <boost/lexical_cast.hpp>
@@ -119,6 +121,87 @@ std::string sprint(Args...args)
     return stream.str();
 }
 
+
+/**
+	Named objects are just used to enable human-readable reporting
+  */
+class named
+{
+	std::string n;
+public:
+	/// Make a name from a pointer
+	static std::string anon(named const * ptr);
+
+	named();
+	named(const std::string& _n);
+
+	inline void set_name(const std::string& _name) { n=_name; }
+	inline std::string name() const { 
+		if(n.empty()) 
+			return anon(this);
+		return n; 
+	}
+};
+
+
+inline ostream& operator<<(ostream& s, const named& obj)
+{
+	return s << obj.name();
+}
+
+
+//------------------------------------------
+//
+// Type utilities
+//
+//------------------------------------------
+
+
+
+/**
+	Type-erased class for enumeration constant stringification
+  */
+class basic_enum_repr : public named
+{
+protected:
+	std::map<int, std::string> extl;
+	std::map<std::string, int> intl;
+public:
+	explicit basic_enum_repr(const std::string& ename) : named(ename) {}
+	explicit basic_enum_repr(const std::type_info& ti);
+	void add(int val, const std::string& tag);
+	int map(const std::string& tag) const;
+	std::string map(int val) const;
+	bool is_member(int val) const;
+	bool is_member(const std::string& tag) const;
+};
+
+/**
+	Typed class for enumeration constant stringification
+  */
+template <typename Enum>
+class enum_repr : public basic_enum_repr
+{
+public:
+	typedef std::pair<Enum, const char*> value_type;
+	explicit enum_repr( std::initializer_list< value_type > ilist ) 
+	: basic_enum_repr(typeid(Enum)) 
+	{
+		for(auto&& e : ilist) {
+			Enum val = std::get<0>(e);
+			const std::string& tag = std::get<1>(e);
+			add(static_cast<int>(val), tag);
+		}
+	}
+
+	inline Enum operator[](const std::string& tag) const {
+		return static_cast<Enum>(map(tag));
+	}
+	inline std::string operator[](Enum val) const {
+		return map((int) val);
+	}
+
+};
 
 
 }	// end namespace binc

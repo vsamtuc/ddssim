@@ -13,7 +13,6 @@
 
 namespace dds {
 
-
 enum class qtype 
 {
 	VOID,
@@ -70,7 +69,7 @@ basic_stream_query join(stream_id s1, stream_id s2, double beta=0.0);
 basic_stream_query self_join(stream_id s, double beta=0.0);
 
 
-extern enum_repr<qtype> qtype_repr;
+extern binc::enum_repr<qtype> qtype_repr;
 
 
 std::ostream& operator<<(std::ostream& s, const basic_stream_query& q);

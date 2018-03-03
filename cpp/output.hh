@@ -15,7 +15,7 @@
 #include <typeinfo>
 #include <typeindex>
 
-#include "dds.hh"
+#include "binc.hh"
 
 
 namespace H5
@@ -24,12 +24,15 @@ namespace H5
 	struct H5File;
 }
 
-namespace dds
+namespace tables
 {
 
 using std::string;
 using std::type_index;
 using std::type_info;
+
+using binc::named;
+using binc::enum_repr;
 
 /*-----------------------------
 	Generic classes
@@ -809,6 +812,7 @@ public:
 
 	A time series table collects a number of column values during a run
   */
+template <typename TimeType>
 class time_series : public output_table
 {
 public:
@@ -816,14 +820,22 @@ public:
 		\brief Construct a time series table
 		@param _name the table name
 	  */
-	time_series(const string& _name);
+	time_series(const string& _name, const string& _nowfmt, const std::function<TimeType()>& _nowfunc)
+	: output_table(_name, table_flavor::TIMESERIES), 
+		now("time", _nowfmt, _nowfunc) 
+	{ add(now); }
+
+	/**
+		\brief The type of the time column. 
+		*/
+	typedef TimeType time_type;
 
 	/**
 		\brief A column for this table containing the current stream time
 
 		This column is the first column of the time series table
 	  */
-	computed<dds::timestamp> now;
+	computed<TimeType> now;
 };
 
 

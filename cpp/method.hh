@@ -7,6 +7,7 @@
 #include <deque>
 #include <list>
 #include <utility>
+#include <typeinfo>
 
 #include <boost/optional.hpp>
 #include <jsoncpp/json/json.h>
@@ -18,9 +19,23 @@
 
 namespace dds {
 
+using std::string;
+using std::type_info;
+
 using eca::Event;
 using eca::eca_rule;
 using eca::n_times_out_of_N;
+
+using binc::named;
+
+using tables::output_table;
+using tables::output_file;
+using tables::time_series;
+using tables::table_flavor;
+using tables::text_format;
+using tables::open_mode;
+using tables::default_open_mode;
+
 
 /****************************************
 
@@ -178,8 +193,8 @@ struct context : eca::engine
 
 
 	/// Each simulation generates one time series table
-	time_series timeseries;
-	time_series query_estimate;
+	time_series<dds::timestamp> timeseries;
+	time_series<dds::timestamp> query_estimate;
 
 	// managed files for results
 	fileset_t result_files;
@@ -411,8 +426,8 @@ public:
 		@see struct every_n_times
 		@see struct n_times
 	  */
-	template <typename Cond>
-	void emit_row(time_series& ts, const Cond& emit_cond)
+	template <typename TimeType, typename Cond>
+	void emit_row(time_series<TimeType>& ts, const Cond& emit_cond)
 	{
 		watch(ts);
 		on(REPORT, emit_cond , [&]() { 
@@ -431,7 +446,8 @@ public:
 		emit_row(ts, n_times(nsamp));
 		```
 	  */
-	void sample(time_series& ts, size_t nsamp)
+	template <typename TimeType>
+	void sample(time_series<TimeType>& ts, size_t nsamp)
 	{
 		emit_row(ts, n_times(nsamp));
 	}
@@ -439,7 +455,7 @@ public:
 };
 
 
-struct progress_reporter : public component, progress_bar
+struct progress_reporter : public component, tables::progress_bar
 {
 	progress_reporter(size_t _marks) 
 	: progress_reporter(stdout,_marks,"Progress:") {}

@@ -7,7 +7,7 @@
 #include "dsarch.hh"
 #include "binc.hh"
 
-using namespace dds;
+using namespace dsarch;
 using std::string;
 using binc::print;
 

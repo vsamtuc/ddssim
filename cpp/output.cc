@@ -3,12 +3,11 @@
 #include <cstddef>
 #include <algorithm>
 
-#include "method.hh"
+#include "binc.hh"
 #include "output.hh"
 #include "hdf5_util.hh"
-#include "binc.hh"
 
-using namespace dds;
+using namespace tables;
 
 
 //-------------------------------------
@@ -287,12 +286,6 @@ result_table::~result_table()
 }
 
 
-time_series::time_series(const string& _name) 
-: output_table(_name, table_flavor::TIMESERIES), 
-	now("time", "%d", std::bind(&context::now, &CTX)) 
-{ add(now); }
-
-
 output_file::output_file()
 { }
 
@@ -490,8 +483,8 @@ void output_c_file::output_epilog(output_table& table)
 
 
 
-output_c_file dds::output_stdout(stdout, false);
-output_c_file dds::output_stderr(stderr, false);
+output_c_file tables::output_stdout(stdout, false);
+output_c_file tables::output_stderr(stderr, false);
 
 
 //-------------------------------------
@@ -845,13 +838,13 @@ void output_hdf5::output_epilog(output_table& table)
 
 
 
-enum_repr<text_format> dds::text_format_repr (
+enum_repr<text_format> tables::text_format_repr (
 {
 	{text_format::csvtab, "csvtab"},
 	{text_format::csvrel, "csvrel"}
 });
 
-enum_repr<open_mode> dds::open_mode_repr ({
+enum_repr<open_mode> tables::open_mode_repr ({
 	{open_mode::truncate, "truncate"},
 	{open_mode::append, "append"}
 });

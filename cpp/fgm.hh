@@ -294,7 +294,7 @@ struct node_proxy : remote_proxy< node >
 }  // end namespace gm
 
 
-namespace dds{
+namespace dsarch {
 	
 template <>
 inline size_t byte_size< gm::fgm::node *>

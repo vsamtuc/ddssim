@@ -16,6 +16,30 @@
 using namespace std;
 using namespace dds;
 
+
+// ds_metadata
+
+
+void ds_metadata::merge(const ds_metadata& other)
+{
+	using std::min;
+	using std::max;
+	isvalid = isvalid || other.isvalid;
+	scount += other.scount;
+
+	kmin = min(kmin, other.kmin);
+	kmax = max(kmax, other.kmax);
+
+	ts = min(ts, other.ts);
+	te = max(te, other.te);
+
+	sids.insert(other.sids.begin(), other.sids.end());
+	hids.insert(other.hids.begin(), other.hids.end());
+}
+
+
+
+
 // Time Window
 
 time_window_source::time_window_source(datasrc _sub, dds::timestamp _w, bool _flush)

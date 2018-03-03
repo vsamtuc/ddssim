@@ -7,6 +7,8 @@
 
 namespace dds {
 
+using namespace dsarch;
+using namespace tables;
 
 /**
 	Statistics mixin for the metadata of the data source.

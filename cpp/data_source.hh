@@ -5,6 +5,7 @@
 #include <deque>
 #include <list>
 #include <vector>
+#include <set>
 #include <map>
 #include <type_traits>
 #include <random>
@@ -22,6 +23,106 @@ using boost::shared_ptr;
 using boost::dynamic_pointer_cast;
 using boost::static_pointer_cast;
 
+using std::set;
+
+/**
+	Data stream metadata.
+
+	Describes the basic statistics (mostly counts and ranges) for
+	distributed stream datasets. This is stuff needed by the monitoring 
+	algorithms.
+
+	Each data source has a metadata object.
+  */
+class ds_metadata
+{
+protected:
+	std::string dsname="<anon>";
+	timestamp dswindow=0;
+	timestamp dswarmup_time=0;
+	size_t dswarmup_size=0;
+
+	bool isvalid = false;
+
+	set<stream_id> sids;
+	set<source_id> hids;
+
+	size_t scount=0;
+	timestamp ts=MAX_TS, te=MIN_TS;
+	key_type kmin = MAX_KEY, kmax=MIN_KEY;
+public:
+
+	inline const std::string& name() const { return dsname; }
+	inline void set_name(const std::string& _n) { dsname=_n; }
+
+	inline timestamp window() const { return dswindow; }
+	inline void set_window(timestamp w) { dswindow=w; }
+
+	inline size_t warmup_size() const { return dswarmup_size; }
+	inline void set_warmup_size(size_t w) { dswarmup_size = w; }
+
+	inline timestamp warmup_time() const { return dswarmup_time; }
+	inline void set_warmup_time(timestamp w) { dswarmup_time = w; }
+
+	inline bool valid() const { return isvalid; }
+	inline void set_valid(bool v=true) { isvalid=v; }
+
+	inline void prepare_collect()
+	{
+		scount=0;
+		ts=MAX_TS; te=MIN_TS;
+		kmin = MAX_KEY; kmax=MIN_KEY;		
+	}
+
+	inline void collect(const dds_record& rec) {
+		if(scount==0) ts=rec.ts;
+		te = rec.ts;
+		sids.insert(rec.sid);
+		hids.insert(rec.hid);
+		if(rec.key<kmin) kmin=rec.key;
+		if(rec.key>kmax) kmax=rec.key;
+		scount++;
+	}
+
+	inline size_t size() const { return scount; }
+	inline timestamp duration() const { return te-ts+1; }
+
+	inline timestamp mintime() const { return ts; }
+	inline timestamp maxtime() const { return te; }
+
+	inline key_type minkey() const { return kmin; }
+	inline key_type maxkey() const { return kmax; }	
+
+	inline const set<stream_id>& stream_ids() const { return sids; }
+	inline const set<source_id>& source_ids() const { return hids; }
+
+
+	// mutable interface
+	void set_size(size_t s) { scount = s; }
+	void set_ts_range(timestamp _ts, timestamp _te) { ts=_ts; te=_te; }
+	void set_key_range(key_type _kmin, key_type _kmax) { kmin=_kmin; kmax=_kmax; }
+
+	void set_stream_ids(const set<stream_id>& _sids) { sids = _sids; }
+	void set_source_ids(const set<source_id>& _hids) { hids = _hids; }
+
+	template <typename Iter>
+	void set_stream_range(Iter from, Iter to) {
+		sids.clear();
+		std::copy(from, to, std::inserter(sids, sids.end()));
+	}
+
+	template <typename Iter>
+	void set_source_range(Iter from, Iter to) {
+		hids.clear();
+		std::copy(from, to, std::inserter(hids, hids.end()));
+	}
+
+	void merge(const ds_metadata& other);
+
+};
+
+
+
 
 class data_source;
 
@@ -30,6 +131,9 @@ class data_source;
 
   */
 typedef shared_ptr<data_source> datasrc;
+
+
+
 
 
 /**

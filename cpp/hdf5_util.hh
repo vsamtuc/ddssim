@@ -10,7 +10,7 @@
 #include "output.hh"
 
 using std::string;
-using namespace dds;
+using namespace tables;
 
 
 // A simple macro to check the result of HDF5 C-API functions

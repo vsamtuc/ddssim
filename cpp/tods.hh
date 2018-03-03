@@ -13,6 +13,8 @@ namespace tods {
 using namespace dds;
 using namespace hdv;
 using namespace agms;
+using namespace tables;
+using namespace dsarch;
 
 class network;
 

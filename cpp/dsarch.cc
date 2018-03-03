@@ -4,10 +4,8 @@
 #include <boost/core/demangle.hpp>
 
 #include "dsarch.hh"
-#include "results.hh"
-#include "method.hh"
 
-namespace dds{
+namespace dsarch {
 
 using namespace std;
 

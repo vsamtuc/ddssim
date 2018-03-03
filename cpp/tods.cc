@@ -186,7 +186,7 @@ void node::update(stream_id sid, key_type key, counter_type upd)
 	nss->update(key, upd);
 	// check local condition
 	if(! nss->local_condition()) {
-		coord.update(site_id(), sid, *nss);
+		coord.update(addr(), sid, *nss);
 		nss->flush();
 	}
 }

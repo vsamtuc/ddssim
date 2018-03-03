@@ -13,7 +13,7 @@
 using binc::print;
 
 
-using namespace dds;
+using namespace tables;
 
 
 struct table_mixin1
@@ -46,9 +46,9 @@ struct myresults  : result_table, table_mixin1, table_mixin2
 	}
 };
 
-namespace dds { class OutputTestSuite; }
+namespace tables { class OutputTestSuite; }
 
-class dds::OutputTestSuite : public CxxTest::TestSuite
+class tables::OutputTestSuite : public CxxTest::TestSuite
 {
 public:
 
@@ -196,8 +196,8 @@ public:
 	struct dummy_table : result_table
 	{
 		column<bool> bool_attr { "bool_attr", "%d"};
-		column<stream_id> sid { "sid", "%hd" };
-		column<source_id> hid { "hid", "%hd" };
+		column<int16_t> sid { "sid", "%hd" };
+		column<int16_t> hid { "hid", "%hd" };
 		column<double> zeta { "zeta", "%.10g" };
 		column<size_t> nsize { "nsize", "%zu" };
 		column<string> mname { "mname", 31, "%s" };
@@ -229,8 +229,8 @@ public:
 	/* Expected layout: same as c struct */
 	struct __dummy_rec {
 		bool 		bool_attr;
-		stream_id  	sid;
-		source_id	hid;
+		int16_t  	sid;
+		int16_t 	hid;
 		double 		zeta;
 		size_t 		nsize;
 		char 		mname[32]; // note: maxlen+1
@@ -560,7 +560,7 @@ public:
 
 	void test_enum_repr()
 	{
-		TS_ASSERT_EQUALS(open_mode_repr.name() , "dds::open_mode");
+		TS_ASSERT_EQUALS(open_mode_repr.name() , "tables::open_mode");
 		TS_ASSERT_EQUALS(open_mode_repr["truncate"], open_mode::truncate);
 		TS_ASSERT_EQUALS(open_mode_repr["append"], open_mode::append);
 
@@ -569,7 +569,7 @@ public:
 		TS_ASSERT( !open_mode_repr.is_member("") );
 
 
-		TS_ASSERT_EQUALS(text_format_repr.name(), "dds::text_format");
+		TS_ASSERT_EQUALS(text_format_repr.name(), "tables::text_format");
 		TS_ASSERT(! text_format_repr.is_member("truncate"));
 		TS_ASSERT( text_format_repr.is_member("csvrel") );
 		TS_ASSERT_THROWS(text_format_repr["goo"], std::out_of_range);

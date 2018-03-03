@@ -82,7 +82,7 @@ double node::set_drift(compressed_state newU)
 
 void node::update_stream() 
 {
-	assert(CTX.stream_record().hid == site_id());
+	assert(CTX.stream_record().hid == addr());
 
 	delta_vector delta = Q->delta_update(dS, CTX.stream_record());
 

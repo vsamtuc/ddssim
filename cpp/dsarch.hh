@@ -16,12 +16,16 @@
 #include <typeindex>
 #include <stdexcept>
 #include <algorithm>
+#include <set>
 #include <map>
 
-#include "dds.hh"
+#include "binc.hh"   // for named
+#include "dsarch_types.hh"
 
-namespace dds {
+namespace dsarch {
 
+using std::set;
+using binc::named;
 
 class basic_network;
 class host;
@@ -745,28 +749,14 @@ public:
    */
 class local_site : public process
 {
-protected:
-	source_id sid=-1;
-
 public:
-	local_site(basic_network* nw, source_id _sid) 
-	: process(nw), sid(_sid) 
+	local_site(basic_network* nw, host_addr _sid) 
+	: process(nw)
 	{
 		if(!set_addr(_sid))
 			throw std::runtime_error("Local site could not acquire the hid address");
 	}
 
-	/**
-	  Return the \c source_id of the stream accepted
-	  */
-	inline source_id site_id() const { return sid; }
-
-	/**
-	   The handler called when a new stream record is available.
-
-	   Subclasses should override this method to customize behaviour.
-	  */
-	virtual void handle(const dds_record& rec) {}
 };
 
 
@@ -798,20 +788,29 @@ struct star_network : public basic_network
 	typedef Hub hub_type;
 	typedef Site site_type;
 
-	set<source_id> hids;
+	set<host_addr> hids;
 	Hub* hub;
 	vector<Site*> sites;
 
-	star_network(const set<source_id>& _hids) 
-	: hids(_hids), hub(nullptr) 
+	template <typename AddrIter>
+	star_network(AddrIter from, AddrIter to) 
+	: hids(), hub(nullptr) 
 	{ 
+		// copy addresses to address set
+		std::copy(from, to, std::inserter(hids, hids.end()));
+
 		// reserve the source_id addresses for the sites
 		if(! hids.empty()) {
 			reserve_addresses(* hids.rbegin());
 		}
 	}
 
-	inline site_type* source_site(source_id hid) const {
+	template <typename AddrRange>
+	star_network(const AddrRange& _hids)
+	:  star_network(std::begin(_hids), std::end(_hids))
+	{ }
+
+	inline site_type* source_site(host_addr hid) const {
 		return static_cast<site_type*>(by_addr(hid));
 	}
  
@@ -919,7 +918,7 @@ struct Acknowledge
 	inline operator bool() const { return is_ack; }
 
 	inline size_t byte_size() const { 
-		return is_ack ? dds::byte_size(payload) : 0;
+		return is_ack ? dsarch::byte_size(payload) : 0;
 	}
 };
 
@@ -1146,7 +1145,7 @@ make_remote_method(
 }
 
 #define REMOTE_METHOD(RClass, RMethod)\
- decltype(dds::make_remote_method((remote_proxy<RClass>*)nullptr,\
+ decltype(dsarch::make_remote_method((remote_proxy<RClass>*)nullptr,\
  	&RClass::RMethod, #RMethod )) RMethod  \
  { this, &RClass::RMethod, #RMethod }
 

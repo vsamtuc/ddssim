@@ -7,6 +7,7 @@ using std::string;
 using binc::print;
 
 using namespace Json;
+using namespace tables;
 
 namespace dds { class CfgTestSuite; }
 

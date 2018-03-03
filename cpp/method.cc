@@ -9,6 +9,8 @@
 
 using namespace dds;
 
+using tables::output_c_file;
+using tables::output_hdf5;
 
 //------------------------------------------------
 //
@@ -105,7 +107,8 @@ context dds::CTX;
 
 
 context::context()
-	: timeseries("timeseries"), query_estimate("query_estimate") 
+	: timeseries("timeseries", "%d", std::bind(&context::now, this)), 
+		query_estimate("query_estimate", "%d", std::bind(&context::now, this)) 
 {
 	data_feed(nullptr);
 }

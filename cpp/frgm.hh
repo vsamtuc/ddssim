@@ -270,12 +270,14 @@ struct node_proxy : remote_proxy< node >
 	node_proxy(process* p) : remote_proxy< node_t >(p) {}
 };
 
+
+
 } // end namespace gm::fgm
 
 }  // end namespace gm
 
 
-namespace dds{
+namespace dsarch {
 	
 template <>
 inline size_t byte_size< gm::frgm::node *>
@@ -288,7 +290,6 @@ inline size_t byte_size< Vec >
 	(Vec const & v) { return sizeof(float)* v.size(); }
 
 }
-
 
 
 #endif

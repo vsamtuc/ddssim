@@ -45,7 +45,7 @@ endif
 # File lists
 ###################################
 
-DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
+DDS_SOURCES= binc.cc hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 	cfgfile.cc dsarch.cc \
 	accurate.cc query.cc results.cc\
 	sz_quorum.cc sz_bilinear.cc\
