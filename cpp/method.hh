@@ -102,6 +102,25 @@ struct factory : basic_factory
 
 	std::unordered_map<index_type, T*, hasher > registry;
 
+	template <size_t ... N>
+	inline T* _construct(const index_type& tup, seq<N...> _seq ) {
+		return new T(std::get<N>(tup)...);
+	}
+
+	inline T* get(const index_type& tup) {
+		auto f = registry.find(tup);
+		if(f==registry.end()) {
+			
+			typedef typename genseq<sizeof...(Args)>::type seq_type;
+
+			T* ret = _construct(tup, seq_type());
+
+			registry[tup] = ret;
+			return ret;
+		}
+		else
+			return f->second;		
+	}
   
 	inline T* operator()(Args... args) {
 		index_type key(args...);
@@ -132,6 +151,10 @@ struct factory<T> : basic_factory
 {
 	typedef std::tuple<> index_type;
 	T* registry;
+
+	inline T* get(const index_type&) {
+		return (*this)();
+	}
 
 	inline T* operator()() {
 		if(!registry)
