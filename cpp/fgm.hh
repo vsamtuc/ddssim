@@ -254,10 +254,10 @@ struct node : local_site
 	oneway reset_bitweight(float Z);
 
 	// Get the data
-	compressed_state get_drift();
+	compressed_state_ref get_drift();
 
 	// This can be used for rebalancing
-	double set_drift(compressed_state newU);
+	double set_drift(compressed_state_ref newU);
 
 	// Used in projectional rebalancing
 	Vec get_projection(size_t m);

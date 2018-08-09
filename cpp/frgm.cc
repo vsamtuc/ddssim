@@ -20,20 +20,19 @@ using binc::elements_of;
 
 oneway node::reset(const safezone& newsz) 
 { 
+	// we need not do U=0, but check !
+	assert(norm_L2(U)==0.0);
+
 	// reset the safezone object
 	szone = newsz;
 
 	// reset status
-	is_rebalanced = false;
-	is_flushed = false;
+	lambda = 1.0;
 
-	// reset the drift vector
-	U = 0.0;
-	Uinc = 0.0;
-	update_count = 0;
+	// init safezone inc. code (n.b.  lambda = 1)
 	zeta = minzeta = szone(Uinc);
 
-	// reset for the first subround		
+	// reset for the first subround
 	reset_bitweight(zeta/2.0);
 
 	// reset round state vector
@@ -49,35 +48,39 @@ float node::get_zeta()
 
 oneway node::reset_bitweight(float Z)
 {
-	// flush if needed
-	if(is_flushed) {
-		is_flushed = false;
-
-		U = 0.0;
-		Uinc = 0.0;
-		update_count = 0;
-		zeta = 0.5*szone(Uinc);
-	}
-
 	minzeta = zeta_0 = zeta;
 	zeta_quantum = Z;
 	bitweight = 0;
 }
 
-compressed_state node::get_drift() 
+
+compressed_state_obj node::flush_drift() 
 {
 	// switch on rebalanced status
-	is_rebalanced = true;
-	is_flushed = true;
+	compressed_state_obj retval { U, update_count };
 
-	return compressed_state { U, update_count };
+	U = 0.0;
+	Uinc = 0.0;
+	update_count = 0;
+	zeta = lambda*szone(Uinc);
+
+	return retval;
+}
+
+
+double node::reset_lambda(float _lambda) 
+{
+	assert(_lambda > 0.0);
+	lambda = _lambda;
+	Uinc = U / lambda;
+	zeta = lambda * szone(Uinc);
+	return zeta;
 }
 
 
 
 void node::update_stream() 
 {
-	assert(! is_flushed);
 
 	assert(CTX.stream_record().hid == site_id());
 
@@ -91,20 +94,9 @@ void node::update_stream()
 
 	delta.apply_delta(U);
 
-	if(is_rebalanced) {
-		//
-		// We are tracking (1/2) * zeta(E_0 + 2 DeltaS)
-		//
-		delta *= 2;
-		delta.rebase_apply_delta(Uinc);
-		zeta = 0.5 * szone(delta, Uinc);
-	} else {
-		//
-		// We are tracking zeta(E_0 + DeltaS)
-		//
-		delta.rebase_apply_delta(Uinc);
-		zeta = szone(delta, Uinc);
-	}
+	delta /= lambda;
+	delta.rebase_apply_delta(Uinc);
+	zeta = lambda * szone(delta, Uinc);
 
 	if(zeta<minzeta) minzeta = zeta;
 
@@ -124,11 +116,14 @@ void node::setup_connections()
 
 
 node::node(network_t* net, source_id hid, continuous_query* _Q)
-	: 	local_site(net, hid), Q(_Q),
-		U(Q->state_vector_size()), 
-		Uinc(Q->state_vector_size()), 
+	: 	local_site(net, hid), 
+		Q(_Q),
+		lambda(1.0),
+		U(0.0, Q->state_vector_size()), 
+		Uinc(0.0, Q->state_vector_size()), 
 		update_count(0),
-		dS(Q->state_vector_size()), round_local_updates(0),
+		dS(Q->state_vector_size()), 
+		round_local_updates(0),
 		coord( this )
 { 
 	coord <<= net->hub;
@@ -147,6 +142,7 @@ void coordinator::start_round()
 	B.clear();
 	psi_Ebal = 0.0;
 	DeltaEbal = 0.0;
+	lambda = 1.0; mu = 0.0;
 
 	// update statistics
 	round_sz_sent = 0;
@@ -169,10 +165,11 @@ void coordinator::start_round()
 			proxy[n].reset(safezone(radial_safe_zone));
 		else {
 			sz_sent++;
+			round_sz_sent++;
 			proxy[n].reset(safezone(safe_zone));			
 		}
 	}
-}	
+}
 
 //
 // initialize a new subround (not the first)
@@ -223,64 +220,168 @@ void coordinator::finish_subround()
 
 	bit_level++;
 
-	if( (total_zeta + psi_Ebal) < k * query->zeta_E * 0.01 ) 
+	if( (total_zeta + psi_Ebal) < k * query->zeta_E * epsilon_psi ) 
 		finish_subrounds(total_zeta);
 	else 
 		start_subround(total_zeta);
 }
 
-
-
-void coordinator::fetch_updates(node_t* n, Vec& S, size_t& upd)
+static void print_potential(const string& when, double psi, double psi_Ebal, auto* c)
 {
-	compressed_state cs = proxy[n].get_drift();
-	S += cs.vec;
-	upd += cs.updates;
-	total_updates += cs.updates;
+	double q = c->k * c->epsilon_psi * c->query->zeta_E;
+	double psi_tot = psi+psi_Ebal;
+	print("        ***   ",when," psi=", psi, "  psi_bal=", psi_Ebal, " total=", psi_tot, "  =",psi_tot/q ,
+		"        zeta_E=",c->query->zeta_E);	
 }
 
 
-void coordinator::finish_subrounds(double total_zeta)
+void coordinator::collect_drift_vectors(double& psi, size_t& upd)
 {
+	for(auto n : node_ptr) {
+		compressed_state_obj cs = proxy[n].flush_drift();
+		DeltaEbal += cs.vec;
+		upd += cs.updates;
+		total_updates += cs.updates;
+	}
+}
+
+
+double coordinator::collect_psi(double lambda)
+{
+	double psi = 0.0;
+	for(auto n : node_ptr) {
+		psi += proxy[n].reset_lambda(lambda);
+	}
+	return psi;
+}
+
+
+bool coordinator::rebalance_bimodal(double& psi)
+{
+	lambda = mu = 0.5;
+
+	psi = collect_psi(lambda);
+	psi_Ebal = k*mu* query->compute_zeta( DeltaEbal / (mu*k) );
+
+	// rebalancing criterion
+	return ( (psi_Ebal + psi) >= k * query->zeta_E * 0.1 );
+}
+
+
+bool coordinator::rebalance_zero_balance(double& psi)
+{
+	// find mu \in [epsilon_psi, 1-epsilon_psi] to make z(DeltaEbal/(mu*k))==0 (or almost)
+	// Just bisect
+	const int n = 5;  /// this should become a config option
+	const double prec = 0.5*epsilon_psi*query->zeta_E;
+
+	double mumax = 1.0-n*epsilon_psi; 
+	double zmax = query->compute_zeta( DeltaEbal / (mumax*k) );
+
+	if(zmax < 0.0)
+		return false;
+
+	double mumin = epsilon_psi;
+	double zmin = query->compute_zeta( DeltaEbal / (mumin*k) );
+
+	assert(mumax > mumin);
+	assert(zmax >= zmin);
+
+	mu = mumin;	
+	psi_Ebal = zmin;
+
+	if(zmin < 0.0) {
+		// zmin < 0 and zmax >= 0
+		// bisect
+		mu = 0.5*(mumin+mumax);
+		psi_Ebal = mu * query->compute_zeta( DeltaEbal / (mu*k) );
+
+		while(fabs(zmax-zmin)>prec) {
+			mu = 0.5*(mumin+mumax);
+			psi_Ebal = query->compute_zeta( DeltaEbal / (mu*k) );
+
+			if(psi_Ebal>=0) {
+				mumax = mu;
+				zmax = psi_Ebal;
+			} else {
+				mumin = mu;
+				zmin = psi_Ebal;
+			}
+		}
+
+		assert( fabs(psi_Ebal) <= epsilon_psi*query->zeta_E );
+	} 
+
+
+	lambda = 1-mu;
+	psi = collect_psi(lambda);
+	psi_Ebal *=  mu * (double)k;
+
+	// print(name(),"after zero_balance rebalancing  lambda=",lambda);
+	// print_potential("      ", psi, psi_Ebal, this);
+	
+	assert( fabs(psi/(lambda * k * query->zeta_E) -1.0) <= 1E-6 );
+	assert ( (psi_Ebal + psi) >= k * query->zeta_E * epsilon_psi * (n-1) );	
+
+	return true;
+}
+
+bool coordinator::rebalanced(double& psi)
+{
+	switch(cfg().rebalance_algorithm) {
+		case rebalancing::bimodal:
+			return rebalance_bimodal(psi);
+		case rebalancing::zero_balance:
+			return rebalance_zero_balance(psi);
+		case rebalancing::none:
+			return false;
+		default:
+			throw runtime_error("Unknown rebalance algorithm for FRGM: "
+				+rebalancing_repr[cfg().rebalance_algorithm]);
+	}
+}
+
+void coordinator::finish_subrounds(double psi)
+{
+
 	/* 
 		Try to rebalance all nodes.
 	 */
 	size_t nupdates = 0;
-	for(auto n : node_ptr) {
-		fetch_updates(n, DeltaEbal, nupdates);
-		B.insert(n);
-	}
+	collect_drift_vectors(psi, nupdates);
 
 	// cut off if very few updates
 	if(nupdates <= 40*k) {
-		//print(name(), "round=",num_rounds, " too few updates=",nupdates);
-		finish_round();
+		// print(name(), ">>>>>>>>>>>>>>>   round=",num_rounds, " too few updates=",nupdates);
+		restart_round();
 		return;
 	}
 
-	assert(B.size()==k);
 
-	double B2 = (B.size()/2.0);
-	psi_Ebal =  B2 * query->compute_zeta(DeltaEbal / B2);
-
-	// all nodes are balanced!
-	total_zeta = query->zeta_E * k /2.0;
+	if(rebalanced(psi)) {
+		start_subround(psi);
+		return;
+	}
 
 	//print(name(), "round=",num_rounds, "psi_Ebal=",psi_Ebal, "total_zeta=",total_zeta,
 	//	"k*zeta_E=",k * query->zeta_E,"updates=",nupdates);
 
-	if( (psi_Ebal + total_zeta) >= k * query->zeta_E * 0.1)
-		start_subround(total_zeta);
-	else
-		finish_round();
+	restart_round();
 }
 
+// finish this round and start a new one
+void coordinator::restart_round()
+{
+	finish_round();
+	start_round();
+}
 
 // finish the round
 void coordinator::finish_round()
 {
 	// check goodness
-	//print(name(), ":at end of round",num_rounds,", zeta(newE)=", query->compute_zeta(DeltaEbal / (double)k), "zeta_E=",query->zeta_E);
+	// print(name(), ":at end of round",num_rounds,
+	// 	", zeta(newE)=", query->compute_zeta(DeltaEbal / (double)k), "zeta_E=",query->zeta_E);
 
 	// collect all data
 	finish_with_newE(DeltaEbal / (double)k);
@@ -294,13 +395,12 @@ void coordinator::finish_with_newE(const Vec& newE)
 		cmodel.compute_model();		
 	}
 
-#if 0
+#if 1
 	trace_round(newE);
 #endif
 
 	// new round
 	query->update_estimate(newE);
-	start_round();	
 }
 
 
@@ -334,7 +434,7 @@ void coordinator::trace_round(const Vec& newE)
 	// check the value of the next E wrt this safe zone
 	double norm_dE = norm_L2(newE);
 
-	print("AGM Finish round: round updates=",round_updates_total,
+	print(name(), "finish round: round updates=",round_updates_total,
 		"zeta_E=",query->zeta_E, "zeta_E'=", zeta_Enext, zeta_Enext/query->zeta_E,
 		"||dE||=", norm_dE, norm_dE/query->zeta_E, 
 		"zeta_total=", zeta_total/k, zeta_total/(k*query->zeta_E),
@@ -347,11 +447,17 @@ void coordinator::trace_round(const Vec& newE)
 	// print the round comm gain
 	const size_t D = query->E.size();
 	long int commcost = 0;
+	
+	// downstream cost (underestimated !!)
 	for(size_t i=0; i<k; i++) {
+		commcost += total_bitweight[i];
 		commcost += min(round_updates[i], D);
-		commcost += D;
 	}
-	print("Total comm cost=", commcost, "gain=", (long int)((long int)round_updates_total- (long int)commcost),
+	// upstream cost
+	commcost += D*round_sz_sent;
+	commcost += 2*k*bit_level;
+
+	print(name(), "total comm cost=", commcost, "gain=", (long int)((long int)round_updates_total- (long int)commcost),
 			" %=", (double)commcost / (double)round_updates_total );
 	// print the bit level
 	print("               : c[",bit_level,"]=", elements_of(total_bitweight));
@@ -417,6 +523,10 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 	query(Q->create_query_state()), 
 	k(nw->hids.size()),
 	DeltaEbal(0.0, Q->state_vector_size()),
+
+	lambda(1.0), mu(0.0),
+	epsilon_psi(0.01),
+
 	Qest_series(nw->name()+".qest", "%.10g", [&]() { return query->Qest;} ),
 	num_rounds(0),
 	num_subrounds(0),
@@ -430,6 +540,8 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 	radial_safe_zone = query->radial_safezone();	
 
 	using_cost_model = radial_safe_zone!=nullptr && cfg().use_cost_model;
+
+	if(cfg().epsilon_psi.has_value()) epsilon_psi = cfg().epsilon_psi.value();
 }
 
 
@@ -678,7 +790,7 @@ void cost_model::compute_model()
 	for(size_t i=0; i<argmax_gain; i++)
 		d[I[i]] = true;
 
-	//print("Query plan for next round: ", elements_of(d));
+	print(coord->name(), "query plan for next round: ", elements_of(d));
 
 	// finito
 }
@@ -690,6 +802,10 @@ void cost_model::print_model()
 	print("        Model  beta=", elements_of(beta));
 	print("        Model gamma=", elements_of(gamma));
 }
+
+
+
+
 
 
 

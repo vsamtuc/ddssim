@@ -195,6 +195,9 @@ void dds::prepare_components(Value& js, vector<reactive*>& components)
 	for(size_t index = 0; index < jcomp.size(); index ++) {
 		Value jc = jcomp[(int) index];
 
+		if(jc.get("ignore", false).asBool())
+			continue;
+
 		string type = jc["type"].asString();
 
 		// map to a handler
