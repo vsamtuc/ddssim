@@ -54,7 +54,7 @@ DDS_SOURCES= hdv.cc dds.cc output.cc eca.cc agms.cc data_source.cc method.cc \
 UNIT_TESTS= basic_tests.hh ams_tests.hh ds_tests.hh dsarch_tests.hh \
 	hdv_tests.hh exec_tests.hh output_tests.hh \
 	tods_tests.hh szone_tests.hh method_tests.hh \
-	cfg_tests.hh gm_tests.hh 
+	cfg_tests.hh gm_tests.hh
 
 TEST_SOURCES= unit_tests.cc data_tests.cc timing_tests.cc
 
@@ -72,7 +72,7 @@ CXX_OBJ= $(CXX_SOURCES:.cc=.o)
 
 all: ddslib dssim $(TEST_SOURCES:.cc=) test #pyapi
 
-ddslib: libdds.a 
+ddslib: libdds.a
 
 pyapi: _dds.so
 
@@ -84,35 +84,35 @@ dssim: dssim.o libdds.a
 	$(CXX) $(LDFLAGS) -o $@ $< -L. -ldds $(LIB)
 
 dds_module.o: dds_module.cc
-	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $< 
+	$(CXX) -Wno-deprecated $(CXXFLAGS) -o $@ -c $<
 
 _dds.so: dds_module.o libdds.a
 	#$(CXX) -shared -o $@ $^ -lboost_python-py35 -lpython3.5dm -lpthread -ldl -lutil $(LIB)
 	$(CXX) -shared -o $@ $^ -lboost_python-py35 $(LIB) $(PYTHON_LIB)
 
-#unit_tests.cc: $(UNIT_TESTS) 
+#unit_tests.cc: $(UNIT_TESTS)
 #	cxxtestgen --error-printer -o $@ $^
 #unit_tests.o: unit_tests.cc
 
-#data_tests.cc: data_tests.hh 
+#data_tests.cc: data_tests.hh
 #	cxxtestgen --error-printer -o $@ $^
 
 #unit_tests: unit_tests.o libdds.a
 unit_tests.cc:
-	cxxtestgen --root --error-printer -o $@ $<	
+	cxxtestgen --root --error-printer -o $@ $<
 
 unit_tests: $(UNIT_TESTS:.hh=.o) unit_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
 	./unit_tests
 
 data_tests.cc: data_tests.hh
-	cxxtestgen --error-printer -o $@ $<	
+	cxxtestgen --error-printer -o $@ $<
 
 data_tests: data_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB)
 
 timing_tests.cc: timing_tests.hh
-	cxxtestgen --error-printer -o $@ $<	
+	cxxtestgen --error-printer -o $@ $<
 
 timing_tests: timing_tests.o libdds.a
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_timer
@@ -131,10 +131,10 @@ doc:
 	doxygen dds.cfg
 
 clean:
-	-rm -f $(CXX_OBJ) 
+	-rm -f $(CXX_OBJ)
 	-rm -f libdds.a dssim dds.so dds_module.o
 	-rm -f $(UNIT_TESTS:.hh=.cc) $(UNIT_TESTS:.hh=.o)
-	-rm -f $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=) 
+	-rm -f $(TEST_SOURCES) $(TEST_SOURCES:.cc=.o) $(TEST_SOURCES:.cc=)
 
 depend: $(CXX_SOURCES) $(TEST_SOURCES) $(UNIT_TESTS:.hh=.cc)
 	$(CXX) $(CXXFLAGS) -MM $^ > .depend

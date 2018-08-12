@@ -23,6 +23,17 @@ class GeomTestSuite : public CxxTest::TestSuite
 public:
 
 
+	void test_message_sizes()
+	{
+		Vec X(30);
+
+		compressed_state_ref a1 { X, 10 };
+		TS_ASSERT_EQUALS(10*8, message_size(a1));
+
+		compressed_state_ref a2 { X, 1000 };
+		TS_ASSERT_EQUALS(30*4, message_size(a2));
+	}
+
 	void test_gm2_network()
 	{
 

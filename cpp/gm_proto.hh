@@ -6,6 +6,8 @@
 	protocols.
  */
 
+#include <optional>
+
 #include "dds.hh"
 #include "dsarch.hh"
 #include "method.hh"
@@ -27,12 +29,12 @@ using namespace dds;
 	object is computed to be the minimum of the size of the
 	sketch and the size of all the updates.
   */
-struct compressed_state
+struct compressed_state_ref
 {
 	const Vec& vec;
 	size_t updates;
 
-	inline compressed_state(const Vec& _vec, size_t _updates)
+	inline compressed_state_ref(const Vec& _vec, size_t _updates)
 		: vec(_vec), updates(_updates) { }
 
 	size_t byte_size() const {
@@ -42,11 +44,38 @@ struct compressed_state
 		// Raw updates are transmitted as stream_update arrays (8 bytes)
 		size_t Raw_size = sizeof(dds::stream_update)*updates;
 
+		cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
+		
 		// Return the minimum of the two
 		return std::min(E_size, Raw_size);
 	}
 };
 
+
+struct compressed_state_obj
+{
+	Vec vec;
+	size_t updates;
+
+	inline compressed_state_obj(const Vec& _vec, size_t _updates)
+		: vec(_vec), updates(_updates) { }
+
+	inline compressed_state_obj(compressed_state_obj&& obj) = default;
+	compressed_state_obj(const compressed_state_obj&) = delete;
+
+	inline size_t byte_size() const {
+		// State vectors are transmitted as floats (4 bytes)
+		size_t E_size = vec.size()*sizeof(float); 
+
+		// Raw updates are transmitted as stream_update arrays (8 bytes)
+		size_t Raw_size = sizeof(dds::stream_update)*updates;
+
+		cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
+		
+		// Return the minimum of the two
+		return std::min(E_size, Raw_size);
+	}
+};
 
 
 
@@ -120,11 +149,26 @@ public:
   */
 enum class rebalancing
 {
-	none,
-	random,
-	random_limits,
-	projection,
-	random_projection
+	// SGM
+	random,					// randomly rebalance to fault
+	random_limits,			// rebalance with cost limits
+	projection,				// rebalance projection
+	random_projection,		// rebalance projection
+
+	// FRGM
+	/*
+		In FRGM, rebalancing is determined by the split between the
+		DeltaEbal vector and the average drift, DeltaX, where
+
+		S = E + DeltaX + DeltaEbal
+
+		Z(S) >= \lambda Z(E + DeltaX/\lambda) + \mu Z(E + DeltaEbal / \mu)
+
+	 */
+	bimodal,				// rebalance to \lambda = \mu = 1/2
+	zero_balance,			// rebalance to \mu s.t. \zeta(B/\mu) == 0
+
+	none					// no rebalancing
 };
 
 extern enum_repr<rebalancing> rebalancing_repr;
@@ -135,11 +179,15 @@ extern enum_repr<rebalancing> rebalancing_repr;
   */
 struct protocol_config
 {
-	bool use_cost_model = true;		// for fgm: use the cost model if possible
-	bool eikonal = true;			// select eikonal safe zone
+	bool use_cost_model = true;				// for fgm: use the cost model if possible
+	bool eikonal = true;					// select eikonal safe zone
 	rebalancing rebalance_algorithm
-			 = rebalancing::none;	// select rebalancing algorithm
-	size_t rbl_proj_dim;			// the rebalancing projection dimension
+			 = rebalancing::none;			// select rebalancing algorithm
+
+	// FGM
+	size_t rbl_proj_dim;					// the rebalancing projection dimension
+	std::optional<double> epsilon_psi;		// The threshold for ending subrounds
+
 };
 
 

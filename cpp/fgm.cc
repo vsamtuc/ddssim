@@ -63,14 +63,14 @@ oneway node::reset_bitweight(float Z)
 	bitweight = 0;
 }
 
-compressed_state node::get_drift() 
+compressed_state_ref node::get_drift() 
 {
 	size_t upd = update_count;
 	update_count = 0;
-	return compressed_state { U, upd };
+	return compressed_state_ref { U, upd };
 }
 
-double node::set_drift(compressed_state newU) 
+double node::set_drift(compressed_state_ref newU) 
 {
 	U = newU.vec;
 	// we should not touch this: update_count = newU.updates;
@@ -310,8 +310,10 @@ void coordinator::finish_subrounds(double total_zeta)
 			case rebalancing::none:
 				finish_round();
 				break;
-			case rebalancing::random_limits:
-				finish_round();
+			default:
+				throw runtime_error("The rebalancing scheme '"+
+						rebalancing_repr[cfg().rebalance_algorithm]
+					+"'' is not appropriate for this protocol");
 				break;
 		}
 	}	
@@ -481,7 +483,7 @@ coordinator::coordinator(network_t* nw, continuous_query* _Q)
 
 void coordinator::fetch_updates(node_t* n, Vec& S, size_t& upd)
 {
-	compressed_state cs = proxy[n].get_drift();
+	compressed_state_ref cs = proxy[n].get_drift();
 	S += cs.vec;
 	upd += cs.updates;	
 	total_updates += cs.updates;
@@ -546,7 +548,7 @@ void coordinator::rebalance_random(double total_zeta)
 				Vec Ubal = newE/ (double)B;
 
 				for(auto node: Bset)
-					node->set_drift(compressed_state {Ubal, newE_updates});
+					node->set_drift(compressed_state_ref {Ubal, newE_updates});
 
 				return ;				
 			}
