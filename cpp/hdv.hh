@@ -151,18 +151,6 @@
 #include <algorithm>
 #include <functional>
 
-#include <boost/numeric/ublas/vector.hpp>
-#include <boost/numeric/ublas/vector_sparse.hpp>
-
-#include <boost/accumulators/accumulators.hpp>
-#include <boost/accumulators/statistics/stats.hpp>
-#include <boost/accumulators/statistics/mean.hpp>
-#include <boost/accumulators/statistics/moment.hpp>
-#include <boost/accumulators/statistics/variance.hpp>
-#include <boost/accumulators/statistics/rolling_mean.hpp>
-#include <boost/accumulators/statistics/rolling_variance.hpp>
-
-#include "binc.hh"
 
 namespace hdv {
 
@@ -741,32 +729,6 @@ inline auto inner_product(
 		}
 	}
 }
-
-
-using namespace boost::accumulators;
-
-struct estimate_error_observer
-{
-protected:
-public:
-	using error_tally = 
-		accumulator_set<double, 
-			stats<tag::mean,tag::variance,
-				tag::rolling_mean,tag::rolling_variance> 
-			>;
-	error_tally tally;
-
-	/**
-		Construct an observer with the given parameter for
-		rolling window
-	  */
-	estimate_error_observer(size_t window);
-
-	/**
-		Add an error observation
-	  */
-	void observe(double exact, double est);
-};
 
 
 

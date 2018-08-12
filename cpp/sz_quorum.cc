@@ -1,6 +1,9 @@
 
-#include "sz_quorum.hh"
 #include <vector>
+#include <cassert>
+
+#include "binc.hh"
+#include "sz_quorum.hh"
 
 /////////////////////////////////////////////////////////
 //

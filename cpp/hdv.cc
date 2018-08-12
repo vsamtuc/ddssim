@@ -2,6 +2,7 @@
 #include <random>
 #include <algorithm>
 #include <vector>
+#include <cassert>
 
 #include "hdv.hh"
 
@@ -137,15 +138,3 @@ Vec hdv::uniform_random_vector(size_t n, double a, double b)
 };
 
 
-
-
-estimate_error_observer::estimate_error_observer(size_t window) 
-	: tally(tag::rolling_window::window_size = window)
-	{}
-
-void estimate_error_observer::observe(double exact, double est) {
-	using namespace std;
-	double err = relative_error(exact,est);
-	//cout << "relerr("<<exact<<","<<est<<")=" << err << endl;
-	tally(err);
-}

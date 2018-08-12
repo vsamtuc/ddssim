@@ -25,7 +25,8 @@ using std::mt19937;
 using namespace dds;
 using namespace agms;
 using namespace hdv;
-namespace u = boost::numeric::ublas;
+using namespace tables;
+
 
 mt19937 rng(123122);
 
