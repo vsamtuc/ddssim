@@ -38,15 +38,15 @@ oneway node::reset(const safezone& newsz)
 }
 
 
-compressed_state node::get_drift() 
+compressed_state_ref node::get_drift() 
 {
 	// getting the drift vector is done as getting the local statistic
 	size_t upd = update_count;
 	update_count = 0;
-	return compressed_state { U, upd };
+	return compressed_state_ref { U, upd };
 }
 
-void node::set_drift(compressed_state newU) 
+void node::set_drift(compressed_state_ref newU) 
 {
 	U = newU.vec;
 	// we do not change the update count update_count = newU.updates;
@@ -144,7 +144,7 @@ oneway coordinator::local_violation(sender<node_t> ctx)
 
 void coordinator::fetch_updates(node_t* node)
 {
-	compressed_state cs = proxy[node].get_drift();
+	compressed_state_ref cs = proxy[node].get_drift();
 	Ubal += cs.vec;
 	Ubal_updates += cs.updates;	
 	total_updates += cs.updates;
@@ -297,7 +297,7 @@ void coordinator::rebalance()
 
 	assert(query->compute_zeta(Ubal) > 0);
 
-	compressed_state sbal { Ubal, Ubal_updates };
+	compressed_state_ref sbal { Ubal, Ubal_updates };
 
 	for(auto n : B) {
 		proxy[n].set_drift(sbal);

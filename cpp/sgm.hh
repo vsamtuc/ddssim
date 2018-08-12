@@ -185,10 +185,10 @@ struct node : local_site
 	oneway reset(const safezone& newsz); 
 
 	// transfer data to the coordinator
-	compressed_state get_drift();
+	compressed_state_ref get_drift();
 
 	// set the drift vector (for rebalancing)
-	void set_drift(compressed_state newU);
+	void set_drift(compressed_state_ref newU);
 
 };
 

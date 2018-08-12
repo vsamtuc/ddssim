@@ -126,6 +126,20 @@ struct coordinator : process
 	Vec DeltaEbal;		// The sum of Ei-E0 for i in B
 	double psi_Ebal;	// Balance weight == $(|B|/2) \zeta(E_0 + (2/|B|) \Delta E_{bal})$.
 
+	/*
+		At every point in time, we have  DS = X + DeltaEbal  =  lambda*(X  / lambda) + mu (DeltaEbal / k*mu).
+		with \lambda , \mu >= 0 and \lambda+ \mu = 1.
+
+		Choosing mu so that psi_Ebal = zeta( DeltaEbal / k*mu ), and defining
+		 \psi = \sum \zeta(X_i / \lambda)  
+
+		the condition becomes
+		 \lambda psi + \mu \psi_Ebal  \geq 0, or, 
+
+		\psi \geq 0.
+ 	 */
+	double lambda, mu;
+	double epsilon_psi = 0.01;
 
 	//-----------------------------------------
 	// timeseries
@@ -168,19 +182,28 @@ struct coordinator : process
 	oneway threshold_crossed(sender<node_t> ctx, int delta_bitw);
 
 	void start_round();   // initialize a new round
-	
-	void finish_round();  // finish current round and start new one
+	void restart_round(); // finish current round and start new one
+	void finish_round();  // finish current round
 	void finish_with_newE(const Vec& newE); // finishes round resetting with new state
 	void finish_rounds();  // finish last round
 
 		
-	void start_subround(double total_zeta);    // initialize a new subround
+	void start_subround(double psi);    // initialize a new subround
 	void finish_subround();                    // finish the subround
-	void finish_subrounds(double total_zeta);  // try to rebalance (optional)
+	void finish_subrounds(double psi);  // try to rebalance (optional)
 
-	// helper
-	void fetch_updates(node_t* node, Vec& S, size_t& upd);
+	// attempting to rebalance
+	void collect_drift_vectors(double& psi, size_t& upd);	// collect drift vectors before round end
 
+	// rebalancing algorithms, return true success
+	bool rebalance_bimodal(double& psi);		// rebalance mode is bimodal
+	bool rebalance_zero_balance(double& psi);	// rebalance mode is zero_balance
+
+	// calls the appropriate rebalancing algorithm, returns true on success
+	bool rebalanced(double& psi);
+
+	// helper function, sends new lambda to all sites, returns new psi
+	double collect_psi(double lambda);
 
 	//
 	// this is used to trace the execution of rounds, for debugging or tuning
@@ -201,6 +224,11 @@ struct coord_proxy : remote_proxy< coordinator >
 };
 
 
+
+
+/**
+	The FRGM node
+  */
 struct node : local_site
 {
 	typedef coordinator coordinator_t;
@@ -213,8 +241,6 @@ struct node : local_site
 	safezone szone;			// safezone object
 
 	int num_sites;			// number of sites
-	bool is_rebalanced;		// rabalancing status flag
-	bool is_flushed;		// flags a flush (get_drift()) call
 
 	double minzeta; 		// minimum value of zeta so far
 	double zeta;			// current zeta 
@@ -223,9 +249,12 @@ struct node : local_site
 	double zeta_quantum;	// discretization for bitweight, set by reset_bitweight()
 	int bitweight;			// equal to number of bits sent since last reset_bitweight()
 
+	double lambda;			// the current lambda scaling factor for U.
+
 	Vec U;					// drift vector
 	Vec Uinc;				// This vector maintains the value needed for incremental computation.
-							// It is either ==U  or ==2*U, depending on rebalancing status
+							// It is equal to U/lambda
+
 	size_t update_count;	// number of updates in drift vector
 
 	Vec dS;						// the vector of all updates over a round
@@ -252,8 +281,11 @@ struct node : local_site
 	// called at the start a new subround
 	oneway reset_bitweight(float Z);
 
-	// Get the data
-	compressed_state get_drift();
+	// called after rebalancing
+	double reset_lambda(float _lambda);
+
+	// Get the drift vector
+	compressed_state_obj flush_drift();
 
 };
 
@@ -264,8 +296,9 @@ struct node_proxy : remote_proxy< node >
 
 	REMOTE_METHOD(node_t, reset);
 	REMOTE_METHOD(node_t, reset_bitweight);
-	REMOTE_METHOD(node_t, get_drift);
+	REMOTE_METHOD(node_t, reset_lambda);
 	REMOTE_METHOD(node_t, get_zeta);
+	REMOTE_METHOD(node_t, flush_drift);
 
 	node_proxy(process* p) : remote_proxy< node_t >(p) {}
 };
