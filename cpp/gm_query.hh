@@ -3,6 +3,7 @@
 
 #include "gm_proto.hh"
 #include "safezone.hh"
+#include "binc.hh"
 
 namespace gm {
 
