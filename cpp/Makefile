@@ -115,7 +115,7 @@ timing_tests.cc: timing_tests.hh
 	cxxtestgen --error-printer -o $@ $<
 
 timing_tests: timing_tests.o libdds.a
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_timer
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_timer -lboost_system
 
 
 

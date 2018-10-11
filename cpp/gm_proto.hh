@@ -44,7 +44,7 @@ struct compressed_state_ref
 		// Raw updates are transmitted as stream_update arrays (8 bytes)
 		size_t Raw_size = sizeof(dds::stream_update)*updates;
 
-		cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
+		//cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
 		
 		// Return the minimum of the two
 		return std::min(E_size, Raw_size);
@@ -70,7 +70,7 @@ struct compressed_state_obj
 		// Raw updates are transmitted as stream_update arrays (8 bytes)
 		size_t Raw_size = sizeof(dds::stream_update)*updates;
 
-		cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
+		//cout << "raw_size="<< Raw_size << " E_size=" << E_size << endl;
 		
 		// Return the minimum of the two
 		return std::min(E_size, Raw_size);
